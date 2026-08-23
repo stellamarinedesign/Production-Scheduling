@@ -3,7 +3,8 @@
 import { xlsxAdapter } from './adapters/index.js';
 import { buildBoard, byCategory, today, toAU, toDateOnly } from './transform.js';
 import { CATEGORY_ORDER } from './rules.js';
-import { stellaCode, labelFor } from './vessel-codes.js';
+import { stellaCode, labelFor, existingBoats, acceptNewCode } from './vessel-codes.js';
+import { Auth, ROLE, friendlyAuthError } from './auth.js';
 import { Store } from './store.js';
 import { renderPrint, measure, fitToPage } from './print.js';
 
@@ -30,12 +31,52 @@ const state = {
 // ---------------------------------------------------------------------------
 
 (async function boot() {
+  wireAuth();
+
+  await Auth.init(async (st) => {
+    if (st.role === ROLE.NONE) { showAuth(); return; }
+    await start(st);
+  });
+})();
+
+function showAuth() {
+  $('authView').classList.add('show');
+  $('appShell').hidden = true;
+}
+
+let started = false;
+async function start(st) {
+  $('authView').classList.remove('show');
+  $('appShell').hidden = false;
+
+  // Role decides what is drawn. The Firestore rules decide what is allowed —
+  // hiding a button is not security, it is tidiness.
+  document.body.classList.toggle('role-floor', st.role === ROLE.FLOOR);
+  document.body.classList.toggle('role-manager', st.role === ROLE.MANAGER);
+
+  const who = $('whoami');
+  who.textContent = st.mode === 'local' ? 'Local mode' : (st.email ?? '');
+  const chip = el('span', `role ${st.role === ROLE.MANAGER ? 'manager' : ''}`,
+    st.role === ROLE.MANAGER ? 'MANAGER' : 'FLOOR');
+  who.append(chip);
+  $('signOut').hidden = st.mode === 'local';
+
+  if (started) { rebuild(); return; }
+  started = true;
+
   await Store.init();
+
+  // Floor accounts read the last published board and render the printed sheet.
+  // No upload, no controls, no edit affordances — that is the whole point of
+  // the role, and the rules deny those writes regardless.
+  if (st.role === ROLE.FLOOR) { await startFloor(); return; }
+
   state.settings = await Store.loadSettings();
   state.codeMap = await Store.loadCodes();
   state.overrides = await Store.loadOverrides();
 
   $('horizon').value = state.settings.horizonWeeks;
+  $('horizonVal').textContent = `${state.settings.horizonWeeks} weeks`;
   $('maxStock').value = state.settings.maxStock ?? '';
   setAutoFit(state.settings.autoFit, { save: false });
 
@@ -54,8 +95,51 @@ const state = {
     state.rows = cached.rows;
     state.source = cached.source;
     rebuild();
+    // A code added since the last load still needs answering.
+    if (Auth.isManager) queueNewCodes();
   }
-})();
+}
+
+async function startFloor() {
+  const published = await Store.latestBoard();
+  if (!published?.jobs?.length) {
+    $('floorEmpty').hidden = false;
+    return;
+  }
+  state.board = { jobs: published.jobs, meta: published.meta, warnings: {}, excluded: [] };
+  state.source = {
+    sourceLabel: published.sourceLabel,
+    sourceId: published.sourceId,
+    retrievedAt: published.retrievedAt,
+    warnings: [],
+  };
+  $('provenance').hidden = false;
+  $('dropZone').hidden = true;
+  $('boardWrap').hidden = false;
+  renderProvenance();
+  renderPrint($('printPreview'), state.board);
+  showTab('print');
+}
+
+function wireAuth() {
+  const submit = async () => {
+    $('loginErr').textContent = '';
+    $('loginBtn').disabled = true;
+    try {
+      await Auth.signIn($('loginEmail').value, $('loginPass').value);
+      $('loginPass').value = '';
+    } catch (e) {
+      $('loginErr').textContent = friendlyAuthError(e);
+    } finally {
+      $('loginBtn').disabled = false;
+    }
+  };
+  $('loginBtn').addEventListener('click', submit);
+  for (const id of ['loginEmail', 'loginPass']) {
+    $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+  }
+  $('signOut').addEventListener('click', () => Auth.signOut());
+}
 
 // ---------------------------------------------------------------------------
 // upload
@@ -102,14 +186,14 @@ async function load(file) {
       sourceLabel: src.sourceLabel,
       horizonWeeks: state.fit?.weeks ?? state.settings.horizonWeeks,
       maxStock: state.settings.maxStock ?? null,
-      jobs: state.board.jobs.map((j) => ({
-        prod_no: j.prod_no, label: j.label, category: j.category,
-        due_date: j.due_date, start_date: j.start_date, status: j.status,
-        is_stock: j.is_stock, hidden: j.hidden,
-      })),
+      // The full job list, not a summary: floor devices render from this and
+      // never see the spreadsheet.
+      jobs: state.board.jobs,
+      meta: state.board.meta,
     });
 
     toast(`${src.rows.length} rows in — ${state.board.meta.job_count} on the board.`);
+    queueNewCodes();
   } catch (e) {
     toast(`Could not read that file — ${e.message}`, 6000);
     console.error(e);
@@ -263,19 +347,22 @@ function renderWarnings() {
     }));
   }
 
-  // Vessel codes with no map entry — the main way the code table stays current.
-  if (w.unmappedCodes.length) {
+  // Codes still waiting on a decision — skipped in the import dialog, or added
+  // since. The board falls back to raw ERP text for these, so it is not cosmetic.
+  if (w.newCodes?.length) {
     host.append(panel({
-      cls: 'alert', title: 'Item codes with no vessel code match', count: w.unmappedCodes.length, open: true,
+      cls: 'alert', title: 'Vessel codes awaiting a decision', count: w.newCodes.length, open: true,
       build: (b) => {
         b.append(el('div', null,
-          'These are on the board but fell back to their ERP description for a label. '));
-        for (const u of w.unmappedCodes) {
+          'These jobs are on the board but have no agreed code, so they print '
+          + 'their raw ERP description. Upstream does not manage these '
+          + 'consistently — they need answering by hand.'));
+        for (const n of w.newCodes) {
           const r = el('div', 'xrow');
-          r.append(el('span', 'id', u.inventory_id), el('span', null, `${u.count} job(s)`));
-          const a = el('a', null, 'Add a vessel code →');
-          a.href = 'vessel-codes.html';
-          a.style.color = 'var(--red-bright)';
+          r.append(el('span', 'id', n.code),
+            el('span', null, `${n.count} job(s) · ${n.items.join(', ')}`));
+          const a = el('button', 'mini', 'Decide now');
+          a.addEventListener('click', () => { ncQueue = w.newCodes; ncIndex = w.newCodes.indexOf(n); showNewCode(); });
           r.append(a);
           b.append(r);
         }
@@ -443,6 +530,109 @@ function renderFitStatus() {
 }
 
 // ---------------------------------------------------------------------------
+// new vessel codes
+//
+// Upstream does not manage these consistently — `56` was an office shorthand
+// for 56SY, and Riviera call the same boat both 56SY and 5000SY. So a code the
+// map has never seen is never auto-accepted: the board would print a guess and
+// nobody would know it was one. Each is queued and answered on import.
+// ---------------------------------------------------------------------------
+
+let ncQueue = [];
+let ncIndex = 0;
+
+function queueNewCodes() {
+  if (!Auth.isManager) return;
+  const pending = state.board?.warnings?.newCodes ?? [];
+  if (!pending.length) return;
+  ncQueue = pending;
+  ncIndex = 0;
+  showNewCode();
+}
+
+function showNewCode() {
+  const item = ncQueue[ncIndex];
+  if (!item) { $('newCodeOverlay').classList.remove('show'); rebuild(); return; }
+
+  $('ncProgress').textContent = ncQueue.length > 1 ? `${ncIndex + 1} of ${ncQueue.length}` : '';
+  $('ncLede').textContent =
+    `This export carries ${item.count} job(s) under a vessel code the board has `
+    + `never seen. Choose what the floor should read.`;
+
+  const d = $('ncDerived');
+  d.textContent = '';
+  const row = (k, v) => {
+    const r = el('div', 'row');
+    r.append(el('span', null, k), el('span', null, v || '—'));
+    d.append(r);
+  };
+  row('Item codes', item.items.join('  ·  '));
+  row('Stella code', item.code);
+  row('Riviera model', item.riviera.join(', '));
+  row('Hull prefix', item.hull_prefix.join(', '));
+  row('Description', item.descriptions[0] ?? '');
+
+  // What each choice would actually print, using the real template for the
+  // first item — a preview beats a description of a preview.
+  const preview = (display) => {
+    const fake = { [item.code]: { display, _confirmed: true, riviera: item.riviera } };
+    return labelFor(item.items[0], null, fake) ?? display;
+  };
+
+  $('ncStella').textContent = item.code;
+  $('ncStellaPreview').textContent = preview(item.code);
+
+  const riv = item.suggestion.riviera;
+  $('ncRivOpt').hidden = !riv;
+  if (riv) {
+    $('ncRiv').textContent = riv;
+    $('ncRivPreview').textContent = preview(riv);
+  }
+
+  const sel = $('ncExisting');
+  sel.textContent = '';
+  for (const b of existingBoats(state.codeMap)) {
+    const o = document.createElement('option');
+    o.value = b.boat;
+    o.textContent = `${b.display}  (${b.codes.join(', ')})`;
+    sel.append(o);
+  }
+
+  $('ncCustom').value = '';
+  $('newCodeOverlay').classList.add('show');
+}
+
+async function chooseNewCode(mode) {
+  const item = ncQueue[ncIndex];
+  const choice = { mode };
+  if (mode === 'existing') choice.boat = $('ncExisting').value;
+  if (mode === 'custom') {
+    choice.value = $('ncCustom').value.trim();
+    if (!choice.value) { toast('Enter a code, or choose another option.'); return; }
+  }
+
+  const entry = acceptNewCode(item.code, choice, item);
+  state.codeMap[item.code] = entry;
+  await Store.saveCode(item.code, entry);
+
+  const shown = mode === 'existing'
+    ? `${item.code} joined ${$('ncExisting').selectedOptions[0].textContent.trim()}`
+    : `${item.code} will print as "${entry.display}"`;
+  toast(shown);
+
+  ncIndex += 1;
+  showNewCode();
+}
+
+function wireNewCode() {
+  for (const b of document.querySelectorAll('#newCodeOverlay [data-mode]')) {
+    b.addEventListener('click', () => chooseNewCode(b.dataset.mode));
+  }
+  $('ncCustom').addEventListener('keydown', (e) => { if (e.key === 'Enter') chooseNewCode('custom'); });
+  $('ncSkip').addEventListener('click', () => { ncIndex += 1; showNewCode(); });
+}
+
+// ---------------------------------------------------------------------------
 // label editing — scope first
 //
 // Editing a label and editing a vessel code are different things and the UI
@@ -508,6 +698,7 @@ function showLabelForm(scope) {
 }
 
 function wireOverlays() {
+  wireNewCode();
   $('scopeJob').addEventListener('click', () => showLabelForm('job'));
   $('scopeCode').addEventListener('click', () => showLabelForm('code'));
   $('lblScopeCancel').addEventListener('click', closeLabel);

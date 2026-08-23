@@ -12,7 +12,7 @@ import {
   CATEGORY_ORDER, BOARD_STATUSES, INTERNAL_CUSTOMER, HULL_RE,
   VESSEL_IN_DESC_RE, CUSTOMER_SUFFIX_RE, LABEL_OVERRIDES, classify,
 } from './rules.js';
-import { resolveDisplays, labelFor } from './vessel-codes.js';
+import { resolveDisplays, labelFor, detectNewCodes } from './vessel-codes.js';
 
 // ---------------------------------------------------------------------------
 // Value normalisation. This is the transform's job, done once, downstream of
@@ -172,7 +172,11 @@ export function buildBoard(rows, opts = {}) {
 
   const jobs = [];
   const excluded = [];
-  const unmappedCodes = new Map();   // inventory id -> rows lacking a vessel code
+
+  // Codes this export carries that the map has never seen. Detected across ALL
+  // rows, not just the ones on the board: a code first appearing outside the
+  // horizon is worth resolving now, so it is already right when it arrives.
+  const newCodes = detectNewCodes(rows, codeMap);
 
   for (const r of rows) {
     const prodNo = text(r['Production Nbr.']);
@@ -214,13 +218,6 @@ export function buildBoard(rows, opts = {}) {
       resolved,
       codeMap,
     });
-
-    // An item that should carry a vessel code but produced no map entry is how
-    // the code table stays current — surface it, do not guess.
-    const code = /CUSTOM/i.test(text(inv)) ? null : (labelFor(inv, resolved, codeMap) ? null : text(inv));
-    if (code && !LABEL_OVERRIDES[text(inv)] && !text(inv).toUpperCase().startsWith('SDC')) {
-      unmappedCodes.set(text(inv), (unmappedCodes.get(text(inv)) ?? 0) + 1);
-    }
 
     const startDate = toDateOnly(r['Start Date']);
 
@@ -293,7 +290,7 @@ export function buildBoard(rows, opts = {}) {
       onHold: visible.filter((j) => j.on_hold),
       hidden: kept.filter((j) => j.hidden),
       unmapped: excluded.filter((e) => e.reason.startsWith('unmapped')),
-      unmappedCodes: [...unmappedCodes.entries()].map(([inventory_id, count]) => ({ inventory_id, count })),
+      newCodes,
       codeConflicts: resolved.conflicts,
       codeUndecided: resolved.undecided,
     },

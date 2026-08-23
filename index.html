@@ -12,6 +12,29 @@
 </head>
 <body>
 
+<!-- ============ SIGN IN ============
+     Same model as the Drawings app: Firebase email/password, no self-signup.
+     Manager accounts get this page; workshop accounts get the floor view only.
+     The rules are the real enforcement — this only decides what is drawn. -->
+<div id="authView">
+  <img src="assets/logo.svg" alt="Stella Marine" class="auth-logo">
+  <h2 class="brand-head">Sign in</h2>
+  <p>Production board for Stella Marine staff. Use the account set up for this device.</p>
+  <div class="field">
+    <label for="loginEmail">Email</label>
+    <input id="loginEmail" type="email" autocomplete="username" autocapitalize="off" spellcheck="false">
+  </div>
+  <div class="field">
+    <label for="loginPass">Password</label>
+    <input id="loginPass" type="password" autocomplete="current-password">
+  </div>
+  <button class="primary" id="loginBtn">Sign in</button>
+  <div id="loginErr"></div>
+  <div id="localNote"></div>
+</div>
+
+<div id="appShell" hidden>
+
 <header>
   <img class="logo" src="assets/logo.svg" alt="Stella Marine">
   <h1 class="brand-head">Production Board</h1>
@@ -19,8 +42,10 @@
   <span class="spacer"></span>
   <nav>
     <a href="index.html" aria-current="page">Board</a>
-    <a href="vessel-codes.html">Vessel codes</a>
+    <a href="vessel-codes.html" class="manager-only">Vessel codes</a>
   </nav>
+  <span class="who" id="whoami"></span>
+  <button class="mini" id="signOut" hidden>Sign out</button>
 </header>
 
 <main>
@@ -96,6 +121,12 @@
 
   </div>
 
+  <div class="state" id="floorEmpty" hidden>
+    <strong>No board published yet</strong>
+    The production manager has not uploaded an export. This screen will fill in
+    as soon as they do.
+  </div>
+
   <div class="state" id="emptyState" hidden>
     <strong>Nothing on the board</strong>
     Every row was filtered out. Open the excluded list above to see why.
@@ -140,6 +171,60 @@
   </div>
 </div>
 
+<!-- ============ NEW VESSEL CODE ============
+     Fires on import, before the board is trusted. Upstream does not manage
+     these consistently, so a new code is never auto-accepted — the board would
+     print a guess and nobody would know it was one. -->
+<div class="overlay" id="newCodeOverlay">
+  <div class="box wide">
+    <h3>New vessel code<span id="ncProgress" class="progress"></span></h3>
+    <div class="lede" id="ncLede"></div>
+
+    <div class="derived" id="ncDerived"></div>
+
+    <div class="choices">
+      <button class="scope-opt" data-mode="stella">
+        <b>Use the Stella code — <span id="ncStella"></span></b>
+        <span>What the item code itself says. Prints as
+              <em id="ncStellaPreview"></em>.</span>
+      </button>
+
+      <button class="scope-opt" data-mode="riviera" id="ncRivOpt">
+        <b>Use the Riviera model — <span id="ncRiv"></span></b>
+        <span>What the ERP description calls it. Prints as
+              <em id="ncRivPreview"></em>.</span>
+      </button>
+
+      <div class="scope-opt as-form">
+        <b>Add it to an existing boat</b>
+        <span>Same vessel under another code — it will print whatever that boat
+              already prints.</span>
+        <div class="inline">
+          <select id="ncExisting"></select>
+          <button class="mini" data-mode="existing">Add</button>
+        </div>
+      </div>
+
+      <div class="scope-opt as-form">
+        <b>Enter the code to display</b>
+        <span>Anything else — a code the floor uses that neither field carries.</span>
+        <div class="inline">
+          <input type="text" id="ncCustom" placeholder="e.g. 58SY" autocomplete="off" spellcheck="false">
+          <button class="mini" data-mode="custom">Use this</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="ghost" id="ncSkip">Decide later</button>
+      <span class="hint" style="flex:1">
+        Skipping leaves it off the code table; the board falls back to the raw
+        ERP description for those jobs and warns until it is resolved.
+      </span>
+    </div>
+  </div>
+</div>
+
 <!-- ============ HIDE JOB ============ -->
 <div class="overlay" id="hideOverlay">
   <div class="box">
@@ -162,6 +247,8 @@
 </div>
 
 <div id="toast"></div>
+
+</div><!-- /#appShell -->
 
 <script type="module" src="js/app.js"></script>
 </body>

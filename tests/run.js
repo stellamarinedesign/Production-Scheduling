@@ -7,7 +7,8 @@
 
 import { xlsxAdapter, validateColumns } from '../js/adapters/index.js';
 import { buildBoard, toDateOnly, toAU, addWeeks } from '../js/transform.js';
-import { resolveDisplays, aliasGroups, stellaCode, labelFor } from '../js/vessel-codes.js';
+import { resolveDisplays, aliasGroups, stellaCode, labelFor, detectNewCodes,
+         existingBoats, acceptNewCode } from '../js/vessel-codes.js';
 import { renderPrint, measure, fitToPage } from '../js/print.js';
 
 const results = [];
@@ -60,19 +61,32 @@ export async function run() {
   const codeMap = await (await fetch('../data/vessel-codes.seed.json')).json();
   const resolved = resolveDisplays(codeMap);
 
-  // The alias rule: codes sharing a Riviera model are the same boat.
+  // Boat grouping is MANUAL. The upstream codes are not consistent enough for
+  // any derived signal to get it right: 56 / SY23 / SY26 are one boat that
+  // Riviera call both 56SY and 5000SY, so matching on the model splits them.
   const groups = aliasGroups(codeMap);
   const groupOf = (c) => groups.find((g) => g.codes.includes(c));
-  eq('43SY and SY20 group together (both Riviera 43SY)', groupOf('43SY').codes, ['43SY', 'SY20']);
-  eq('56 and SY23 group together (both Riviera 56SY)', groupOf('56').codes, ['56', 'SY23']);
-  check('56 and SY26 do NOT group (shared hull 5000, different models)',
-    !groupOf('56').codes.includes('SY26'),
-    `got ${JSON.stringify(groupOf('56').codes)}`);
+  eq('43SY and SY20 are one boat', groupOf('43SY').codes, ['43SY', 'SY20']);
+  eq('56, SY23 and SY26 are one boat despite differing Riviera models',
+    groupOf('56').codes, ['56', 'SY23', 'SY26']);
+  eq('...and their models really do differ', groupOf('56').models, ['5000SY', '56SY']);
 
-  eq('43SY resolves to SY20 (confirmed entry wins)', resolved.display.get('43SY'), 'SY20');
+  // A human must be able to SPLIT as well as merge: two codes sharing a model
+  // but assigned to different boats stay apart.
+  eq('an explicit boat assignment overrides a shared model',
+    aliasGroups({
+      A: { riviera: ['66SY'], boat: 'one' },
+      B: { riviera: ['66SY'], boat: 'two' },
+    }).map((g) => g.codes), [['A'], ['B']]);
+  // ...and an unassigned pair still gets the model as a suggestion.
+  eq('a shared model still groups codes nobody has assigned',
+    aliasGroups({ A: { riviera: ['66SY'] }, B: { riviera: ['66SY'] } })[0].codes, ['A', 'B']);
+
+  eq('43SY follows SY20', resolved.display.get('43SY'), 'SY20');
   eq('SY20 stays SY20', resolved.display.get('SY20'), 'SY20');
   eq('SY23 stays 56SY', resolved.display.get('SY23'), '56SY');
   eq('56 stays 56SY', resolved.display.get('56'), '56SY');
+  eq('SY26 is the same boat, so it prints 56SY too', resolved.display.get('SY26'), '56SY');
   eq('SY22 stays SY22', resolved.display.get('SY22'), 'SY22');
   eq('505 stays Riv 505', resolved.display.get('505'), 'Riv 505');
   eq('no display conflicts in seed data', resolved.conflicts, []);
@@ -127,6 +141,12 @@ export async function run() {
       // so the helm seat box label changed. Assert the new value explicitly.
       if (f === 'label' && exp.inventory_id === 'SHCELECPLINTHRIV43SY') {
         if (got.label !== 'Helm Seat Box SY20') diffs.push(`row ${i} ${exp.prod_no}.label: expected alias fix 'Helm Seat Box SY20', got ${JSON.stringify(got.label)}`);
+        continue;
+      }
+      // SY26 is the same boat as 56/SY23 — Riviera's 5000 is the 56SY — so it
+      // now prints 56SY where the fixture printed the Stella code.
+      if (f === 'label' && exp.label === 'SY26') {
+        if (got.label !== '56SY') diffs.push(`row ${i} ${exp.prod_no}.label: expected boat fix '56SY', got ${JSON.stringify(got.label)}`);
         continue;
       }
       // The reference implementation wrote `str(NaN)` into empty cells, so all
@@ -212,6 +232,49 @@ export async function run() {
       src.rows.map((r) => (r['Production Nbr.'] === 'P01093' ? { ...r, Status: 'On Hold' } : r)),
       { codeMap, horizonWeeks: 12, asOf, overrides: { P01093: { hidden: true } } },
     ).warnings.onHold.length === 0, '');
+
+  // ---- new vessel codes ---------------------------------------------------
+  eq('a fully-known export raises no new codes', detectNewCodes(src.rows, codeMap), []);
+
+  const withNew = [...src.rows, {
+    ...src.rows.find((r) => String(r['Inventory ID']).startsWith('SGDRIV')),
+    'Production Nbr.': 'P99001',
+    'Inventory ID': 'SGDRIVSY31',
+    'Production Description': 'Hydraulic Garage Door Opening System - Riviera 78SY - Used by 78SY/002',
+    // Both free-text fields, or the hull scan finds the donor row's 68SY first.
+    Description: 'Used by 78SY/002',
+  }];
+  const fresh = detectNewCodes(withNew, codeMap);
+  eq('an unseen code is detected', fresh.map((f) => f.code), ['SY31']);
+  eq('...with the Stella code it would use', fresh[0].suggestion.stella, 'SY31');
+  eq('...and the Riviera model from the description', fresh[0].suggestion.riviera, '78SY');
+  eq('...and the hull prefix', fresh[0].hull_prefix, ['78SY']);
+
+  // The four choices.
+  eq('choosing the Stella code', acceptNewCode('SY31', { mode: 'stella' }, fresh[0]).display, 'SY31');
+  eq('choosing the Riviera model', acceptNewCode('SY31', { mode: 'riviera' }, fresh[0]).display, '78SY');
+  eq('choosing a custom code', acceptNewCode('SY31', { mode: 'custom', value: '78 Sport' }, fresh[0]).display, '78 Sport');
+
+  // Joining an existing boat sets no display of its own — it inherits the
+  // group's, which is the whole point of joining rather than re-typing.
+  const joined = acceptNewCode('SY31', { mode: 'existing', boat: '56SY' }, fresh[0]);
+  eq('joining an existing boat sets no display of its own', joined.display, undefined);
+  eq('...it takes the boat key instead', joined.boat, '56SY');
+  eq('...and then resolves to the display of the boat it joined',
+    resolveDisplays({ ...codeMap, SY31: joined }).display.get('SY31'), '56SY');
+
+  check('a new code is never auto-added to the map',
+    !Object.hasOwn(codeMap, 'SY31'), 'detectNewCodes must not mutate the map');
+
+  eq('existing boats are offered for the dropdown',
+    existingBoats(codeMap).some((b) => b.display === '56SY' && b.codes.length === 3), true);
+
+  // A conflict is surfaced, never silently resolved.
+  const clash = resolveDisplays({
+    A: { riviera: ['9SY'], boat: 'x', display: 'AAA', _confirmed: true },
+    B: { riviera: ['9SY'], boat: 'x', display: 'BBB', _confirmed: true },
+  });
+  eq('two confirmed answers for one boat is a conflict', clash.conflicts.length, 1);
 
   // ---- print layout + auto-fit -------------------------------------------
   // A real A4-sized host, laid out but off-screen, so heights are truthful.

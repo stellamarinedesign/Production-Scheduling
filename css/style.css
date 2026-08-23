@@ -348,3 +348,65 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 .fit-status b { color: var(--white); font-weight: 600; }
 .fit-status.trimmed { border-color: var(--red-deep); background: var(--warn-bg); }
 .fit-status.trimmed b { color: var(--red-bright); }
+
+/* ---------- sign in ---------- */
+#authView { display: none; max-width: 380px; margin: 0 auto; padding: 60px 24px 0; }
+#authView.show { display: block; }
+#authView .auth-logo { height: 74px; display: block; margin: 0 auto 26px; }
+#authView h2 { font-size: 19px; margin-bottom: 6px; letter-spacing: .06em; }
+#authView > p { color: var(--text-dim); font-size: 14.5px; margin-bottom: 24px; line-height: 1.55; }
+#authView .field { margin-bottom: 16px; }
+#authView .field label {
+  display: block; font-size: 11px; font-weight: 700; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--text-dim); margin-bottom: 7px;
+}
+#authView input { width: 100%; }
+#loginBtn { width: 100%; margin-top: 6px; }
+#loginErr { color: var(--red-bright); font-size: 14.5px; margin-top: 14px; min-height: 22px; line-height: 1.5; }
+#localNote { color: var(--text-dim); font-size: 12.5px; margin-top: 20px; line-height: 1.6; }
+
+header .who { font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+header .who .role {
+  display: inline-block; border: 1px solid var(--line); border-radius: 5px;
+  padding: 1px 6px; margin-left: 6px; font-size: 10.5px; font-weight: 700; letter-spacing: .08em;
+}
+header .who .role.manager { border-color: var(--red-deep); color: var(--red-bright); }
+
+/* ---------- new vessel code ---------- */
+.box.wide { max-width: 620px; }
+.box h3 .progress { color: var(--text-dim); font-weight: 400; font-size: 13px; margin-left: 10px; }
+.derived {
+  background: var(--black-night); border: 1.5px solid var(--line); border-radius: 10px;
+  padding: 12px 14px; margin-bottom: 18px; font-size: 12.5px; color: var(--text-dim);
+  line-height: 1.7;
+}
+.derived b { color: var(--white); font-weight: 600; }
+.derived .row { display: grid; grid-template-columns: 110px 1fr; gap: 10px; }
+.choices .scope-opt.as-form { cursor: default; }
+.choices .scope-opt.as-form:hover { border-color: var(--line); }
+.scope-opt em { color: var(--red-bright); font-style: normal; font-weight: 700; }
+.scope-opt .inline { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
+.scope-opt .inline select, .scope-opt .inline input { flex: 1; font-size: 14px; padding: 8px 10px; }
+.scope-opt .inline .mini { padding: 9px 14px; }
+
+/* ---------- role: floor ----------
+   The floor sees the printed sheet and nothing else. This is presentation, not
+   security — the Firestore rules deny floor accounts every write regardless. */
+body.role-floor .controls,
+body.role-floor .tabs,
+body.role-floor #warnings,
+body.role-floor #dropZone,
+body.role-floor #tabEdit,
+body.role-floor .fit-status,
+body.role-floor .manager-only,
+body.role-floor .job .acts { display: none !important; }
+
+body.role-floor #boardWrap { display: block; }
+body.role-floor #tabPrint.offstage {
+  position: static; left: auto; visibility: visible;
+}
+body.role-floor #printPreview { box-shadow: 0 6px 30px rgba(0,0,0,.55); }
+
+table.codes select {
+  font-size: 12.5px; padding: 5px 8px; border-width: 1.5px; max-width: 130px;
+}

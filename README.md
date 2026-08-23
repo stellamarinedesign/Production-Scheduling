@@ -39,12 +39,14 @@ Normalising happens in the transform, once, downstream.
 | File | Role |
 |---|---|
 | `js/rules.js` | Category prefix map, filters, label overrides. The business rules. |
-| `js/vessel-codes.js` | Stella code derivation, alias groups, board labels. |
+| `js/vessel-codes.js` | Stella code derivation, boat groups, new-code detection, labels. |
 | `js/transform.js` | `RawRow[] → Job[]`. The only place that knows ERP column names. |
 | `js/adapters/xlsx.js` | Reads the export, validates its columns, stamps provenance. |
 | `js/print.js` | The A4 layout and the measured auto-fit. |
 | `js/store.js` | Firestore, with a localStorage fallback. |
-| `js/app.js` | Manager view. |
+| `js/auth.js` | Sign-in and roles. |
+| `js/firebase.js` | One Firebase app, shared by the store and the auth gate. |
+| `js/app.js` | Manager view and floor view. |
 | `js/codes-page.js` | Vessel codes table. |
 
 ### Rules worth knowing before you change anything
@@ -64,9 +66,14 @@ Normalising happens in the transform, once, downstream.
 - **The display code is a human decision.** `SY23` prints as `56SY` but `SY20`
   prints as `SY20`. Both are correct and confirmed individually. It lives in
   `data/vessel-codes.seed.json` and is maintained by hand.
-- **Codes sharing a Riviera model are the same boat** and display the same
-  code. Group on the model, never the hull prefix — `56` and `SY26` share hull
-  `5000` and are different boats.
+- **Which codes are the same boat is assigned by hand,** via the `boat` field.
+  It has to be: `56`, `SY23` and `SY26` are all the 56SY — `56` was office
+  shorthand, and Riviera call the same hull both `56SY` and `5000SY`. Nothing
+  upstream records that. A shared Riviera model only *suggests* a group for a
+  code nobody has assigned yet.
+- **A code the map has never seen is never auto-accepted.** It is queued on
+  import and answered by hand, because the alternative is the board printing a
+  guess that nobody knows is one.
 - **The horizon runs from today**, not from the export date, so a stale export
   shows a shrinking board rather than a wrong one.
 - Nothing is ever dropped silently. Every excluded row carries a reason.
@@ -84,44 +91,38 @@ real 21/08/2026 export and the reference implementation's real output.
 python -m http.server 8777
 ```
 
-Then open <http://127.0.0.1:8777/tests/>. 67 assertions; the transform is only
+Then open <http://127.0.0.1:8777/tests/>. 84 assertions; the transform is only
 correct if it reproduces all 48 board rows and all 44 exclusion reasons.
 
-Two deliberate differences from the reference output, both asserted explicitly:
+Three deliberate differences from the reference output, all asserted explicitly:
 
-- `43SY` now displays `SY20` — same boat, per Pete's ruling on alias groups.
+- `43SY` displays `SY20` — same boat as the SY20 lifter.
+- `SY26` displays `56SY` — Riviera's 5000 is the 56SY.
 - Stock rows have `sales_order: null` rather than the string `"nan"`, which is
   what Python's `str(NaN)` produced.
 
 ---
 
-## Firebase
+## Accounts
 
-The app runs **local-only** until Firebase is configured, saving edits to
-`localStorage` on the one machine. The provenance strip says which mode it is
-in. To go multi-device:
+Firebase email/password, no self-signup — the same model as the Drawings app.
 
-1. Create the Firebase project; paste the config into `firebaseConfig` in
-   `js/store.js`.
-2. Register App Check (reCAPTCHA v3) and paste the site key into
-   `APPCHECK_SITE_KEY`. **App Check is the only gate in front of Firestore** —
-   there is no login — so do not publish with a real project until it is on
-   and enforced.
-3. Publish `firestore.rules`.
+| Account | Sees |
+|---|---|
+| `design@` · `production@` | Full manager view: upload, edit, hide, relabel, print |
+| `workshop@` | Floor view: the printed board, read-only |
 
-Collections:
+Roles fail closed — any signed-in address that is not a manager gets the floor
+view, so a new account can never arrive with edit rights by accident. Hiding
+manager controls is tidiness, not security; the Firestore rules are the
+enforcement.
 
-```
-vesselCodes/{stellaCode}  { riviera[], hull_prefix[], items[], display, _confirmed }
-jobOverrides/{prodNo}     { hidden, hiddenReason, labelOverride, updatedAt }
-imports/{importId}        { retrievedAt, sourceId, sourceLabel,
-                            horizonWeeks, maxStock, jobs[] }
-settings/board            { horizonWeeks, maxStock, autoFit }
-```
+Until Firebase is configured the app runs **local-only**: no sign-in, edits in
+`localStorage`, one machine. The header and provenance strip both say so.
 
-`imports` buys an audit trail and Gantt actuals. It does **not** buy exclusion
-of completed jobs — the ERP saved filter drops Completed/Canceled/Closed before
-the export is written, so those never arrive.
+> Setup, security rules, accounts and deployment steps live in a private
+> SETUP document kept outside this repository, next to `handoff/`.
+> The rules name the staff accounts, which is why they are not in here.
 
 ---
 

@@ -40,25 +40,34 @@ export function isVesselCoded(inventoryId) {
 }
 
 // ---------------------------------------------------------------------------
-// ALIAS GROUPS
+// BOAT GROUPS
 //
-// Two Stella codes can name the same boat. The map is keyed on the Stella
-// code, so SLRIVSY20(24) and SHCELECPLINTHRIV43SY became independent entries
-// and nothing ever compared them — yet both carry riviera: ["43SY"]. That
-// shared model is the signal.
+// Two or more Stella codes can name the same boat. The map is keyed on the
+// Stella code, so SLRIVSY20(24) and SHCELECPLINTHRIV43SY became independent
+// entries and nothing ever compared them.
 //
-// Rule: group by shared Riviera model; codes in a group are the same boat and
-// display the same code. Grouping is transitive.
+// Grouping is MANUAL, via the `boat` field. It has to be: the upstream codes
+// are not consistently managed, so no derivable signal gets this right.
 //
-// Group on the Riviera model, NEVER on the hull prefix. `56` (hull 5000, 56SY)
-// and `SY26` (hull 5000) share a hull prefix but are different boats with
-// different confirmed displays. Hull prefixes are a third code system and do
-// not identify a model.
+//   - 56 / SY23 / SY26 are one boat. Riviera call it 56SY and also 5000SY;
+//     `56` was a lazy office entry for 56SY. Their Riviera models do not match
+//     as strings, so a model-matching rule splits them wrongly.
+//   - 56 and SY26 share the hull prefix 5000 — but hull prefixes are a third
+//     code system and a 56SY-model part can be fitted to a 5000 hull, so hull
+//     is not evidence of identity either.
+//
+// A shared Riviera model is still a good SUGGESTION for a code nobody has
+// assigned yet, so it seeds the group for un-assigned codes only. The moment a
+// human sets `boat`, that wins — in both directions. Two codes sharing a model
+// but carrying different `boat` values stay split, because someone said so.
 // ---------------------------------------------------------------------------
 
+/** The group key for a code: explicit when assigned, else null. */
+export const boatOf = (codeMap, code) => codeMap[code]?.boat ?? null;
+
 /**
- * Partition the code map into alias groups keyed by shared Riviera model.
- * @returns {Array<{codes: string[], models: string[]}>} sorted, one per boat
+ * Partition the code map into boat groups.
+ * @returns {Array<{codes: string[], models: string[], boat: string|null, assigned: boolean}>}
  */
 export function aliasGroups(codeMap) {
   const parent = new Map();
@@ -70,13 +79,28 @@ export function aliasGroups(codeMap) {
 
   for (const code of Object.keys(codeMap)) if (!parent.has(code)) parent.set(code, code);
 
-  // Join any two codes that share a Riviera model.
+  // 1. Explicit assignment is authoritative.
+  const byBoat = new Map();
+  for (const code of Object.keys(codeMap)) {
+    const boat = boatOf(codeMap, code);
+    if (!boat) continue;
+    const key = boat.toUpperCase();
+    if (byBoat.has(key)) union(code, byBoat.get(key));
+    else byBoat.set(key, code);
+  }
+
+  // 2. A shared Riviera model only suggests a group, and only for codes nobody
+  //    has assigned. Never merge across two different explicit assignments.
   const byModel = new Map();
   for (const [code, entry] of Object.entries(codeMap)) {
     for (const model of entry?.riviera ?? []) {
       const key = String(model).toUpperCase();
-      if (byModel.has(key)) union(code, byModel.get(key));
-      else byModel.set(key, code);
+      const seen = byModel.get(key);
+      if (!seen) { byModel.set(key, code); continue; }
+      const a = boatOf(codeMap, code);
+      const b = boatOf(codeMap, seen);
+      if (a && b && a.toUpperCase() !== b.toUpperCase()) continue;   // deliberately split
+      union(code, seen);
     }
   }
 
@@ -90,8 +114,12 @@ export function aliasGroups(codeMap) {
   return [...groups.values()]
     .map((codes) => {
       const models = new Set();
-      for (const c of codes) for (const m of codeMap[c]?.riviera ?? []) models.add(String(m).toUpperCase());
-      return { codes: codes.sort(), models: [...models].sort() };
+      let boat = null;
+      for (const c of codes) {
+        for (const m of codeMap[c]?.riviera ?? []) models.add(String(m).toUpperCase());
+        boat ??= boatOf(codeMap, c);
+      }
+      return { codes: codes.sort(), models: [...models].sort(), boat, assigned: Boolean(boat) };
     })
     .sort((a, b) => a.codes[0].localeCompare(b.codes[0]));
 }
@@ -171,7 +199,7 @@ export function labelFor(inventoryId, resolved, codeMap = {}) {
 /**
  * Derive the code cross-reference from an export — the columns that CAN be
  * derived. Merged into the stored map without ever overwriting a `display`.
- * @returns {Object} code -> { riviera[], hull_prefix[], items[] }
+ * @returns {Object} code -> { riviera[], hull_prefix[], items[], descriptions[], count }
  */
 export function deriveFromRows(rows) {
   const out = {};
@@ -181,14 +209,21 @@ export function deriveFromRows(rows) {
     const code = stellaCode(inv);
     if (!code) continue;
 
-    const e = (out[code] ??= { riviera: new Set(), hull_prefix: new Set(), items: new Set() });
+    const e = (out[code] ??= {
+      riviera: new Set(), hull_prefix: new Set(), items: new Set(),
+      descriptions: new Set(), count: 0,
+    });
     e.items.add(inv);
+    e.count += 1;
 
-    const blob = `${r['Description'] ?? ''} ${r['Production Description'] ?? ''}`;
+    const prodDesc = String(r['Production Description'] ?? '').trim();
+    if (prodDesc) e.descriptions.add(prodDesc);
+
+    const blob = `${r['Description'] ?? ''} ${prodDesc}`;
     const h = /Used by\s*([A-Z0-9]+)\s*\//i.exec(blob);
     if (h) e.hull_prefix.add(h[1].toUpperCase());
 
-    const dm = /Riviera\s+([0-9][0-9A-Z/\s]*?)\s*(?:-|$)/i.exec(String(r['Production Description'] ?? ''));
+    const dm = /Riviera\s+([0-9][0-9A-Z/\s]*?)\s*(?:-|$)/i.exec(prodDesc);
     if (dm) e.riviera.add(dm[1].trim().replace(/\s*\/\s*/g, '/').toUpperCase());
   }
   return Object.fromEntries(
@@ -196,26 +231,110 @@ export function deriveFromRows(rows) {
       riviera: [...v.riviera].sort(),
       hull_prefix: [...v.hull_prefix].sort(),
       items: [...v.items].sort(),
+      descriptions: [...v.descriptions],
+      count: v.count,
     }]),
   );
 }
 
 /**
+ * Codes in this export that the map has never seen.
+ *
+ * Upstream does not manage these consistently, so a new code must never be
+ * auto-accepted — the board would print a guess. Each one is handed to the
+ * manager with what can be derived and the choices available.
+ *
+ * @returns {Array<{code, riviera[], hull_prefix[], items[], descriptions[],
+ *                  count, suggestion: {stella, riviera: string|null}}>}
+ */
+export function detectNewCodes(rows, codeMap) {
+  const derived = deriveFromRows(rows);
+  return Object.entries(derived)
+    .filter(([code]) => !codeMap[code])
+    .map(([code, v]) => ({
+      code,
+      ...v,
+      suggestion: {
+        // What the item code itself says — always available.
+        stella: code,
+        // What the ERP description says Riviera call it — often absent.
+        riviera: v.riviera[0] ?? null,
+      },
+    }))
+    .sort((a, b) => a.code.localeCompare(b.code));
+}
+
+/**
+ * Existing boats, for the "add to an existing code" dropdown.
+ * @returns {Array<{boat, codes[], display}>}
+ */
+export function existingBoats(codeMap) {
+  return aliasGroups(codeMap)
+    .map((g) => ({
+      boat: g.boat ?? g.codes[0],
+      codes: g.codes,
+      display: codeMap[g.codes.find((c) => codeMap[c]?._confirmed) ?? g.codes[0]]?.display
+        ?? g.codes[0],
+    }))
+    .sort((a, b) => a.display.localeCompare(b.display));
+}
+
+/**
  * Merge derived data into the stored map. Seeds `display` only when absent, so
  * a hand-confirmed decision survives every future export.
- * @returns {{map: Object, added: string[]}}
+ *
+ * NOTE: this only refreshes codes the map already holds. A code that is new is
+ * NOT added here — it goes through the manager first (see detectNewCodes), so
+ * nothing reaches the board on a guess.
+ *
+ * @returns {{map: Object, refreshed: string[]}}
  */
 export function syncCodeMap(codeMap, derived) {
   const map = structuredClone(codeMap ?? {});
-  const added = [];
+  const refreshed = [];
   for (const [code, v] of Object.entries(derived)) {
-    if (!map[code]) { map[code] = {}; added.push(code); }
-    const e = map[code];
-    e.riviera = v.riviera;
-    e.hull_prefix = v.hull_prefix;
-    e.items = v.items;
-    e.display ??= v.riviera[0] ?? code;   // never overwrite a human decision
-    e._confirmed ??= false;
+    if (!map[code]) continue;
+    map[code].riviera = v.riviera;
+    map[code].hull_prefix = v.hull_prefix;
+    map[code].items = v.items;
+    refreshed.push(code);
   }
-  return { map, added };
+  return { map, refreshed };
+}
+
+/**
+ * Accept a new code, as decided by the manager.
+ * @param {string} code
+ * @param {{mode: 'stella'|'riviera'|'existing'|'custom', value?: string, boat?: string}} choice
+ * @param {Object} derived  the derived entry for this code
+ */
+export function acceptNewCode(code, choice, derived) {
+  const entry = {
+    riviera: derived.riviera ?? [],
+    hull_prefix: derived.hull_prefix ?? [],
+    items: derived.items ?? [],
+    _confirmed: true,
+  };
+  switch (choice.mode) {
+    case 'stella':
+      entry.display = code;
+      entry.boat = derived.riviera?.[0] ?? code;
+      break;
+    case 'riviera':
+      entry.display = derived.riviera?.[0] ?? code;
+      entry.boat = derived.riviera?.[0] ?? code;
+      break;
+    case 'existing':
+      // Joins an existing boat; the group's confirmed display carries over, so
+      // no display is set here — resolveDisplays takes it from the sibling.
+      entry.boat = choice.boat;
+      break;
+    case 'custom':
+      entry.display = choice.value;
+      entry.boat = choice.boat || choice.value;
+      break;
+    default:
+      throw new Error(`Unknown choice mode '${choice.mode}'`);
+  }
+  return entry;
 }

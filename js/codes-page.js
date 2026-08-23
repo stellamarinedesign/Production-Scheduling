@@ -4,7 +4,8 @@
 // So it is a plain editable table, no versioning.
 
 import { Store } from './store.js';
-import { resolveDisplays } from './vessel-codes.js';
+import { resolveDisplays, aliasGroups } from './vessel-codes.js';
+import { Auth, ROLE } from './auth.js';
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => {
@@ -18,6 +19,10 @@ let codeMap = {};
 let resolved = null;
 
 (async function boot() {
+  // Floor accounts have no business here; the rules deny the writes anyway.
+  await Auth.init((st) => {
+    if (st.role === ROLE.FLOOR) { location.replace('index.html'); }
+  });
   await Store.init();
   $('storeMode').textContent = Store.mode === 'firestore' ? 'Saved to Firestore' : 'Saved on this device only';
   if (Store.mode !== 'firestore') $('storeMode').style.color = 'var(--red-bright)';
@@ -44,6 +49,23 @@ function render() {
     c.append(document.createTextNode(code));
     if (isAlias) { c.append(document.createTextNode(' ')); c.append(el('span', 'chip alias', 'ALIAS')); }
     tr.append(c);
+
+    // Boat is the manual lever: the one field that decides what groups with what.
+    const bt = el('td');
+    const sel = el('select');
+    const boats = [...new Set(aliasGroups(codeMap).map((g) => g.boat).filter(Boolean))].sort();
+    for (const b of boats) {
+      const o = document.createElement('option');
+      o.value = b; o.textContent = b; o.selected = (e.boat === b);
+      sel.append(o);
+    }
+    const other = document.createElement('option');
+    other.value = '__new'; other.textContent = 'New boat…';
+    sel.append(other);
+    if (!e.boat) sel.value = '__new';
+    sel.addEventListener('change', () => setBoat(code, sel.value));
+    bt.append(sel);
+    tr.append(bt);
 
     tr.append(el('td', null, (e.riviera ?? []).join(', ') || '—'));
     tr.append(el('td', null, (e.hull_prefix ?? []).join(', ') || '—'));
@@ -113,6 +135,25 @@ function renderWarnings() {
     d.append(b);
     host.append(d);
   }
+}
+
+async function setBoat(code, value) {
+  let boat = value;
+  if (value === '__new') {
+    boat = (prompt(
+      `New boat for ${code}
+
+`
+      + `A short key for the vessel — the Riviera model is the convention `
+      + `(56SY, 68SY). Every code sharing this key prints the same display code.`,
+      codeMap[code]?.riviera?.[0] ?? code,
+    ) ?? '').trim();
+    if (!boat) { render(); return; }
+  }
+  codeMap[code] = { ...(codeMap[code] ?? {}), boat };
+  await Store.saveCode(code, { boat });
+  render();
+  toast(`${code} moved to boat ${boat}.`);
 }
 
 async function edit(code, group) {

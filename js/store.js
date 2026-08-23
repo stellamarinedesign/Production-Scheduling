@@ -2,39 +2,21 @@
 //
 // TWO BACKENDS, ONE INTERFACE.
 //
-// Firestore is the destination, but there is no Firebase project for this app
-// yet, and the board has to be usable and testable before one exists. So the
-// store falls back to localStorage whenever Firebase is unconfigured or
-// unreachable, and the UI says plainly which mode it is in. A board that
-// silently stops persisting is worse than one that says it is local-only.
+// Firestore is the destination, but the board has to be usable before the
+// Firebase project exists. So the store falls back to localStorage whenever
+// Firebase is unconfigured or unreachable, and the UI says plainly which mode
+// it is in. A board that silently stops persisting is worse than one that says
+// it is local-only.
 //
 // Collections (STELLA_PRODUCTION_BOARD_CONTEXT.md §6, as amended):
-//   vesselCodes/{stellaCode}  { riviera[], hull_prefix[], items[], display, _confirmed }
+//   vesselCodes/{stellaCode}  { boat, riviera[], hull_prefix[], items[],
+//                               display, _confirmed }
 //   jobOverrides/{prodNo}     { hidden, hiddenReason, labelOverride, updatedAt }
 //   imports/{importId}        { retrievedAt, sourceId, sourceLabel,
 //                               horizonWeeks, maxStock, jobs[] }
 //   settings/board            { horizonWeeks, maxStock, autoFit }
 
-const SDK = 'https://www.gstatic.com/firebasejs/10.12.2';
-
-// ---------------------------------------------------------------------------
-// FIREBASE CONFIG — paste from Firebase Console → Project settings → Your apps.
-// Leaving this as-is keeps the app in local-only mode, which works fine for one
-// manager on one machine. Fill it in when the project exists.
-// ---------------------------------------------------------------------------
-export const firebaseConfig = {
-  apiKey: '',
-  authDomain: '',
-  projectId: '',
-  storageBucket: '',
-  messagingSenderId: '',
-  appId: '',
-};
-
-// APP CHECK — reCAPTCHA v3, as per the Material Ordering app. This app has no
-// per-user login, so App Check is the real gate in front of Firestore, not the
-// rules. Register at Firebase Console → App Check → Apps → reCAPTCHA v3.
-export const APPCHECK_SITE_KEY = '';
+import { getFirebase, failureReason, isConfigured } from './firebase.js';
 
 const LS_PREFIX = 'stella.board.';
 const lsGet = (k, fallback) => {
@@ -50,53 +32,46 @@ export const Store = {
   _fs: null,              // firestore function namespace
 
   async init() {
-    if (!firebaseConfig.projectId || !firebaseConfig.apiKey) {
+    const fb = await getFirebase();
+    if (!fb) {
       this.mode = 'local';
-      this.reason = 'Firebase not configured — edits are saved on this device only.';
+      this.reason = isConfigured()
+        ? `Firebase unreachable (${failureReason()}) — edits are saved on this device only.`
+        : 'Firebase not configured — edits are saved on this device only.';
       return this.mode;
     }
-    try {
-      const { initializeApp } = await import(`${SDK}/firebase-app.js`);
-      const fs = await import(`${SDK}/firebase-firestore.js`);
-      const app = initializeApp(firebaseConfig);
-
-      if (APPCHECK_SITE_KEY) {
-        try {
-          const ac = await import(`${SDK}/firebase-app-check.js`);
-          ac.initializeAppCheck(app, {
-            provider: new ac.ReCaptchaV3Provider(APPCHECK_SITE_KEY),
-            isTokenAutoRefreshEnabled: true,
-          });
-        } catch (e) {
-          console.warn('[AppCheck] activation failed — continuing without it:', e.message);
-        }
-      }
-
-      this._db = fs.getFirestore(app);
-      this._fs = fs;
-      // Prove the connection rather than assume it: an unreachable project
-      // should drop to local now, not on the manager's first edit.
-      await fs.getDoc(fs.doc(this._db, 'settings', 'board'));
-      this.mode = 'firestore';
-      this.reason = '';
-    } catch (e) {
-      this.mode = 'local';
-      this.reason = `Firebase unreachable (${e.message}) — edits are saved on this device only.`;
-      console.warn('[store]', this.reason);
-    }
+    this._db = fb.db;
+    this._fs = fb.fs;
+    this.mode = 'firestore';
+    this.reason = '';
     return this.mode;
   },
 
   // ---- vessel codes -------------------------------------------------------
 
-  /** The code map, seeded from the shipped JSON on first run. */
+  /**
+   * The code map, seeded from the shipped JSON on first run.
+   *
+   * Merging is PER FIELD, not per code. Spreading whole entries
+   * (`{...seed, ...stored}`) means a stored code shadows its seed entry
+   * entirely, so any field later ADDED to the seed — `boat` was exactly this —
+   * never reaches an install that already ran once. Stored values still win
+   * wherever they exist; the seed only fills gaps.
+   */
   async loadCodes() {
     const seed = await (await fetch(new URL('../data/vessel-codes.seed.json', import.meta.url))).json();
+    const merge = (stored) => {
+      const out = { ...seed };
+      for (const [code, entry] of Object.entries(stored ?? {})) {
+        out[code] = { ...(seed[code] ?? {}), ...entry };
+      }
+      return out;
+    };
 
     if (this.mode === 'local') {
       const stored = lsGet('vesselCodes', null);
       if (!stored) { lsSet('vesselCodes', seed); return seed; }
-      return { ...seed, ...stored };
+      return merge(stored);
     }
 
     const { collection, getDocs, doc, setDoc } = this._fs;
@@ -106,9 +81,9 @@ export const Store = {
         setDoc(doc(this._db, 'vesselCodes', code), entry)));
       return seed;
     }
-    const out = {};
-    snap.forEach((d) => { out[d.id] = d.data(); });
-    return { ...seed, ...out };
+    const stored = {};
+    snap.forEach((d) => { stored[d.id] = d.data(); });
+    return merge(stored);
   },
 
   async saveCode(code, patch) {
@@ -191,6 +166,19 @@ export const Store = {
     }
     const { collection, addDoc } = this._fs;
     await addDoc(collection(this._db, 'imports'), rec);
+  },
+
+  /**
+   * The most recent board, for the floor view.
+   *
+   * Floor devices never upload — they read what the manager last published.
+   * That is why the import record carries the full job list and not a summary.
+   */
+  async latestBoard() {
+    if (this.mode === 'local') return lsGet('imports', [])[0] ?? null;
+    const { collection, getDocs, query, orderBy, limit } = this._fs;
+    const snap = await getDocs(query(collection(this._db, 'imports'), orderBy('retrievedAt', 'desc'), limit(1)));
+    return snap.empty ? null : { _id: snap.docs[0].id, ...snap.docs[0].data() };
   },
 
   async listImports(max = 20) {

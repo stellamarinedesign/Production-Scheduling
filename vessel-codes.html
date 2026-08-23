@@ -39,6 +39,7 @@
     <thead>
       <tr>
         <th>Stella code</th>
+        <th>Boat</th>
         <th>Riviera model</th>
         <th>Hull prefix</th>
         <th>Display</th>
@@ -52,12 +53,18 @@
   <div class="panel" style="margin-top:20px">
     <div class="body" style="padding:14px 15px">
       <strong style="color:var(--white)">Same boat, two codes.</strong>
-      Codes that resolve to the same Riviera model are the same vessel and display
-      the same code, whichever product line raised the item — a lifter and a helm
-      seat box for one boat must not print different codes. Grouped rows are
-      marked <span class="chip alias">ALIAS</span> and edit together.
-      Grouping is on the Riviera model, never the hull prefix: <code>56</code> and
-      <code>SY26</code> share hull <code>5000</code> but are different boats.
+      Codes on the same <b>boat</b> are one vessel and print one code, whichever
+      product line raised the item — a lifter and a helm seat box for the same
+      boat must not print different codes. Grouped rows are marked
+      <span class="chip alias">ALIAS</span> and edit together.
+      <br><br>
+      <strong style="color:var(--white)">Grouping is manual, and has to be.</strong>
+      <code>56</code>, <code>SY23</code> and <code>SY26</code> are one boat:
+      <code>56</code> was office shorthand for 56SY, and Riviera call the same
+      hull both <code>56SY</code> and <code>5000SY</code>. Nothing upstream says
+      so. A shared Riviera model is used as a <em>suggestion</em> for a code
+      nobody has assigned yet — set the boat and that suggestion is overruled,
+      in either direction.
     </div>
   </div>
 </main>
