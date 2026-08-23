@@ -1,0 +1,607 @@
+// app.js — the manager view. Upload, review, edit, print.
+
+import { xlsxAdapter } from './adapters/index.js';
+import { buildBoard, byCategory, today, toAU, toDateOnly } from './transform.js';
+import { CATEGORY_ORDER } from './rules.js';
+import { stellaCode, labelFor } from './vessel-codes.js';
+import { Store } from './store.js';
+import { renderPrint, measure, fitToPage } from './print.js';
+
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+};
+
+const state = {
+  rows: null,
+  source: null,
+  codeMap: {},
+  overrides: {},
+  settings: { horizonWeeks: 12, maxStock: null, autoFit: true },
+  board: null,
+  fit: null,
+};
+
+// ---------------------------------------------------------------------------
+// boot
+// ---------------------------------------------------------------------------
+
+(async function boot() {
+  await Store.init();
+  state.settings = await Store.loadSettings();
+  state.codeMap = await Store.loadCodes();
+  state.overrides = await Store.loadOverrides();
+
+  $('horizon').value = state.settings.horizonWeeks;
+  $('maxStock').value = state.settings.maxStock ?? '';
+  setAutoFit(state.settings.autoFit, { save: false });
+
+  $('provStore').textContent = Store.mode === 'firestore'
+    ? 'Edits sync to Firestore'
+    : `Local only — ${Store.reason}`;
+  $('provStore').style.color = Store.mode === 'firestore' ? '' : 'var(--red-bright)';
+
+  wireUpload();
+  wireControls();
+  wireOverlays();
+
+  // A reload should not need a re-upload.
+  const cached = Store.cachedRows();
+  if (cached?.rows?.length) {
+    state.rows = cached.rows;
+    state.source = cached.source;
+    rebuild();
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// upload
+// ---------------------------------------------------------------------------
+
+function wireUpload() {
+  const zone = $('dropZone');
+  const input = $('fileInput');
+
+  zone.addEventListener('click', () => input.click());
+  input.addEventListener('change', () => input.files[0] && load(input.files[0]));
+
+  ['dragenter', 'dragover'].forEach((ev) =>
+    zone.addEventListener(ev, (e) => { e.preventDefault(); zone.classList.add('dragover'); }));
+  ['dragleave', 'drop'].forEach((ev) =>
+    zone.addEventListener(ev, (e) => { e.preventDefault(); zone.classList.remove('dragover'); }));
+  zone.addEventListener('drop', (e) => {
+    const f = e.dataTransfer?.files?.[0];
+    if (f) load(f);
+  });
+
+  $('changeFile').addEventListener('click', () => input.click());
+}
+
+async function load(file) {
+  try {
+    toast(`Reading ${file.name}…`);
+    const src = await xlsxAdapter.fetch({ file });
+
+    state.rows = src.rows;
+    state.source = {
+      sourceId: src.sourceId,
+      sourceLabel: src.sourceLabel,
+      retrievedAt: src.retrievedAt,
+      warnings: src.warnings,
+    };
+    Store.cacheRows(src.rows, state.source);
+
+    rebuild();
+
+    await Store.recordImport({
+      retrievedAt: src.retrievedAt,
+      sourceId: src.sourceId,
+      sourceLabel: src.sourceLabel,
+      horizonWeeks: state.fit?.weeks ?? state.settings.horizonWeeks,
+      maxStock: state.settings.maxStock ?? null,
+      jobs: state.board.jobs.map((j) => ({
+        prod_no: j.prod_no, label: j.label, category: j.category,
+        due_date: j.due_date, start_date: j.start_date, status: j.status,
+        is_stock: j.is_stock, hidden: j.hidden,
+      })),
+    });
+
+    toast(`${src.rows.length} rows in — ${state.board.meta.job_count} on the board.`);
+  } catch (e) {
+    toast(`Could not read that file — ${e.message}`, 6000);
+    console.error(e);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// controls
+// ---------------------------------------------------------------------------
+
+function wireControls() {
+  const horizon = $('horizon');
+  horizon.addEventListener('input', () => {
+    $('horizonVal').textContent = `${horizon.value} week${horizon.value === '1' ? '' : 's'}`;
+  });
+  horizon.addEventListener('change', async () => {
+    state.settings.horizonWeeks = Number(horizon.value);
+    await Store.saveSettings({ horizonWeeks: state.settings.horizonWeeks });
+    rebuild();
+  });
+
+  $('maxStock').addEventListener('change', async (e) => {
+    const v = e.target.value === '' ? null : Math.max(0, Number(e.target.value));
+    state.settings.maxStock = v;
+    await Store.saveSettings({ maxStock: v });
+    rebuild();
+  });
+
+  $('autoFit').addEventListener('click', () => setAutoFit(!state.settings.autoFit));
+
+  $('tabEditBtn').addEventListener('click', () => showTab('edit'));
+  $('tabPrintBtn').addEventListener('click', () => showTab('print'));
+  $('printBtn').addEventListener('click', () => { showTab('print'); window.print(); });
+}
+
+function setAutoFit(on, { save = true } = {}) {
+  state.settings.autoFit = on;
+  const b = $('autoFit');
+  b.textContent = on ? 'Auto-fit on' : 'Auto-fit off';
+  b.classList.toggle('on', on);
+  b.setAttribute('aria-pressed', String(on));
+  if (save) { Store.saveSettings({ autoFit: on }); rebuild(); }
+}
+
+function showTab(which) {
+  $('tabEdit').classList.toggle('offstage', which !== 'edit');
+  $('tabPrint').classList.toggle('offstage', which !== 'print');
+  $('tabEditBtn').setAttribute('aria-current', which === 'edit' ? 'page' : 'false');
+  $('tabPrintBtn').setAttribute('aria-current', which === 'print' ? 'page' : 'false');
+}
+
+// ---------------------------------------------------------------------------
+// build + render
+// ---------------------------------------------------------------------------
+
+function rebuild() {
+  if (!state.rows) return;
+
+  const opts = {
+    codeMap: state.codeMap,
+    asOf: today(),
+    overrides: state.overrides,
+    maxStock: state.settings.maxStock,
+  };
+  const build = (weeks) => buildBoard(state.rows, { ...opts, horizonWeeks: weeks });
+
+  // Reveal BEFORE measuring: a [hidden] ancestor gives the print host no
+  // layout, and an unmeasured board would claim to fit at any horizon.
+  $('dropZone').hidden = true;
+  $('boardWrap').hidden = false;
+  $('provenance').hidden = false;
+
+  const host = $('printPreview');
+  if (state.settings.autoFit) {
+    state.fit = fitToPage(host, build, { startWeeks: state.settings.horizonWeeks, minWeeks: 4 });
+    state.board = state.fit.board;
+  } else {
+    state.board = build(state.settings.horizonWeeks);
+    renderPrint(host, state.board);
+    const m = measure(host);
+    state.fit = { board: state.board, weeks: state.settings.horizonWeeks, ...m, trimmedFrom: null };
+  }
+
+  renderProvenance();
+  renderWarnings();
+  renderBoard();
+  renderFitStatus();
+}
+
+function renderProvenance() {
+  const s = state.source;
+  if (!s) return;
+  $('provSource').textContent = s.sourceLabel;
+  const when = new Date(s.retrievedAt);
+  $('provWhen').textContent = when.toLocaleString('en-AU', {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+
+  // The board is exactly as fresh as the last upload, and nothing else in the
+  // system knows that. Say it out loud once it starts to matter.
+  const days = Math.floor((Date.now() - when.getTime()) / 86400000);
+  const age = $('provAge');
+  age.textContent = days <= 0 ? 'today' : `${days} day${days === 1 ? '' : 's'} old`;
+  age.classList.toggle('stale', days >= 7);
+  if (days >= 7) age.textContent += ' — upload a fresh export';
+}
+
+function panel({ cls = '', title, count, open = false, build }) {
+  const d = el('details', `panel ${cls}`);
+  d.open = open;
+  const s = el('summary');
+  s.append(el('span', null, title));
+  if (count !== undefined) s.append(el('span', 'count', String(count)));
+  d.append(s);
+  const body = el('div', 'body');
+  build(body);
+  d.append(body);
+  return d;
+}
+
+function renderWarnings() {
+  const host = $('warnings');
+  host.textContent = '';
+  const w = state.board.warnings;
+
+  // Column problems from the adapter come first — they invalidate everything.
+  for (const msg of state.source?.warnings ?? []) {
+    const isHard = msg.startsWith('Export is missing');
+    host.append(panel({
+      cls: isHard ? 'alert' : '', title: isHard ? 'Export problem' : 'Note', open: isHard,
+      build: (b) => b.append(el('div', null, msg)),
+    }));
+  }
+
+  // Unmapped inventory prefixes — a new product line with no rule. Loud,
+  // because the alternative is a job quietly missing from the floor's list.
+  if (w.unmapped.length) {
+    host.append(panel({
+      cls: 'alert', title: 'Unmapped inventory codes — these need a category rule',
+      count: w.unmapped.length, open: true,
+      build: (b) => {
+        b.append(el('div', null,
+          'These rows matched no prefix in the category map, so they are off the board. ' +
+          'Add a rule in js/rules.js — do not leave them excluded.'));
+        for (const e of w.unmapped) {
+          const r = el('div', 'xrow');
+          r.append(el('span', 'id', e.prod_no), el('span', null, e.inventory_id), el('span', 'why', e.description));
+          b.append(r);
+        }
+      },
+    }));
+  }
+
+  // Vessel codes with no map entry — the main way the code table stays current.
+  if (w.unmappedCodes.length) {
+    host.append(panel({
+      cls: 'alert', title: 'Item codes with no vessel code match', count: w.unmappedCodes.length, open: true,
+      build: (b) => {
+        b.append(el('div', null,
+          'These are on the board but fell back to their ERP description for a label. '));
+        for (const u of w.unmappedCodes) {
+          const r = el('div', 'xrow');
+          r.append(el('span', 'id', u.inventory_id), el('span', null, `${u.count} job(s)`));
+          const a = el('a', null, 'Add a vessel code →');
+          a.href = 'vessel-codes.html';
+          a.style.color = 'var(--red-bright)';
+          r.append(a);
+          b.append(r);
+        }
+      },
+    }));
+  }
+
+  // Two hand-confirmed answers for one boat. Never resolved silently.
+  if (w.codeConflicts.length) {
+    host.append(panel({
+      cls: 'alert', title: 'Vessel code conflict', count: w.codeConflicts.length, open: true,
+      build: (b) => {
+        for (const c of w.codeConflicts) {
+          b.append(el('div', null,
+            `${c.codes.join(' and ')} are the same boat (Riviera ${c.models.join(', ')}) ` +
+            `but are confirmed to different display codes: ` +
+            `${c.values.map((v) => `${v.code}→${v.display}`).join(', ')}. ` +
+            `Fix it on the vessel codes page.`));
+        }
+      },
+    }));
+  }
+
+  if (w.codeUndecided.length) {
+    host.append(panel({
+      title: 'Vessel codes awaiting confirmation', count: w.codeUndecided.length,
+      build: (b) => {
+        for (const u of w.codeUndecided) {
+          b.append(el('div', null,
+            `${u.codes.join(', ')} — showing ${u.provisional}, nobody has confirmed it.`));
+        }
+      },
+    }));
+  }
+
+  // On Hold jobs are flagged, never auto-hidden. Only warn for ones that would
+  // actually appear — an On Hold job outside the horizon is already gone.
+  if (w.onHold.length) {
+    host.append(panel({
+      cls: 'alert', title: 'On hold, but showing on the board', count: w.onHold.length, open: true,
+      build: (b) => {
+        b.append(el('div', null, 'Confirm these before the floor starts them, or hide them.'));
+        for (const j of w.onHold) {
+          const r = el('div', 'xrow');
+          r.append(el('span', 'id', j.prod_no), el('span', null, j.label), el('span', 'why', `due ${j.due_display}`));
+          b.append(r);
+        }
+      },
+    }));
+  }
+
+  if (w.hidden.length) {
+    host.append(panel({
+      title: 'Hidden from the printed board', count: w.hidden.length,
+      build: (b) => {
+        for (const j of w.hidden) {
+          const r = el('div', 'xrow');
+          r.append(el('span', 'id', j.prod_no), el('span', null, j.label),
+            el('span', 'why', j.hidden_reason || 'no reason given'));
+          b.append(r);
+        }
+      },
+    }));
+  }
+
+  // Nothing disappears silently: if a job is missing, this says why.
+  host.append(panel({
+    title: 'Excluded rows', count: state.board.excluded.length,
+    build: (b) => {
+      b.append(el('div', null,
+        `${state.board.meta.row_count} rows in the export, ${state.board.meta.job_count} on the board.`));
+      for (const e of state.board.excluded) {
+        const r = el('div', 'xrow');
+        r.append(el('span', 'id', e.prod_no), el('span', null, e.inventory_id), el('span', 'why', e.reason));
+        b.append(r);
+      }
+    },
+  }));
+}
+
+function renderBoard() {
+  const host = $('board');
+  host.textContent = '';
+  const groups = byCategory(state.board.jobs, { includeHidden: true });
+
+  let any = false;
+  for (const cat of CATEGORY_ORDER) {
+    const jobs = groups.get(cat) ?? [];
+    if (!jobs.length) continue;
+    any = true;
+
+    const block = el('div', 'cat-block');
+    const head = el('div', 'cat-head');
+    head.append(el('h2', null, cat));
+    const shown = jobs.filter((j) => !j.hidden).length;
+    head.append(el('span', 'n', shown === jobs.length ? `${shown}` : `${shown} of ${jobs.length}`));
+    block.append(head);
+
+    for (const j of jobs) block.append(jobRow(j));
+    host.append(block);
+  }
+
+  $('emptyState').hidden = any;
+  $('stockNote').textContent = `${state.board.jobs.filter((j) => j.is_stock).length} stock`;
+}
+
+function jobRow(j) {
+  const row = el('div', `job${j.on_hold ? ' on-hold' : ''}${j.hidden ? ' is-hidden' : ''}`);
+
+  row.append(el('span', 'prod', j.prod_no));
+
+  const label = el('span', 'label', j.label);
+  if (j.label !== j.base_label) label.append(el('span', 'edited', 'EDITED'));
+  row.append(label);
+
+  row.append(el('span', `due${j.is_stock ? ' stock' : ''}`, j.due_display));
+  row.append(el('span', 'status', j.status));
+
+  // Riviera's PO number — manager view only. It never reaches the printed board.
+  const po = el('span', 'po');
+  if (j.customer_po) { po.append(document.createTextNode('PO ')); po.append(el('b', null, j.customer_po)); }
+  row.append(po);
+
+  const acts = el('span', 'acts');
+  const edit = el('button', 'mini', 'Label');
+  edit.addEventListener('click', () => openLabelEditor(j));
+  acts.append(edit);
+
+  const hide = el('button', `mini${j.hidden ? ' on' : ''}`, j.hidden ? 'Show' : 'Hide');
+  hide.addEventListener('click', () => (j.hidden ? unhide(j) : openHideDialog(j)));
+  acts.append(hide);
+
+  row.append(acts);
+  return row;
+}
+
+function renderFitStatus() {
+  const f = state.fit;
+  const box = $('fitStatus');
+  box.textContent = '';
+  box.classList.toggle('trimmed', Boolean(f.trimmedFrom));
+
+  const range = state.board.meta.horizon_end
+    ? `${toAU(toDateOnly(state.board.meta.as_of))} — ${toAU(toDateOnly(state.board.meta.horizon_end))}`
+    : 'no horizon';
+
+  box.append(el('span', null, `Covering `), el('b', null, range));
+  box.append(el('span', null, `·`));
+  box.append(el('b', null, `${state.board.meta.job_count} jobs`));
+  box.append(el('span', null, `·`));
+
+  if (!state.settings.autoFit) {
+    box.append(el('span', null, f.fits ? 'fits one page' : `${f.pages} pages — auto-fit is off`));
+  } else if (f.trimmedFrom) {
+    box.append(el('span', null, 'Auto-fit reduced the horizon from '));
+    box.append(el('b', null, `${f.trimmedFrom} weeks to ${f.weeks}`));
+    box.append(el('span', null, ' to hold one page. The printed header shows the covered range.'));
+  } else if (f.fits) {
+    box.append(el('span', null, `fits one page at ${f.weeks} weeks`));
+  } else {
+    box.append(el('span', null,
+      `will not fit one page even at ${f.weeks} weeks (${f.pages} pages). ` +
+      `Lower the stock cap, or hide some jobs.`));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// label editing — scope first
+//
+// Editing a label and editing a vessel code are different things and the UI
+// must not conflate them. "Just this job" replaces the whole label on one
+// production order. "Every job for this vessel" edits the display code alone,
+// which then flows through the product wording template, and applies across
+// the whole alias group.
+// ---------------------------------------------------------------------------
+
+let editing = null;
+
+function openLabelEditor(job) {
+  editing = job;
+  const code = /CUSTOM/i.test(job.inventory_id) ? null : stellaCode(job.inventory_id);
+  const canScopeToCode = Boolean(code && state.codeMap[code]);
+
+  $('lblTitle').textContent = `Edit label — ${job.prod_no}`;
+  $('lblLede').textContent = `Currently "${job.label}" · ${job.inventory_id}`;
+
+  $('lblScope').hidden = false;
+  $('lblScopeActions').hidden = false;
+  $('lblForm').hidden = true;
+
+  $('scopeCode').hidden = !canScopeToCode;
+  if (canScopeToCode) {
+    const group = state.board.resolved.groups.find((g) => g.codes.includes(code));
+    const n = state.board.jobs.filter((j) => group.codes.includes(stellaCode(j.inventory_id) ?? '')).length;
+    $('scopeCodeHint').textContent =
+      `Changes the display code for ${group.codes.join(' / ')} — ${n} job(s) on this board, ` +
+      `and every future one. The product wording ("Garage Door", "Launcher") is kept.`;
+  }
+
+  $('labelOverlay').classList.add('show');
+}
+
+function showLabelForm(scope) {
+  const job = editing;
+  const code = stellaCode(job.inventory_id);
+
+  $('lblScope').hidden = true;
+  $('lblScopeActions').hidden = true;
+  $('lblForm').hidden = false;
+  $('lblForm').dataset.scope = scope;
+
+  if (scope === 'job') {
+    $('lblFieldLabel').textContent = 'Label for this job';
+    $('lblInput').value = job.label;
+    $('lblHint').textContent =
+      `Replaces the whole label on ${job.prod_no} only. Saved against the ` +
+      `production number, so it survives the next upload.`;
+    $('lblReset').hidden = job.label === job.base_label;
+  } else {
+    const group = state.board.resolved.groups.find((g) => g.codes.includes(code));
+    $('lblFieldLabel').textContent = `Display code for ${group.codes.join(' / ')}`;
+    $('lblInput').value = state.board.resolved.display.get(code) ?? code;
+    $('lblHint').textContent =
+      `Just the vessel code — the product wording is added by the template. ` +
+      `e.g. "SY22" becomes "SY22 Garage Door". Applies to every job for this boat.`;
+    $('lblReset').hidden = true;
+  }
+  $('lblInput').focus();
+  $('lblInput').select();
+}
+
+function wireOverlays() {
+  $('scopeJob').addEventListener('click', () => showLabelForm('job'));
+  $('scopeCode').addEventListener('click', () => showLabelForm('code'));
+  $('lblScopeCancel').addEventListener('click', closeLabel);
+  $('lblCancel').addEventListener('click', closeLabel);
+  $('lblSave').addEventListener('click', saveLabel);
+  $('lblInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveLabel(); });
+  $('lblReset').addEventListener('click', async () => {
+    await setOverride(editing.prod_no, { labelOverride: null });
+    closeLabel();
+    toast(`${editing.prod_no} label reset.`);
+  });
+
+  $('hideCancel').addEventListener('click', () => $('hideOverlay').classList.remove('show'));
+  $('hideSave').addEventListener('click', saveHide);
+
+  for (const id of ['labelOverlay', 'hideOverlay']) {
+    $(id).addEventListener('click', (e) => { if (e.target.id === id) $(id).classList.remove('show'); });
+  }
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    $('labelOverlay').classList.remove('show');
+    $('hideOverlay').classList.remove('show');
+  });
+}
+
+async function saveLabel() {
+  const value = $('lblInput').value.trim();
+  if (!value) { toast('A label cannot be empty.'); return; }
+  const scope = $('lblForm').dataset.scope;
+  const job = editing;
+
+  if (scope === 'job') {
+    await setOverride(job.prod_no, { labelOverride: value });
+    toast(`${job.prod_no} relabelled.`);
+  } else {
+    const code = stellaCode(job.inventory_id);
+    const group = state.board.resolved.groups.find((g) => g.codes.includes(code));
+    // Confirming one member confirms the boat — the alias group displays as one.
+    for (const c of group.codes) {
+      state.codeMap[c] = { ...(state.codeMap[c] ?? {}), display: value, _confirmed: true };
+      await Store.saveCode(c, { display: value, _confirmed: true });
+    }
+    rebuild();
+    toast(`${group.codes.join(' / ')} now display as "${value}".`);
+  }
+  closeLabel();
+}
+
+function closeLabel() { $('labelOverlay').classList.remove('show'); editing = null; }
+
+// ---------------------------------------------------------------------------
+// hide / show
+// ---------------------------------------------------------------------------
+
+let hiding = null;
+
+function openHideDialog(job) {
+  hiding = job;
+  $('hideLede').textContent = `${job.prod_no} — ${job.label}, due ${job.due_display}.`;
+  $('hideReason').value = '';
+  $('hideOverlay').classList.add('show');
+  $('hideReason').focus();
+}
+
+async function saveHide() {
+  await setOverride(hiding.prod_no, { hidden: true, hiddenReason: $('hideReason').value.trim() || null });
+  $('hideOverlay').classList.remove('show');
+  toast(`${hiding.prod_no} hidden from the printed board.`);
+  hiding = null;
+}
+
+async function unhide(job) {
+  await setOverride(job.prod_no, { hidden: false, hiddenReason: null });
+  toast(`${job.prod_no} back on the board.`);
+}
+
+async function setOverride(prodNo, patch) {
+  const next = { ...(state.overrides[prodNo] ?? {}), ...patch };
+  if (patch.labelOverride === null) delete next.labelOverride;
+  if (next.hidden === false) { delete next.hidden; delete next.hiddenReason; }
+  if (Object.keys(next).length) state.overrides[prodNo] = next;
+  else delete state.overrides[prodNo];
+
+  await Store.setOverride(prodNo, patch);
+  rebuild();
+}
+
+// ---------------------------------------------------------------------------
+
+let toastTimer;
+function toast(msg, ms = 3200) {
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), ms);
+}

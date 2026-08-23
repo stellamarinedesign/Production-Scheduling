@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0E0A0A">
+<link rel="icon" type="image/png" href="assets/logo.png">
+<link rel="apple-touch-icon" href="assets/logo.png">
+<title>Production Board — Stella Marine</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header>
+  <img class="logo" src="assets/logo.svg" alt="Stella Marine">
+  <h1 class="brand-head">Production Board</h1>
+  <span class="sub">Stella Marine</span>
+  <span class="spacer"></span>
+  <nav>
+    <a href="index.html" aria-current="page">Board</a>
+    <a href="vessel-codes.html">Vessel codes</a>
+  </nav>
+</header>
+
+<main>
+
+  <!-- Where this board came from. Always visible: with an uploaded file it
+       guards against a stale export; with a live source it would guard against
+       a silently failed refresh serving yesterday's data as today's. -->
+  <div class="provenance" id="provenance" hidden>
+    <span>Source <b class="src" id="provSource">—</b></span>
+    <span>Retrieved <b id="provWhen">—</b></span>
+    <span class="age" id="provAge"></span>
+    <span class="spacer" style="margin-left:auto"></span>
+    <span id="provStore" title="Where manager edits are saved"></span>
+  </div>
+
+  <!-- ============ UPLOAD ============ -->
+  <div id="dropZone">
+    <strong>Drop the ERP export here</strong>
+    <div class="hint">
+      <code>Production Order Maintenance YYYYMMDD.xlsx</code> — or click to choose a file.<br>
+      Everything is parsed in this browser; the spreadsheet is not uploaded anywhere.
+    </div>
+    <input type="file" id="fileInput" accept=".xlsx,.xls" hidden>
+  </div>
+
+  <!-- ============ BOARD ============ -->
+  <div id="boardWrap" hidden>
+
+    <div class="controls">
+      <div class="ctrl">
+        <label for="horizon">Horizon</label>
+        <div class="ctrl-row">
+          <input type="range" id="horizon" min="1" max="26" step="1" value="12">
+          <span class="val" id="horizonVal">12 weeks</span>
+        </div>
+      </div>
+
+      <div class="ctrl">
+        <label for="maxStock">Stock cap / category</label>
+        <div class="ctrl-row">
+          <input type="number" id="maxStock" min="0" max="20" placeholder="off">
+          <span class="val" id="stockNote"></span>
+        </div>
+      </div>
+
+      <div class="ctrl">
+        <label for="autoFit">Fit to one page</label>
+        <div class="ctrl-row">
+          <button class="mini" id="autoFit" aria-pressed="true">Auto-fit on</button>
+        </div>
+      </div>
+
+      <span class="spacer"></span>
+      <button class="ghost" id="changeFile">New export…</button>
+      <button class="primary" id="printBtn">Print board</button>
+    </div>
+
+    <div id="warnings"></div>
+
+    <div class="tabs">
+      <button class="tab" id="tabEditBtn" aria-current="page">Review &amp; edit</button>
+      <button class="tab" id="tabPrintBtn">Print preview</button>
+    </div>
+
+    <section id="tabEdit">
+      <div id="board"></div>
+    </section>
+
+    <section id="tabPrint" class="offstage">
+      <div class="fit-status" id="fitStatus"></div>
+      <div id="printRoot"><div id="printPreview"></div></div>
+    </section>
+
+  </div>
+
+  <div class="state" id="emptyState" hidden>
+    <strong>Nothing on the board</strong>
+    Every row was filtered out. Open the excluded list above to see why.
+  </div>
+
+</main>
+
+<!-- ============ LABEL EDIT — scope first ============ -->
+<div class="overlay" id="labelOverlay">
+  <div class="box">
+    <h3 id="lblTitle">Edit label</h3>
+    <div class="lede" id="lblLede"></div>
+
+    <div id="lblScope">
+      <button class="scope-opt" id="scopeJob">
+        <b>Just this job</b>
+        <span>Changes the whole label on this production order only. Other jobs
+              for the same vessel are untouched.</span>
+      </button>
+      <button class="scope-opt" id="scopeCode">
+        <b>Every job for this vessel</b>
+        <span id="scopeCodeHint"></span>
+      </button>
+    </div>
+
+    <div id="lblForm" hidden>
+      <div class="field">
+        <label id="lblFieldLabel" for="lblInput">Label</label>
+        <input type="text" id="lblInput" autocomplete="off" spellcheck="false">
+        <div class="hint" id="lblHint"></div>
+      </div>
+      <div class="actions">
+        <button class="primary" id="lblSave">Save</button>
+        <button class="ghost" id="lblReset" hidden>Reset to default</button>
+        <button class="ghost" id="lblCancel">Cancel</button>
+      </div>
+    </div>
+
+    <div class="actions" id="lblScopeActions">
+      <button class="ghost" id="lblScopeCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ HIDE JOB ============ -->
+<div class="overlay" id="hideOverlay">
+  <div class="box">
+    <h3>Hide from the board</h3>
+    <div class="lede" id="hideLede"></div>
+    <div class="field">
+      <label for="hideReason">Reason (optional)</label>
+      <input type="text" id="hideReason" autocomplete="off" placeholder="e.g. on hold pending customer sign-off">
+      <div class="hint">
+        Hidden jobs do not appear on the printed board at all. They stay listed
+        here, greyed, so the decision is visible and reversible. The reason is
+        kept against the production number and survives the next upload.
+      </div>
+    </div>
+    <div class="actions">
+      <button class="primary" id="hideSave">Hide job</button>
+      <button class="ghost" id="hideCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>

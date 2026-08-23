@@ -1,0 +1,350 @@
+/* ============================================================
+   STELLA MARINE — PRODUCTION BOARD
+   Palette per "Corporate Brand Guidelines 2025" (p6):
+     Black Night #0E0A0A · Shadow Grey #282827
+     Upsdell Red #AF1F24 · Burning Star Red #EA372E
+     Titanium White #FFFFFF
+   Type (p7): Friz Quadrata Pro (headline) / Sweet Sans Pro Light (paragraph)
+   Matches the Stella Drawings app.
+   ============================================================ */
+
+:root {
+  --black-night: #0E0A0A;
+  --shadow-grey: #282827;
+  --band:        #1c1c1b;
+  --line:        #454542;
+  --text-dim:    #b0b0ab;
+  --white:       #FFFFFF;
+  --red-bright:  #EA372E;
+  --red-deep:    #AF1F24;
+  --warn-bg:     #2b100e;
+  --touch-min:   44px;
+}
+
+/* Brand webfonts (licensed) — drop files into fonts/ and uncomment:
+@font-face { font-family:"Friz Quadrata Pro";
+  src:url("../fonts/FrizQuadrataPro.woff2") format("woff2"); font-display:swap; }
+@font-face { font-family:"Sweet Sans Pro"; font-weight:400;
+  src:url("../fonts/SweetSansPro-Light.woff2") format("woff2"); font-display:swap; }
+*/
+
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; }
+body {
+  font-family: "Sweet Sans Pro", "Sweet Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--black-night);
+  color: var(--white);
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+}
+.brand-head { font-family: "Friz Quadrata Pro", "Friz Quadrata", Georgia, serif; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+
+/* ---------- header ---------- */
+header {
+  border-bottom: 3px solid var(--red-bright);
+  background: var(--shadow-grey);
+  padding: 11px 18px 10px;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+header .logo { height: 30px; }
+header h1 { font-size: 19px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+header .sub { font-size: 12.5px; color: var(--text-dim); letter-spacing: .05em; }
+header .spacer { margin-left: auto; }
+header nav { display: flex; gap: 8px; }
+header nav a {
+  color: var(--text-dim); text-decoration: none; font-size: 13px; font-weight: 600;
+  letter-spacing: .04em; border: 1.5px solid var(--line); border-radius: 8px;
+  padding: 7px 13px;
+}
+header nav a:hover { border-color: var(--red-bright); color: var(--white); }
+header nav a[aria-current="page"] { background: var(--red-deep); border-color: var(--red-bright); color: var(--white); }
+
+main { padding: 16px 18px 60px; max-width: 1280px; margin: 0 auto; }
+
+/* ---------- provenance strip ----------
+   Where this board came from, always visible. With an uploaded file it guards
+   against a stale export; with a live source it guards against a silently
+   failed refresh serving yesterday's data as today's. */
+.provenance {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  background: var(--band); border: 1.5px solid var(--line); border-radius: 10px;
+  padding: 10px 14px; margin-bottom: 14px; font-size: 13px; color: var(--text-dim);
+}
+.provenance b { color: var(--white); font-weight: 600; }
+.provenance .age.stale { color: var(--red-bright); font-weight: 700; }
+.provenance .src { font-variant-numeric: tabular-nums; }
+
+/* ---------- drop zone ---------- */
+#dropZone {
+  border: 2px dashed var(--line); border-radius: 14px;
+  padding: 44px 24px; text-align: center; color: var(--text-dim);
+  transition: border-color .15s, background .15s; cursor: pointer;
+}
+#dropZone:hover, #dropZone.dragover { border-color: var(--red-bright); background: rgba(234,55,46,.06); color: var(--white); }
+#dropZone strong { display: block; color: var(--white); font-size: 17px; margin-bottom: 6px; }
+#dropZone .hint { font-size: 13px; line-height: 1.6; }
+
+/* ---------- controls ---------- */
+.controls {
+  display: flex; align-items: flex-end; gap: 18px; flex-wrap: wrap;
+  background: var(--shadow-grey); border: 1.5px solid var(--line); border-radius: 12px;
+  padding: 14px 16px; margin-bottom: 14px;
+}
+.ctrl { display: flex; flex-direction: column; gap: 6px; }
+.ctrl label {
+  font-size: 11px; font-weight: 700; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--text-dim);
+}
+.ctrl .val { font-size: 13px; color: var(--white); font-variant-numeric: tabular-nums; }
+.ctrl-row { display: flex; align-items: center; gap: 10px; }
+input[type=range] { width: 190px; accent-color: var(--red-bright); }
+input[type=text], input[type=number], input[type=search], select, textarea {
+  background: var(--black-night); border: 2px solid var(--line); border-radius: 9px;
+  color: var(--white); font-size: 15px; font-family: inherit;
+  padding: 9px 12px; outline: none; transition: border-color .15s;
+}
+input:focus, select:focus, textarea:focus { border-color: var(--red-bright); }
+input[type=number] { width: 84px; }
+.controls .spacer { margin-left: auto; }
+
+button.primary {
+  background: var(--red-deep); border: none; border-radius: 9px;
+  color: var(--white); font-size: 15px; font-weight: 700; font-family: inherit;
+  letter-spacing: .03em; padding: 11px 22px; cursor: pointer; min-height: var(--touch-min);
+}
+button.primary:hover { background: var(--red-bright); }
+button.primary:disabled { background: var(--line); color: var(--text-dim); cursor: default; }
+button.ghost {
+  background: none; border: 2px solid var(--line); border-radius: 9px;
+  color: var(--white); font-size: 14px; font-weight: 600; font-family: inherit;
+  padding: 9px 16px; cursor: pointer; min-height: var(--touch-min);
+}
+button.ghost:hover { border-color: var(--red-bright); }
+button.mini {
+  background: none; border: 1.5px solid var(--line); border-radius: 7px;
+  color: var(--white); font-family: inherit; font-size: 12px; font-weight: 600;
+  padding: 5px 9px; cursor: pointer; white-space: nowrap;
+}
+button.mini:hover { border-color: var(--red-bright); }
+button.mini.on { background: var(--red-deep); border-color: var(--red-bright); }
+
+/* ---------- warning panels ---------- */
+.panel {
+  border: 1.5px solid var(--line); border-radius: 11px;
+  background: var(--band); margin-bottom: 12px; overflow: hidden;
+}
+.panel > summary {
+  padding: 11px 15px; cursor: pointer; font-size: 13.5px; font-weight: 600;
+  display: flex; align-items: center; gap: 10px; list-style: none;
+}
+.panel > summary::-webkit-details-marker { display: none; }
+.panel > summary::before { content: "▸"; color: var(--text-dim); font-size: 11px; }
+.panel[open] > summary::before { content: "▾"; }
+.panel .body { padding: 4px 15px 14px; font-size: 13px; color: var(--text-dim); line-height: 1.6; }
+.panel.alert { border-color: var(--red-deep); background: var(--warn-bg); }
+.panel.alert > summary { color: var(--white); }
+.panel.alert strong { color: var(--red-bright); }
+.panel .count {
+  margin-left: auto; font-size: 12px; color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.xrow {
+  display: grid; grid-template-columns: 78px 1fr 1.4fr; gap: 12px;
+  padding: 5px 0; border-bottom: 1px solid var(--line); align-items: baseline;
+}
+.xrow:last-child { border-bottom: none; }
+.xrow .id { font-variant-numeric: tabular-nums; color: var(--white); }
+.xrow .why { color: var(--text-dim); }
+
+/* ---------- manager board ---------- */
+.cat-block { margin-bottom: 20px; }
+.cat-head {
+  display: flex; align-items: baseline; gap: 12px;
+  border-bottom: 2px solid var(--red-deep); padding-bottom: 6px; margin-bottom: 4px;
+}
+.cat-head h2 {
+  font-size: 14px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+}
+.cat-head .n { font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+
+.job {
+  display: grid;
+  grid-template-columns: 76px minmax(180px, 1.6fr) 96px 88px minmax(120px, 1fr) auto;
+  gap: 12px; align-items: center;
+  padding: 9px 10px; border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+.job:hover { background: rgba(255,255,255,.03); }
+.job .prod { font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: 13px; }
+.job .label { font-weight: 600; }
+.job .due { font-variant-numeric: tabular-nums; }
+.job .due.stock { color: var(--text-dim); font-weight: 700; letter-spacing: .05em; }
+.job .status { font-size: 12px; color: var(--text-dim); }
+/* Riviera PO is manager-view only — it never reaches the printed board. */
+.job .po { font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.job .po b { color: var(--white); font-weight: 600; }
+.job .acts { display: flex; gap: 6px; justify-content: flex-end; }
+.job.on-hold .label { color: var(--red-bright); }
+.job.on-hold .label::after {
+  content: " [ON HOLD]"; font-size: 11px; letter-spacing: .06em; font-weight: 700;
+}
+.job.is-hidden { opacity: .45; }
+.job.is-hidden .label { text-decoration: line-through; }
+.job .edited {
+  font-size: 10.5px; color: var(--red-bright); border: 1px solid var(--red-deep);
+  border-radius: 5px; padding: 0 5px; letter-spacing: .05em; margin-left: 6px;
+  vertical-align: middle;
+}
+
+/* ---------- vessel codes table ---------- */
+table.codes { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+table.codes th {
+  text-align: left; font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--text-dim); padding: 8px 10px; border-bottom: 2px solid var(--line);
+}
+table.codes td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.codes tr.alias td { background: rgba(234,55,46,.05); }
+table.codes .code { font-weight: 700; font-variant-numeric: tabular-nums; }
+table.codes .display { font-weight: 700; color: var(--white); }
+table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; }
+.chip {
+  display: inline-block; font-size: 10.5px; letter-spacing: .06em; font-weight: 700;
+  border-radius: 5px; padding: 1px 6px; white-space: nowrap;
+}
+.chip.ok { border: 1px solid #3e6b3e; color: #8fce8f; }
+.chip.no { border: 1px solid #8a6d3b; color: #dcb96d; }
+.chip.alias { border: 1px solid var(--red-deep); color: var(--red-bright); }
+
+/* ---------- overlays ---------- */
+.overlay {
+  display: none; position: fixed; inset: 0; z-index: 40;
+  background: rgba(0,0,0,.68);
+  align-items: flex-start; justify-content: center; overflow-y: auto; padding: 6vh 16px 40px;
+}
+.overlay.show { display: flex; }
+.box {
+  background: var(--shadow-grey); border: 2px solid var(--line); border-top: 3px solid var(--red-bright);
+  border-radius: 16px; width: 100%; max-width: 540px; padding: 22px;
+}
+.box h3 { font-size: 17px; margin-bottom: 6px; letter-spacing: .04em; }
+.box .lede { color: var(--text-dim); font-size: 13.5px; line-height: 1.6; margin-bottom: 18px; }
+.box .field { margin-bottom: 16px; }
+.box .field label {
+  display: block; font-size: 11px; font-weight: 700; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--text-dim); margin-bottom: 7px;
+}
+.box .field input { width: 100%; }
+.box .hint { font-size: 12.5px; color: var(--text-dim); margin-top: 7px; line-height: 1.55; }
+.box .actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+.scope-opt {
+  display: block; width: 100%; text-align: left;
+  background: var(--black-night); border: 2px solid var(--line); border-radius: 10px;
+  color: var(--white); font-family: inherit; font-size: 14.5px;
+  padding: 13px 15px; margin-bottom: 10px; cursor: pointer;
+}
+.scope-opt:hover { border-color: var(--red-bright); }
+.scope-opt b { display: block; font-size: 15px; margin-bottom: 4px; }
+.scope-opt span { color: var(--text-dim); font-size: 12.5px; line-height: 1.55; }
+
+/* ---------- toast ---------- */
+#toast {
+  position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(140%);
+  background: var(--shadow-grey); border: 1.5px solid var(--red-bright); border-radius: 10px;
+  padding: 12px 20px; font-size: 14px; z-index: 90; transition: transform .22s ease-out;
+  max-width: min(560px, 90vw);
+}
+#toast.show { transform: translateX(-50%) translateY(0); }
+
+.state { text-align: center; padding: 50px 30px; color: var(--text-dim); line-height: 1.6; }
+.state strong { color: var(--white); display: block; font-size: 17px; margin-bottom: 8px; }
+
+/* ============================================================
+   PRINT VIEW
+   A single A4 page, reproducing the layout validated in
+   make_docx.js. Fonts went UP, not down: 11pt is legible at
+   arm's length on a workshop floor, which matters more than
+   compactness on a printed sheet.
+   ============================================================ */
+#printRoot {
+  background: #fff; color: #1A1A1A;
+  font-family: Calibri, "Segoe UI", -apple-system, sans-serif;
+}
+
+/* On screen the print view is a preview: an A4-proportioned sheet. */
+#printPreview {
+  margin: 0 auto; background: #fff;
+  width: 794px;                 /* A4 at 96dpi */
+  padding: 60px 57px 47px;      /* 0.625in top, 0.59in sides, 0.49in bottom */
+  box-shadow: 0 6px 30px rgba(0,0,0,.55);
+}
+
+#printRoot .doc-title { font-size: 15pt; font-weight: 700; line-height: 1.2; }
+#printRoot .doc-range {
+  font-size: 10pt; font-weight: 700; padding-bottom: 4px;
+  border-bottom: 1px solid #9A9A9A; margin-bottom: 10px;
+}
+#printRoot .grid {
+  display: grid; grid-template-columns: 1fr 1fr; column-gap: 17px; align-items: start;
+}
+#printRoot .col > * + * { margin-top: 8px; }
+#printRoot .full { margin-top: 10px; }
+
+#printRoot table {
+  width: 100%; border-collapse: collapse; table-layout: fixed;
+  font-size: 11pt;                       /* the four narrow categories */
+}
+#printRoot .full table { font-size: 10pt; }   /* Davits — long descriptions */
+#printRoot th, #printRoot td {
+  border: 1px solid #9A9A9A; padding: 2px 6px; vertical-align: top; line-height: 1.15;
+}
+#printRoot .banner {
+  background: #DCDCDC; text-align: center; font-weight: 700;
+  font-size: 12pt; letter-spacing: .04em; padding: 3px 6px;
+}
+#printRoot .full .banner { font-size: 11pt; }
+#printRoot thead th { font-weight: 700; }
+#printRoot .c-prod { width: 22%; }
+#printRoot .c-due  { width: 24%; text-align: center; }
+#printRoot .full .c-prod { width: 13%; }
+#printRoot .full .c-due  { width: 14%; }
+#printRoot td.due { text-align: center; }
+#printRoot td.due.stock { color: #5F5F5F; font-weight: 700; }
+#printRoot tr.on-hold td.vessel { color: #B00020; }
+#printRoot .hold-note {
+  margin-top: 7px; font-size: 7.5pt; font-style: italic; color: #B00020;
+}
+
+@page { size: A4 portrait; margin: 0.625in 0.59in 0.49in; }
+
+@media print {
+  body { background: #fff; }
+  header, main, #toast, .overlay { display: none !important; }
+  #printRoot { display: block !important; }
+  #printPreview { width: auto; padding: 0; box-shadow: none; margin: 0; }
+  #printRoot table, #printRoot tr { page-break-inside: avoid; }
+}
+
+/* ---------- tabs ---------- */
+.tabs { display: flex; gap: 8px; margin: 4px 0 14px; border-bottom: 1px solid var(--line); }
+.tab {
+  background: none; border: none; border-bottom: 3px solid transparent;
+  color: var(--text-dim); font-family: inherit; font-size: 13px; font-weight: 700;
+  letter-spacing: .1em; text-transform: uppercase; padding: 10px 14px; cursor: pointer;
+}
+.tab:hover { color: var(--white); }
+.tab[aria-current="page"] { color: var(--white); border-bottom-color: var(--red-bright); }
+
+/* Kept in the layout but out of sight, so the print view can still be
+   measured for auto-fit while the edit tab is showing. display:none would
+   report a height of zero. */
+.offstage { position: absolute; left: -100000px; top: 0; visibility: hidden; }
+
+.fit-status {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  background: var(--band); border: 1.5px solid var(--line); border-radius: 10px;
+  padding: 10px 14px; margin-bottom: 16px; font-size: 13px; color: var(--text-dim);
+}
+.fit-status b { color: var(--white); font-weight: 600; }
+.fit-status.trimmed { border-color: var(--red-deep); background: var(--warn-bg); }
+.fit-status.trimmed b { color: var(--red-bright); }

@@ -1,0 +1,11 @@
+{
+  "name": "Stella Production Board",
+  "short_name": "Production Board",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#0E0A0A",
+  "theme_color": "#0E0A0A",
+  "icons": [
+    { "src": "assets/logo.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+}
