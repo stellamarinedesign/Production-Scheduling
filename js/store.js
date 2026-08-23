@@ -12,6 +12,7 @@
 //   vesselCodes/{stellaCode}  { boat, riviera[], hull_prefix[], items[],
 //                               display, _confirmed }
 //   jobOverrides/{prodNo}     { hidden, hiddenReason, labelOverride, updatedAt }
+//   itemOverrides/{itemId}    { inventoryId, label, displayCode, updatedAt }
 //   imports/{importId}        { retrievedAt, sourceId, sourceLabel,
 //                               horizonWeeks, maxStock, jobs[] }
 //   settings/board            { horizonWeeks, maxStock, autoFit }
@@ -23,6 +24,9 @@ const lsGet = (k, fallback) => {
   try { const v = localStorage.getItem(LS_PREFIX + k); return v ? JSON.parse(v) : fallback; }
   catch { return fallback; }
 };
+/** Firestore doc ids cannot contain '/'; item codes like SRLRIV505/24 can. */
+const encodeItemId = (id) => String(id).replace(/\//g, '__');
+
 const lsSet = (k, v) => { try { localStorage.setItem(LS_PREFIX + k, JSON.stringify(v)); } catch {} };
 
 export const Store = {
@@ -134,6 +138,39 @@ export const Store = {
     await setDoc(ref, stamped, { merge: true });
     const after = (await getDoc(ref)).data() ?? {};
     if (!after.hidden && !after.labelOverride) await deleteDoc(ref);
+  },
+
+  // ---- per-item overrides -------------------------------------------------
+  // Keyed on Inventory ID — the ERP's stable product identity. A production
+  // number identifies one order; an Inventory ID identifies the product, so a
+  // decision latched here applies to every future order for it.
+
+  async loadItemOverrides() {
+    if (this.mode === 'local') return lsGet('itemOverrides', {});
+    const { collection, getDocs } = this._fs;
+    const snap = await getDocs(collection(this._db, 'itemOverrides'));
+    const out = {};
+    snap.forEach((d) => { const v = d.data(); out[v.inventoryId ?? d.id] = v; });
+    return out;
+  },
+
+  async setItemOverride(inventoryId, patch) {
+    // Firestore doc ids cannot contain '/', and item codes do (SRLRIV505/24).
+    const id = encodeItemId(inventoryId);
+    const stamped = { ...patch, inventoryId, updatedAt: new Date().toISOString() };
+    if (this.mode === 'local') {
+      const all = lsGet('itemOverrides', {});
+      all[inventoryId] = { ...(all[inventoryId] ?? {}), ...stamped };
+      const o = all[inventoryId];
+      if (!o.label && !o.displayCode) delete all[inventoryId];
+      lsSet('itemOverrides', all);
+      return;
+    }
+    const { doc, setDoc, deleteDoc, getDoc } = this._fs;
+    const ref = doc(this._db, 'itemOverrides', id);
+    await setDoc(ref, stamped, { merge: true });
+    const after = (await getDoc(ref)).data() ?? {};
+    if (!after.label && !after.displayCode) await deleteDoc(ref);
   },
 
   // ---- settings -----------------------------------------------------------

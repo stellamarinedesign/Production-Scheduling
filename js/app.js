@@ -3,7 +3,7 @@
 import { xlsxAdapter } from './adapters/index.js';
 import { buildBoard, byCategory, today, toAU, toDateOnly } from './transform.js';
 import { CATEGORY_ORDER } from './rules.js';
-import { stellaCode, labelFor, existingBoats, acceptNewCode } from './vessel-codes.js';
+import { stellaCode, labelFor, existingBoats, acceptNewCode, applyTemplate } from './vessel-codes.js';
 import { Auth, ROLE, friendlyAuthError } from './auth.js';
 import { Store } from './store.js';
 import { renderPrint, measure, fitToPage } from './print.js';
@@ -21,6 +21,7 @@ const state = {
   source: null,
   codeMap: {},
   overrides: {},
+  itemOverrides: {},
   settings: { horizonWeeks: 12, maxStock: null, autoFit: true },
   board: null,
   fit: null,
@@ -74,6 +75,7 @@ async function start(st) {
   state.settings = await Store.loadSettings();
   state.codeMap = await Store.loadCodes();
   state.overrides = await Store.loadOverrides();
+  state.itemOverrides = await Store.loadItemOverrides();
 
   $('horizon').value = state.settings.horizonWeeks;
   $('horizonVal').textContent = `${state.settings.horizonWeeks} weeks`;
@@ -256,6 +258,7 @@ function rebuild() {
     codeMap: state.codeMap,
     asOf: today(),
     overrides: state.overrides,
+    itemOverrides: state.itemOverrides,
     maxStock: state.settings.maxStock,
   };
   const build = (weeks) => buildBoard(state.rows, { ...opts, horizonWeeks: weeks });
@@ -476,6 +479,7 @@ function jobRow(j) {
 
   const label = el('span', 'label', j.label);
   if (j.label !== j.base_label) label.append(el('span', 'edited', 'EDITED'));
+  else if (j.item_override) label.append(el('span', 'pinned', 'ITEM'));
   row.append(label);
 
   row.append(el('span', `due${j.is_stock ? ' stock' : ''}`, j.due_display));
@@ -647,7 +651,7 @@ let editing = null;
 function openLabelEditor(job) {
   editing = job;
   const code = /CUSTOM/i.test(job.inventory_id) ? null : stellaCode(job.inventory_id);
-  const canScopeToCode = Boolean(code && state.codeMap[code]);
+  const onABoat = Boolean(code && state.codeMap[code]);
 
   $('lblTitle').textContent = `Edit label — ${job.prod_no}`;
   $('lblLede').textContent = `Currently "${job.label}" · ${job.inventory_id}`;
@@ -656,13 +660,23 @@ function openLabelEditor(job) {
   $('lblScopeActions').hidden = false;
   $('lblForm').hidden = true;
 
-  $('scopeCode').hidden = !canScopeToCode;
-  if (canScopeToCode) {
+  // Scope 2 — this product, forever. Always available: even a davit or a chock
+  // with no vessel code can need its label pinned.
+  const sameItem = state.board.jobs.filter((j) => j.inventory_id === job.inventory_id).length;
+  $('scopeItemHint').textContent =
+    `Pins the label to ${job.inventory_id} — ${sameItem} job(s) on this board, and `
+    + `every future order for it. Use this when the item code names one boat but `
+    + `the part is built to the drawings of another.`;
+
+  // Scope 3 — every product on this boat.
+  $('scopeCode').hidden = !onABoat;
+  if (onABoat) {
     const group = state.board.resolved.groups.find((g) => g.codes.includes(code));
     const n = state.board.jobs.filter((j) => group.codes.includes(stellaCode(j.inventory_id) ?? '')).length;
     $('scopeCodeHint').textContent =
-      `Changes the display code for ${group.codes.join(' / ')} — ${n} job(s) on this board, ` +
-      `and every future one. The product wording ("Garage Door", "Launcher") is kept.`;
+      `Changes the display code for boat ${group.boat ?? group.codes[0]} `
+      + `(${group.codes.join(' / ')}) — ${n} job(s) here, and every future one. `
+      + `The product wording ("Garage Door", "Launcher") is kept.`;
   }
 
   $('labelOverlay').classList.add('show');
@@ -671,27 +685,50 @@ function openLabelEditor(job) {
 function showLabelForm(scope) {
   const job = editing;
   const code = stellaCode(job.inventory_id);
+  const pinned = state.itemOverrides[job.inventory_id];
 
   $('lblScope').hidden = true;
   $('lblScopeActions').hidden = true;
   $('lblForm').hidden = false;
   $('lblForm').dataset.scope = scope;
+  $('lblReset').hidden = true;
 
   if (scope === 'job') {
     $('lblFieldLabel').textContent = 'Label for this job';
     $('lblInput').value = job.label;
     $('lblHint').textContent =
-      `Replaces the whole label on ${job.prod_no} only. Saved against the ` +
-      `production number, so it survives the next upload.`;
+      `Replaces the whole label on ${job.prod_no} only. Saved against the `
+      + `production number, so it survives the next upload.`;
     $('lblReset').hidden = job.label === job.base_label;
+
+  } else if (scope === 'item') {
+    // A vessel-coded item gets a code (the template still supplies the wording);
+    // anything else — davits, chocks — has no code, so it gets a whole label.
+    if (code) {
+      $('lblFieldLabel').textContent = `Display code for ${job.inventory_id}`;
+      $('lblInput').value = pinned?.displayCode
+        ?? state.board.resolved.display.get(code) ?? code;
+      $('lblHint').textContent =
+        `Just the vessel code — the product wording is added by the template, so `
+        + `"56SY" becomes "${applyTemplate(job.inventory_id, '56SY')}". Applies to `
+        + `this item code only, on every future order.`;
+    } else {
+      $('lblFieldLabel').textContent = `Label for ${job.inventory_id}`;
+      $('lblInput').value = pinned?.label ?? job.base_label;
+      $('lblHint').textContent =
+        `This item has no vessel code, so this is the whole label. Applies to `
+        + `${job.inventory_id} on every future order.`;
+    }
+    $('lblReset').hidden = !pinned;
+
   } else {
     const group = state.board.resolved.groups.find((g) => g.codes.includes(code));
-    $('lblFieldLabel').textContent = `Display code for ${group.codes.join(' / ')}`;
+    $('lblFieldLabel').textContent = `Display code for boat ${group.boat ?? group.codes[0]}`;
     $('lblInput').value = state.board.resolved.display.get(code) ?? code;
     $('lblHint').textContent =
-      `Just the vessel code — the product wording is added by the template. ` +
-      `e.g. "SY22" becomes "SY22 Garage Door". Applies to every job for this boat.`;
-    $('lblReset').hidden = true;
+      `Applies to ${group.codes.join(', ')} — every product on this boat. `
+      + `An item that needs to differ from its boat should use the item scope `
+      + `instead.`;
   }
   $('lblInput').focus();
   $('lblInput').select();
@@ -700,15 +737,23 @@ function showLabelForm(scope) {
 function wireOverlays() {
   wireNewCode();
   $('scopeJob').addEventListener('click', () => showLabelForm('job'));
+  $('scopeItem').addEventListener('click', () => showLabelForm('item'));
   $('scopeCode').addEventListener('click', () => showLabelForm('code'));
   $('lblScopeCancel').addEventListener('click', closeLabel);
   $('lblCancel').addEventListener('click', closeLabel);
   $('lblSave').addEventListener('click', saveLabel);
   $('lblInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveLabel(); });
   $('lblReset').addEventListener('click', async () => {
-    await setOverride(editing.prod_no, { labelOverride: null });
+    const scope = $('lblForm').dataset.scope;
+    const job = editing;
+    if (scope === 'item') {
+      await setItemOverride(job.inventory_id, { label: null, displayCode: null });
+      toast(`${job.inventory_id} back to the code of its boat.`);
+    } else {
+      await setOverride(job.prod_no, { labelOverride: null });
+      toast(`${job.prod_no} label reset.`);
+    }
     closeLabel();
-    toast(`${editing.prod_no} label reset.`);
   });
 
   $('hideCancel').addEventListener('click', () => $('hideOverlay').classList.remove('show'));
@@ -726,25 +771,44 @@ function wireOverlays() {
 
 async function saveLabel() {
   const value = $('lblInput').value.trim();
-  if (!value) { toast('A label cannot be empty.'); return; }
+  if (!value) { toast('That cannot be empty.'); return; }
   const scope = $('lblForm').dataset.scope;
   const job = editing;
 
   if (scope === 'job') {
     await setOverride(job.prod_no, { labelOverride: value });
     toast(`${job.prod_no} relabelled.`);
+
+  } else if (scope === 'item') {
+    const code = stellaCode(job.inventory_id);
+    const patch = code ? { displayCode: value, label: null } : { label: value, displayCode: null };
+    await setItemOverride(job.inventory_id, patch);
+    toast(code
+      ? `${job.inventory_id} now prints "${applyTemplate(job.inventory_id, value)}".`
+      : `${job.inventory_id} now prints "${value}".`);
+
   } else {
     const code = stellaCode(job.inventory_id);
     const group = state.board.resolved.groups.find((g) => g.codes.includes(code));
-    // Confirming one member confirms the boat — the alias group displays as one.
+    // Confirming one member confirms the boat — the group displays as one.
     for (const c of group.codes) {
       state.codeMap[c] = { ...(state.codeMap[c] ?? {}), display: value, _confirmed: true };
       await Store.saveCode(c, { display: value, _confirmed: true });
     }
     rebuild();
-    toast(`${group.codes.join(' / ')} now display as "${value}".`);
+    toast(`Boat ${group.boat ?? group.codes[0]} (${group.codes.join(', ')}) now displays "${value}".`);
   }
   closeLabel();
+}
+
+async function setItemOverride(inventoryId, patch) {
+  const next = { ...(state.itemOverrides[inventoryId] ?? {}), ...patch };
+  for (const k of ['label', 'displayCode']) if (next[k] === null) delete next[k];
+  if (next.label || next.displayCode) state.itemOverrides[inventoryId] = next;
+  else delete state.itemOverrides[inventoryId];
+
+  await Store.setItemOverride(inventoryId, patch);
+  rebuild();
 }
 
 function closeLabel() { $('labelOverlay').classList.remove('show'); editing = null; }

@@ -144,8 +144,8 @@
   },
   "SY26": {
     "_confirmed": true,
-    "boat": "56SY",
-    "display": "56SY",
+    "boat": "5000",
+    "display": "SY26",
     "hull_prefix": [
       "5000"
     ],

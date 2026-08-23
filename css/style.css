@@ -410,3 +410,13 @@ body.role-floor #printPreview { box-shadow: 0 6px 30px rgba(0,0,0,.55); }
 table.codes select {
   font-size: 12.5px; padding: 5px 8px; border-width: 1.5px; max-width: 130px;
 }
+
+.scope-note {
+  font-size: 12.5px; color: var(--text-dim); line-height: 1.6;
+  border-left: 3px solid var(--red-deep); padding: 2px 0 2px 12px; margin-bottom: 16px;
+}
+.scope-note em { color: var(--white); font-style: normal; font-weight: 600; }
+.job .pinned {
+  font-size: 10.5px; color: var(--text-dim); border: 1px dashed var(--line);
+  border-radius: 5px; padding: 0 5px; letter-spacing: .05em; margin-left: 6px;
+}

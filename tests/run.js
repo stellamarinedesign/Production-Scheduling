@@ -8,7 +8,7 @@
 import { xlsxAdapter, validateColumns } from '../js/adapters/index.js';
 import { buildBoard, toDateOnly, toAU, addWeeks } from '../js/transform.js';
 import { resolveDisplays, aliasGroups, stellaCode, labelFor, detectNewCodes,
-         existingBoats, acceptNewCode } from '../js/vessel-codes.js';
+         existingBoats, acceptNewCode, applyTemplate } from '../js/vessel-codes.js';
 import { renderPrint, measure, fitToPage } from '../js/print.js';
 
 const results = [];
@@ -61,15 +61,15 @@ export async function run() {
   const codeMap = await (await fetch('../data/vessel-codes.seed.json')).json();
   const resolved = resolveDisplays(codeMap);
 
-  // Boat grouping is MANUAL. The upstream codes are not consistent enough for
-  // any derived signal to get it right: 56 / SY23 / SY26 are one boat that
-  // Riviera call both 56SY and 5000SY, so matching on the model splits them.
+  // Boat grouping is MANUAL. The codes are not managed consistently upstream,
+  // so no derived signal is authoritative: 56 is office shorthand for 56SY and
+  // groups with SY23, while SY26 is the 5000 and stands alone — despite 56
+  // carrying 5000 as a hull prefix, which is exactly the trap.
   const groups = aliasGroups(codeMap);
   const groupOf = (c) => groups.find((g) => g.codes.includes(c));
   eq('43SY and SY20 are one boat', groupOf('43SY').codes, ['43SY', 'SY20']);
-  eq('56, SY23 and SY26 are one boat despite differing Riviera models',
-    groupOf('56').codes, ['56', 'SY23', 'SY26']);
-  eq('...and their models really do differ', groupOf('56').models, ['5000SY', '56SY']);
+  eq('56 and SY23 are the 56SY', groupOf('56').codes, ['56', 'SY23']);
+  eq('SY26 is the 5000 — a DIFFERENT boat', groupOf('SY26').codes, ['SY26']);
 
   // A human must be able to SPLIT as well as merge: two codes sharing a model
   // but assigned to different boats stay apart.
@@ -86,13 +86,23 @@ export async function run() {
   eq('SY20 stays SY20', resolved.display.get('SY20'), 'SY20');
   eq('SY23 stays 56SY', resolved.display.get('SY23'), '56SY');
   eq('56 stays 56SY', resolved.display.get('56'), '56SY');
-  eq('SY26 is the same boat, so it prints 56SY too', resolved.display.get('SY26'), '56SY');
+  // Global code preference, per boat: the 56SY prefers the Riviera model over
+  // Stella's SY23; the 5000 prefers Stella's SY26 over Riviera's 5000SY. There
+  // is no rule — each was decided by hand.
+  eq('SY26 prints SY26, not 56SY and not 5000', resolved.display.get('SY26'), 'SY26');
+  eq('the SY26 lifter is a different product from the 56SY lifter',
+    [labelFor('SLRIVSY26(24)', resolved, codeMap), labelFor('SLRIVSY23(24)', resolved, codeMap)],
+    ['SY26', '56SY']);
+  // A 56SY ladder fitted to an SY26 hull is still a 56SY ladder: the item code
+  // carries the boat, and the hull is never displayed.
+  eq('a 56SY ladder prints 56SY whatever hull it lands on',
+    labelFor('SBLRIV56', resolved, codeMap), 'Boarding Ladder 56SY');
   eq('SY22 stays SY22', resolved.display.get('SY22'), 'SY22');
   eq('505 stays Riv 505', resolved.display.get('505'), 'Riv 505');
   eq('no display conflicts in seed data', resolved.conflicts, []);
-  eq('nothing left undecided after the alias fix', resolved.undecided, []);
+  eq('nothing left undecided', resolved.undecided, []);
 
-  eq('helm seat box label follows the alias', labelFor('SHCELECPLINTHRIV43SY', resolved, codeMap), 'Helm Seat Box SY20');
+  eq('helm seat box follows its boat', labelFor('SHCELECPLINTHRIV43SY', resolved, codeMap), 'Helm Seat Box SY20');
   eq('garage door template', labelFor('SGDRIVSY22', resolved, codeMap), 'SY22 Garage Door');
   eq('boarding ladder template', labelFor('SBLRIV56', resolved, codeMap), 'Boarding Ladder 56SY');
   eq('watertight door template', labelFor('SWD4PDRIV62SY', resolved, codeMap), 'Watertight Door 62SY');
@@ -141,12 +151,6 @@ export async function run() {
       // so the helm seat box label changed. Assert the new value explicitly.
       if (f === 'label' && exp.inventory_id === 'SHCELECPLINTHRIV43SY') {
         if (got.label !== 'Helm Seat Box SY20') diffs.push(`row ${i} ${exp.prod_no}.label: expected alias fix 'Helm Seat Box SY20', got ${JSON.stringify(got.label)}`);
-        continue;
-      }
-      // SY26 is the same boat as 56/SY23 — Riviera's 5000 is the 56SY — so it
-      // now prints 56SY where the fixture printed the Stella code.
-      if (f === 'label' && exp.label === 'SY26') {
-        if (got.label !== '56SY') diffs.push(`row ${i} ${exp.prod_no}.label: expected boat fix '56SY', got ${JSON.stringify(got.label)}`);
         continue;
       }
       // The reference implementation wrote `str(NaN)` into empty cells, so all
@@ -266,8 +270,10 @@ export async function run() {
   check('a new code is never auto-added to the map',
     !Object.hasOwn(codeMap, 'SY31'), 'detectNewCodes must not mutate the map');
 
-  eq('existing boats are offered for the dropdown',
-    existingBoats(codeMap).some((b) => b.display === '56SY' && b.codes.length === 3), true);
+  eq('existing boats are offered for the dropdown, one entry per boat',
+    existingBoats(codeMap).map((b) => `${b.display}:${b.codes.join('+')}`),
+    ['56SY:56+SY23', '62SY:62SY', 'FB31:FB31', 'Riv 505:505', 'Riv 64:64',
+     'SU12:SU12', 'SY20:43SY+SY20', 'SY22:SY22', 'SY26:SY26']);
 
   // A conflict is surfaced, never silently resolved.
   const clash = resolveDisplays({
@@ -275,6 +281,51 @@ export async function run() {
     B: { riviera: ['9SY'], boat: 'x', display: 'BBB', _confirmed: true },
   });
   eq('two confirmed answers for one boat is a conflict', clash.conflicts.length, 1);
+
+  // ---- three scopes -------------------------------------------------------
+  // Boat, item and job are different things. The case that forces the middle
+  // one: an item code naming one boat for a part built to the drawings of
+  // another. Nothing about the boat is wrong, and it is not a one-off.
+  eq('template applies a code to an item', applyTemplate('SBLRIVSY26', '56SY'), 'Boarding Ladder 56SY');
+  eq('template passes through an item with no wording rule', applyTemplate('SDC200FOLD', 'X'), 'X');
+
+  const scoped = (itemOverrides, overrides = {}) =>
+    buildBoard(src.rows, { codeMap, horizonWeeks: 12, asOf, itemOverrides, overrides });
+
+  const lifterSY26 = (b) => b.jobs.find((j) => j.inventory_id === 'SLRIVSY26(24)');
+  const ladder56 = (b) => b.jobs.find((j) => j.inventory_id === 'SBLRIV56');
+
+  eq('by default an item follows its boat', lifterSY26(scoped({})).label, 'SY26');
+
+  // Item scope pins the CODE and keeps the product wording.
+  const pinnedCode = scoped({ 'SBLRIV56': { displayCode: 'SY26' } });
+  eq('an item override changes the code, not the wording',
+    ladder56(pinnedCode).label, 'Boarding Ladder SY26');
+  eq('...and leaves every other item on that boat alone',
+    pinnedCode.jobs.find((j) => j.inventory_id === 'SLRIVSY23(24)').label, '56SY');
+  eq('...and leaves the boat itself alone', pinnedCode.resolved.display.get('56'), '56SY');
+
+  // Item scope can also pin a whole label, for items with no vessel code.
+  eq('an item override can pin a whole label',
+    scoped({ 'SDC200FOLD': { label: 'Folding Davit 200kg' } })
+      .jobs.find((j) => j.inventory_id === 'SDC200FOLD').label, 'Folding Davit 200kg');
+
+  // Precedence: job beats item beats boat.
+  const both = scoped(
+    { 'SBLRIV56': { displayCode: 'SY26' } },
+    { [ladder56(scoped({})).prod_no]: { labelOverride: 'One-off' } },
+  );
+  eq('a job override beats an item override', ladder56(both).label, 'One-off');
+  eq('...and the item override is still what it falls back to',
+    ladder56(both).base_label, 'Boarding Ladder SY26');
+
+  // An item override beats the built-in LABEL_OVERRIDES table.
+  eq('an item override beats the built-in label table',
+    scoped({ 'SDC550SSHLHSHE': { label: 'Davit, 550 full hyd' } })
+      .jobs.find((j) => j.inventory_id === 'SDC550SSHLHSHE').label, 'Davit, 550 full hyd');
+
+  eq('the override is carried on the job so the UI can show it',
+    Boolean(ladder56(pinnedCode).item_override), true);
 
   // ---- print layout + auto-fit -------------------------------------------
   // A real A4-sized host, laid out but off-screen, so heights are truthful.

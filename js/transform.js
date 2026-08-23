@@ -12,7 +12,7 @@ import {
   CATEGORY_ORDER, BOARD_STATUSES, INTERNAL_CUSTOMER, HULL_RE,
   VESSEL_IN_DESC_RE, CUSTOMER_SUFFIX_RE, LABEL_OVERRIDES, classify,
 } from './rules.js';
-import { resolveDisplays, labelFor, detectNewCodes } from './vessel-codes.js';
+import { resolveDisplays, labelFor, detectNewCodes, applyTemplate } from './vessel-codes.js';
 
 // ---------------------------------------------------------------------------
 // Value normalisation. This is the transform's job, done once, downstream of
@@ -103,13 +103,35 @@ export function extractHull(...fields) {
 }
 
 /**
- * Short board label. Davits keep their descriptive text; custom jobs resolve
- * through the Description field or the customer name; everything else goes
- * through the vessel code map.
+ * Short board label.
+ *
+ * THREE SCOPES, narrowest first. They are different things and must not be
+ * conflated:
+ *
+ *   1. jobOverrides[prodNo].labelOverride   one production order  (in buildBoard)
+ *   2. itemOverrides[inventoryId]           this product, forever
+ *   3. vesselCodes[stellaCode].display      every product on this boat
+ *
+ * Scope 2 exists because the boat is not always the whole story. The SY26
+ * lifter and the 56SY lifter are different products and must print different
+ * codes — but a 56SY *ladder* fitted to an SY26 hull is still a 56SY ladder.
+ * When an item code says one boat and the part is really another's, the fix
+ * belongs to the item, not to the boat and not to one job. It latches to the
+ * Inventory ID, so it survives every future production order for that product.
  */
-export function shortLabel({ inventoryId, productionDescription, customer, descField, resolved, codeMap }) {
+export function shortLabel({
+  inventoryId, productionDescription, customer, descField, resolved, codeMap,
+  itemOverride = null,
+}) {
   const inv = text(inventoryId);
   const desc = text(productionDescription);
+
+  // Whole label, pinned to this product.
+  if (itemOverride?.label) return itemOverride.label;
+
+  // Just the vessel code, pinned to this product — the product wording still
+  // comes from the template, so 'Boarding Ladder' stays 'Boarding Ladder'.
+  if (itemOverride?.displayCode) return applyTemplate(inv, itemOverride.displayCode);
 
   if (LABEL_OVERRIDES[inv]) return LABEL_OVERRIDES[inv];
 
@@ -157,13 +179,15 @@ export function shortLabel({ inventoryId, productionDescription, customer, descF
  * @param {number|null} opts.horizonWeeks  null = no horizon
  * @param {{y,m,d}} opts.asOf        defaults to today; horizon runs from here
  * @param {Object}  opts.overrides   prodNo -> { hidden, hiddenReason, labelOverride }
+ * @param {Object}  opts.itemOverrides  inventoryId -> { label, displayCode } — pins
+ *                                    a product's label across every future order
  * @param {number|null} opts.maxStock  cap stock rows per category; null = off
  * @returns {{jobs: Array, excluded: Array, warnings: Object, meta: Object}}
  */
 export function buildBoard(rows, opts = {}) {
   const {
     codeMap = {}, horizonWeeks = 12, asOf = today(),
-    overrides = {}, maxStock = null,
+    overrides = {}, itemOverrides = {}, maxStock = null,
   } = opts;
 
   const resolved = resolveDisplays(codeMap);
@@ -210,6 +234,7 @@ export function buildBoard(rows, opts = {}) {
     }
 
     const ov = overrides[prodNo] ?? {};
+    const itemOverride = itemOverrides[text(inv)] ?? null;
     const label = shortLabel({
       inventoryId: inv,
       productionDescription: r['Production Description'],
@@ -217,6 +242,7 @@ export function buildBoard(rows, opts = {}) {
       descField: r['Description'],
       resolved,
       codeMap,
+      itemOverride,
     });
 
     const startDate = toDateOnly(r['Start Date']);
@@ -226,7 +252,8 @@ export function buildBoard(rows, opts = {}) {
       category,
       description: text(r['Production Description']),
       label: ov.labelOverride || label,
-      base_label: label,                       // pre-override, so the UI can offer a reset
+      base_label: label,                       // pre-job-override, for reset
+      item_override: itemOverride,             // so the UI can show and clear it
       inventory_id: text(inv),
       customer,
       is_stock: isStock,

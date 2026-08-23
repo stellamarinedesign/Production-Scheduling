@@ -182,18 +182,25 @@ export function displayFor(code, resolved, codeMap = {}) {
 }
 
 /**
+ * Wrap a display code in this item's product wording.
+ * 'SY22' + SGDRIVSY22 -> 'SY22 Garage Door'.
+ */
+export function applyTemplate(inventoryId, displayCode) {
+  const inv = String(inventoryId ?? '').toUpperCase();
+  for (const [prefix, tmpl] of PRODUCT_TEMPLATE) {
+    if (inv.startsWith(prefix)) return tmpl.replace('{code}', displayCode).trim();
+  }
+  return displayCode;
+}
+
+/**
  * Full board label for a vessel-coded item — 'SY22 Garage Door',
  * 'Boarding Ladder 56SY'. Null when the item carries no vessel code.
  */
 export function labelFor(inventoryId, resolved, codeMap = {}) {
-  const inv = String(inventoryId ?? '').toUpperCase();
-  const code = stellaCode(inv);
+  const code = stellaCode(inventoryId);
   if (!code) return null;
-  const disp = displayFor(code, resolved, codeMap);
-  for (const [prefix, tmpl] of PRODUCT_TEMPLATE) {
-    if (inv.startsWith(prefix)) return tmpl.replace('{code}', disp).trim();
-  }
-  return disp;
+  return applyTemplate(inventoryId, displayFor(code, resolved, codeMap));
 }
 
 /**

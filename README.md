@@ -67,10 +67,14 @@ Normalising happens in the transform, once, downstream.
   prints as `SY20`. Both are correct and confirmed individually. It lives in
   `data/vessel-codes.seed.json` and is maintained by hand.
 - **Which codes are the same boat is assigned by hand,** via the `boat` field.
-  It has to be: `56`, `SY23` and `SY26` are all the 56SY — `56` was office
-  shorthand, and Riviera call the same hull both `56SY` and `5000SY`. Nothing
-  upstream records that. A shared Riviera model only *suggests* a group for a
-  code nobody has assigned yet.
+  It has to be — nothing upstream records it. `56` is office shorthand for the
+  56SY and groups with `SY23`; `SY26` is the **5000, a different boat**. A
+  shared Riviera model only *suggests* a group for a code nobody has assigned.
+- **Labels resolve in three scopes, narrowest first: job → item → boat.**
+  A boat decision covers every product on that vessel. An *item* decision
+  latches to the `Inventory ID` and covers every future order for one product —
+  that is the layer for a part whose item code names one boat but which is
+  built to the drawings of another. A job decision covers one order.
 - **A code the map has never seen is never auto-accepted.** It is queued on
   import and answered by hand, because the alternative is the board printing a
   guess that nobody knows is one.
@@ -91,13 +95,12 @@ real 21/08/2026 export and the reference implementation's real output.
 python -m http.server 8777
 ```
 
-Then open <http://127.0.0.1:8777/tests/>. 84 assertions; the transform is only
+Then open <http://127.0.0.1:8777/tests/>. 97 assertions; the transform is only
 correct if it reproduces all 48 board rows and all 44 exclusion reasons.
 
-Three deliberate differences from the reference output, all asserted explicitly:
+Two deliberate differences from the reference output, both asserted explicitly:
 
 - `43SY` displays `SY20` — same boat as the SY20 lifter.
-- `SY26` displays `56SY` — Riviera's 5000 is the 56SY.
 - Stock rows have `sales_order: null` rather than the string `"nan"`, which is
   what Python's `str(NaN)` produced.
 
@@ -117,8 +120,10 @@ view, so a new account can never arrive with edit rights by accident. Hiding
 manager controls is tidiness, not security; the Firestore rules are the
 enforcement.
 
-Until Firebase is configured the app runs **local-only**: no sign-in, edits in
-`localStorage`, one machine. The header and provenance strip both say so.
+Firebase project `production-scheduling-stella` is configured; sign-in and the
+Firestore rules are the gate, and App Check is deliberately off. If the config
+is ever emptied the app falls back to **local-only** — no sign-in, edits in
+`localStorage`, one machine — and the header and provenance strip say so.
 
 > Setup, security rules, accounts and deployment steps live in a private
 > SETUP document kept outside this repository, next to `handoff/`.

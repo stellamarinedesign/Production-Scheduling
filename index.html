@@ -141,13 +141,22 @@
     <div class="lede" id="lblLede"></div>
 
     <div id="lblScope">
+      <div class="scope-note">
+        Three different things. The narrowest that fixes it is usually the right
+        one — a wrong <em>boat</em> code is a boat problem, but a part built to
+        another boat's drawings is an <em>item</em> problem.
+      </div>
       <button class="scope-opt" id="scopeJob">
         <b>Just this job</b>
         <span>Changes the whole label on this production order only. Other jobs
               for the same vessel are untouched.</span>
       </button>
+      <button class="scope-opt" id="scopeItem">
+        <b>Every job for this item code</b>
+        <span id="scopeItemHint"></span>
+      </button>
       <button class="scope-opt" id="scopeCode">
-        <b>Every job for this vessel</b>
+        <b>Every job on this boat</b>
         <span id="scopeCodeHint"></span>
       </button>
     </div>

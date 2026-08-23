@@ -16,17 +16,20 @@ const SDK = 'https://www.gstatic.com/firebasejs/10.12.2';
 // production manager, and it is what runs until the project exists.
 // ---------------------------------------------------------------------------
 export const firebaseConfig = {
-  apiKey: '',
-  authDomain: '',
-  projectId: '',
-  storageBucket: '',
-  messagingSenderId: '',
-  appId: '',
+  apiKey: 'AIzaSyCzSwY2Pxet1bHZUPtEj93GzpytGhISwKg',
+  authDomain: 'production-scheduling-stella.firebaseapp.com',
+  projectId: 'production-scheduling-stella',
+  storageBucket: 'production-scheduling-stella.firebasestorage.app',
+  messagingSenderId: '397159853236',
+  appId: '1:397159853236:web:23133f8085d3a17f2e3be1',
+  measurementId: 'G-C5P6GWPVM5',
 };
 
-// APP CHECK — reCAPTCHA v3. Optional now that sign-in gates the data, but it
-// keeps unauthenticated traffic away from the Auth endpoints. Register at
-// Firebase Console → App Check → Apps → reCAPTCHA v3.
+// APP CHECK — deliberately off. Sign-in plus the Firestore rules are the gate:
+// every collection requires an authenticated user, and writes require a manager
+// address. App Check would only add a bot-deterrent in front of the Auth
+// endpoints. Paste a reCAPTCHA v3 SITE key here to turn it on; the secret key
+// stays in the Firebase console and never leaves it.
 export const APPCHECK_SITE_KEY = '';
 
 export const isConfigured = () => Boolean(firebaseConfig.apiKey && firebaseConfig.projectId);
