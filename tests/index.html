@@ -42,6 +42,25 @@ const list = document.getElementById('list');
 
 try {
   const results = await run();
+
+  if (results.skipped) {
+    summary.className = '';
+    summary.innerHTML =
+      'Skipped — test fixtures not present.<br><br>'
+      + '<span style="font-size:13px;color:var(--dim);line-height:1.7">'
+      + 'These tests run against the real ERP export, which is gitignored: it '
+      + 'carries customer names, Riviera PO numbers, sales orders and internal '
+      + 'notes, and the repo is public.<br><br>'
+      + 'To run them, copy from the private handoff folder into '
+      + '<code>tests/fixtures/</code>:<br>'
+      + '<code>Production Order Maintenance 20260821.xlsx</code> → <code>export-20260821.xlsx</code><br>'
+      + '<code>jobs.json</code> → <code>jobs.expected.json</code><br>'
+      + '<code>jobs_excluded.csv</code> → <code>excluded.expected.csv</code>'
+      + '</span>';
+    console.log('TESTS SKIPPED — fixtures not present');
+    throw new Error('__skip__');
+  }
+
   const failed = results.filter(r => !r.pass);
 
   summary.className = failed.length ? 'fail' : 'pass';
@@ -67,10 +86,13 @@ try {
   console.log(`TESTS ${failed.length ? 'FAIL' : 'PASS'} ${results.length - failed.length}/${results.length}`);
   for (const f of failed) console.log(`FAILED: ${f.name}${f.detail ? ` — ${f.detail}` : ''}`);
 } catch (e) {
+  if (e.message === '__skip__') { /* already rendered */ }
+  else {
   summary.className = 'fail';
   summary.textContent = `threw: ${e.message}`;
   console.log(`TESTS ERROR ${e.message}`);
   console.error(e);
+  }
 }
 </script>
 </body>

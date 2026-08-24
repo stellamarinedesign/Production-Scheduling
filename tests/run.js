@@ -41,7 +41,29 @@ function parseCSV(txt) {
   return body.map((r) => Object.fromEntries(head.map((h, i) => [h, r[i] ?? ''])));
 }
 
+/**
+ * The fixtures are the real ERP export and its reference output — customer
+ * names, Riviera PO numbers, sales orders, hull numbers, internal notes. They
+ * are gitignored and never leave the workshop, so a clone of the public repo
+ * does not have them. Say so plainly rather than failing.
+ *
+ * To run these: copy from the private handoff folder into tests/fixtures/ —
+ *   Production Order Maintenance 20260821.xlsx  ->  export-20260821.xlsx
+ *   jobs.json                                   ->  jobs.expected.json
+ *   jobs_excluded.csv                           ->  excluded.expected.csv
+ */
+async function fixturesPresent() {
+  try {
+    // no-store, or a cached 200 from a previous run reports fixtures that are
+    // no longer on disk and the suite fails halfway through instead of skipping.
+    const r = await fetch('fixtures/export-20260821.xlsx', { method: 'HEAD', cache: 'no-store' });
+    return r.ok;
+  } catch { return false; }
+}
+
 export async function run() {
+  if (!await fixturesPresent()) return { skipped: true };
+
   // ---- date normalisation -------------------------------------------------
   eq('toDateOnly: UTC-midnight Date', toDateOnly(new Date(Date.UTC(2026, 8, 3))), { y: 2026, m: 9, d: 3 });
   eq('toDateOnly: local-midnight Date', toDateOnly(new Date(2026, 8, 3)), { y: 2026, m: 9, d: 3 });
@@ -347,8 +369,13 @@ export async function run() {
   eq('three columns per table', host.querySelector('thead tr:nth-child(2)').children.length, 3);
   eq('print header carries the covered range, not just the run date',
     host.querySelector('.doc-range').textContent.trim(), 'as of:  21/08/2026  —  13/11/2026');
+  // Read the PO out of the data rather than naming one: a real PO number is
+  // customer data and does not belong in a public repo, and this way the test
+  // covers whatever the export actually carries.
+  const anyPO = board.jobs.find((j) => j.customer_po)?.customer_po;
   check('the Riviera PO never reaches the printed board',
-    !/PO/.test(host.textContent) && !host.textContent.includes('REDACTED'), '');
+    !/PO/.test(host.textContent) && Boolean(anyPO) && !host.textContent.includes(anyPO),
+    anyPO ? '' : 'no PO in the export — the test would be vacuous');
   eq('hidden jobs do not print', (() => {
     const h = buildBoard(src.rows, { codeMap, horizonWeeks: 12, asOf, overrides: { P01093: { hidden: true } } });
     renderPrint(host, h);

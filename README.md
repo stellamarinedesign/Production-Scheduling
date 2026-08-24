@@ -91,6 +91,19 @@ Full background: `handoff/STELLA_PRODUCTION_BOARD_CONTEXT.md`.
 No Node in the target environment, so the tests run in a browser against the
 real 21/08/2026 export and the reference implementation's real output.
 
+**The fixtures are not in this repo and never will be.** They carry customer
+names, Riviera PO numbers, sales orders, hull numbers and ERP internal notes —
+Stella's and Riviera's order book — and this repo is public. They are
+gitignored, and the test page says so and skips if they are absent.
+
+To run the tests, copy from the private handoff folder into `tests/fixtures/`:
+
+| From `handoff/` | To `tests/fixtures/` |
+|---|---|
+| `Production Order Maintenance 20260821.xlsx` | `export-20260821.xlsx` |
+| `jobs.json` | `jobs.expected.json` |
+| `jobs_excluded.csv` | `excluded.expected.csv` |
+
 ```bash
 python -m http.server 8777
 ```

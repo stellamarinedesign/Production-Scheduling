@@ -2,3 +2,9 @@
 Thumbs.db
 node_modules/
 *.log
+
+# Real ERP export and everything derived from it. Customer names, Riviera PO
+# numbers, sales orders, hull numbers and internal notes — Stella's and
+# Riviera's order book. Never commit these; the repo is public.
+# The files live on disk for local test runs; originals are in ../handoff/.
+tests/fixtures/
