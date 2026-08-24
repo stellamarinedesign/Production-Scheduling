@@ -380,6 +380,35 @@ export function renderGantt(host, jobs, opts = {}) {
 
   host.append(chart);
 
+  // A scrolling chart opens on today, not on the oldest job. The history is
+  // there to scroll back to; what the manager wants first is now and next.
+  // A little context to the left, so today is not jammed against the edge.
+  if (pxPerDay && g.todayPct != null) {
+    const scrollToToday = () => {
+      // Reading geometry forces layout, so the element really is scrollable by
+      // the time scrollLeft is assigned. Setting it inside a bare rAF ran
+      // before the new rows had their width and silently did nothing.
+      const max = chart.scrollWidth - chart.clientWidth;
+      if (max <= 0) return false;
+
+      // Measure where the marker actually is rather than deriving it: todayPct
+      // is a share of the TRACK, while scrollWidth also contains the frozen
+      // label column, so arithmetic on the two overshoots by the label width.
+      const line = chart.querySelector('.g-today');
+      if (!line) return false;
+      const into = (line.getBoundingClientRect().x - chart.getBoundingClientRect().x)
+        + chart.scrollLeft;
+
+      // Keep a little history on screen so today is not jammed against the edge.
+      const lead = Math.min(180, chart.clientWidth * 0.18);
+      chart.scrollLeft = Math.max(0, Math.min(max, into - lead));
+      return true;
+    };
+    // Once now, and again next frame for the case where the tab is still
+    // offstage and has no width yet.
+    if (!scrollToToday()) requestAnimationFrame(scrollToToday);
+  }
+
   if (g.unscheduled.length) {
     const box = el('div', 'g-unscheduled');
     const h = el('div', 'g-unsched-head');

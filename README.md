@@ -137,7 +137,7 @@ To run the tests, copy from the private handoff folder into `tests/fixtures/`:
 python -m http.server 8777
 ```
 
-Then open <http://127.0.0.1:8777/tests/>. 153 assertions, checked against the
+Then open <http://127.0.0.1:8777/tests/>. 158 assertions, checked against the
 reference implementation's own output row by row.
 
 Four deliberate differences from that output, each asserted explicitly rather

@@ -582,8 +582,9 @@ function categoryBlock(cat, jobs, { full = false } = {}) {
   const body = el('div', 'cat-body');
   const hdr = el('div', `job col-head${full ? ' is-full' : ''}`);
   hdr.append(el('span', null, 'Prod Nbr'), el('span', null, 'PO'),
-    el('span', null, 'Vessel'), el('span', null, 'Due'),
-    el('span', null, 'Status'), el('span', null, ''));
+    el('span', null, 'Vessel'), el('span', null, 'Due'));
+  if (full) hdr.append(el('span', null, 'Status'));
+  hdr.append(el('span', null, ''));
   body.append(hdr);
   for (const j of jobs) body.append(jobRow(j, { full }));
   block.append(body);
@@ -607,7 +608,10 @@ function jobRow(j, { full = false } = {}) {
   row.append(label);
 
   row.append(el('span', `due${j.is_stock ? ' stock' : ''}`, j.due_display));
-  row.append(el('span', 'status', j.status));
+  // Status only in the full-width block. Left out of the markup rather than
+  // hidden: a hidden grid item is removed from flow and everything after it
+  // shifts a column left.
+  if (full) row.append(el('span', 'status', j.status));
 
   const acts = el('span', 'acts');
   const edit = el('button', 'mini', 'Label');
@@ -716,12 +720,19 @@ function renderHistory() {
 let completing = [];
 
 function openCompleteDialog(jobs) {
-  completing = jobs.map((j) => ({ job: j, ticked: true }));
+  // Stock is listed but starts unticked. Its ERP dates are written once and
+  // never revised, so "past its end date" says nothing about whether the work
+  // is done — every stock build on the 21/08 export is months past a date that
+  // was never meant to hold. Ticking it by default would sweep live work off
+  // the board. Customer orders are the opposite: a passed date usually does
+  // mean finished.
+  completing = jobs.map((j) => ({ job: j, ticked: !j.is_stock }));
 
   $('completeLede').textContent = jobs.length === 1
     ? `${jobs[0].prod_no} — ${jobs[0].label}, due ${jobs[0].due_display}.`
     : `${jobs.length} jobs are past their end date and still open. Untick anything `
-      + `still in the shop.`;
+      + `still in the shop. Stock builds start unticked — their dates are set once `
+      + `and never revised, so a passed date says nothing about them.`;
 
   renderCompleteList();
   $('completeOverlay').classList.add('show');

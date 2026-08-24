@@ -10,7 +10,7 @@ import { buildBoard, toDateOnly, toAU, toISO, addWeeks } from '../js/transform.j
 import { resolveDisplays, aliasGroups, stellaCode, labelFor, detectNewCodes,
          existingBoats, acceptNewCode, applyTemplate } from '../js/vessel-codes.js';
 import { renderPrint, measure, fitToPage, balanceColumns } from '../js/print.js';
-import { ganttLayout, packLanes } from '../js/gantt.js';
+import { ganttLayout, packLanes, renderGantt as renderGanttChart } from '../js/gantt.js';
 
 const results = [];
 const check = (name, pass, detail = '') => results.push({ name, pass, detail });
@@ -581,6 +581,46 @@ export async function run() {
   check('the everything scale reaches back to the oldest job',
     toISO(wide.start) < toISO(gLanes.start), `${toISO(wide.start)} vs ${toISO(gLanes.start)}`);
   eq('...so nothing needs listing separately', wide.unscheduled.length, 0);
+
+  // ---- gantt scroll position ----------------------------------------------
+  // A scrolling chart opens on today, not on the oldest job. Today sits in the
+  // middle of this synthetic two-year span, so a wrong target cannot hide
+  // behind the clamp at either end — which is exactly what the real export did
+  // while the arithmetic was wrong.
+  {
+    const wideJobs = [];
+    for (let m = 0; m < 24; m++) {
+      const y = 2026 + Math.floor(m / 12);
+      const mm = String((m % 12) + 1).padStart(2, '0');
+      wideJobs.push({ prod_no: `W${m}`, label: `Job ${m}`, category: 'Davits',
+        start_date: `${y}-${mm}-02`, end_date: `${y}-${mm}-20`, is_stock: false });
+    }
+    const gh = document.createElement('div');
+    gh.style.cssText = 'width:1000px; position:absolute; left:0; top:0; visibility:hidden;';
+    document.body.append(gh);
+    renderGanttChart(gh, wideJobs, { asOf: { y: 2027, m: 1, d: 15 }, pxPerDay: 8 });
+    const chart = gh.querySelector('.gantt');
+    const cb = chart.getBoundingClientRect();
+    const line = chart.querySelector('.g-today').getBoundingClientRect();
+
+    check('a scrolling chart opens somewhere other than the beginning',
+      chart.scrollLeft > 0, String(chart.scrollLeft));
+    check('...and not merely pinned to the far end',
+      chart.scrollLeft < chart.scrollWidth - chart.clientWidth,
+      `${chart.scrollLeft} of ${chart.scrollWidth - chart.clientWidth}`);
+    check('today is on screen when it opens',
+      line.x >= cb.x - 1 && line.x <= cb.x + cb.width + 1, '');
+    check('...with history to its left, not jammed against the edge',
+      line.x - cb.x > 40, String(Math.round(line.x - cb.x)));
+
+    // The label column is frozen: it must not move as the chart scrolls.
+    const lbl = gh.querySelector('.g-row:not(.g-head) .g-label');
+    const before = lbl.getBoundingClientRect().x;
+    chart.scrollLeft += 300;
+    check('the label column stays put while the chart scrolls',
+      Math.abs(lbl.getBoundingClientRect().x - before) < 1, '');
+    gh.remove();
+  }
 
   // ---- print layout + auto-fit -------------------------------------------
   // A real A4-sized host, laid out but off-screen, so heights are truthful.
