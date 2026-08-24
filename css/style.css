@@ -607,3 +607,102 @@ button.linkish:disabled { opacity: .5; cursor: default; }
 .g-unsched-row:last-child { border-bottom: none; }
 .g-unsched-row .g-cat { color: var(--text-dim); font-size: 12px; }
 .g-unsched-row .g-when { color: var(--text-dim); font-variant-numeric: tabular-nums; text-align: right; }
+
+/* ---------- view toolbars ---------- */
+.view-bar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.view-bar .spacer { margin-left: auto; }
+.view-bar .hint { font-size: 12.5px; color: var(--text-dim); }
+.view-bar .mini:disabled { opacity: .4; cursor: default; border-color: var(--line); }
+
+/* ---------- orders view: the shape of the printed sheet ----------
+   Narrow categories side by side, davits full width beneath, using the same
+   balancer the print layout uses so the two views never disagree about which
+   category sits where. */
+.board-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 26px; align-items: start; }
+.board-col { min-width: 0; }
+.cat-block.is-full { margin-top: 4px; }
+@media (max-width: 1100px) { .board-grid { grid-template-columns: 1fr; } }
+
+.cat-head {
+  display: flex; align-items: baseline; gap: 10px; width: 100%;
+  background: none; border: none; border-bottom: 2px solid var(--red-deep);
+  color: var(--white); font-family: inherit; text-align: left;
+  padding: 0 0 6px; margin-bottom: 4px; cursor: pointer;
+}
+.cat-head:hover { border-bottom-color: var(--red-bright); }
+.cat-head .cat-caret { color: var(--text-dim); font-size: 11px; }
+.cat-block.is-collapsed { margin-bottom: 10px; }
+.cat-block.is-collapsed .cat-head { border-bottom-color: var(--line); }
+
+/* Two columns halves the room, so the narrow blocks lose the status column and
+   lean on a tighter grid. Davits keeps the full set. */
+.board-col .job {
+  grid-template-columns: 66px 64px minmax(90px, 1fr) 80px 0 92px;
+  gap: 8px; font-size: 13px; padding: 7px 6px;
+}
+.board-col .job > :nth-child(5) { display: none; }
+.board-col .job .acts .mini { padding: 4px 6px; font-size: 11px; }
+.job.is-full { grid-template-columns: 76px 78px minmax(200px, 1.8fr) 96px 92px 148px; }
+
+/* ---------- history ---------- */
+.hist { font-size: 13.5px; }
+.hist-row {
+  display: grid; grid-template-columns: 78px 1.5fr 1.1fr 96px 104px 92px;
+  gap: 12px; align-items: baseline;
+  padding: 8px 8px; border-bottom: 1px solid var(--line);
+}
+.hist-row:hover { background: rgba(255,255,255,.03); }
+.hist-head {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .13em;
+  text-transform: uppercase; color: var(--text-dim); border-bottom: 2px solid var(--line);
+}
+.hist-head:hover { background: none; }
+.hist-row .prod, .hist-row .due, .hist-row .when { font-variant-numeric: tabular-nums; color: var(--text-dim); }
+.hist-row .label { color: var(--white); }
+.hist-row .cat { color: var(--text-dim); font-size: 12.5px; }
+.hist-row .acts { text-align: right; }
+
+/* ---------- bulk complete ---------- */
+.c-actions-top { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.c-actions-top .spacer { margin-left: auto; }
+.c-actions-top .hint { font-size: 12px; color: var(--text-dim); }
+.c-list { max-height: 46vh; overflow-y: auto; border: 1.5px solid var(--line); border-radius: 10px; }
+.c-row {
+  display: grid; grid-template-columns: 22px 74px 1.4fr 1fr 96px; gap: 10px;
+  align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--line);
+  font-size: 13px; cursor: pointer;
+}
+.c-row:last-child { border-bottom: none; }
+.c-row:hover { background: rgba(255,255,255,.04); }
+.c-row input { accent-color: var(--red-bright); width: 16px; height: 16px; }
+.c-row .c-prod, .c-row .c-due { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.c-row .c-cat { color: var(--text-dim); font-size: 12px; }
+
+/* ---------- gantt: lanes, progress, wide mode ---------- */
+.gantt.is-wide { overflow-x: auto; padding-bottom: 10px; }
+.gantt.is-wide .g-row { width: calc(var(--g-label) + var(--g-track)); }
+.gantt.is-wide .g-scale { width: var(--g-track); }
+
+.g-lane { min-height: 24px; }
+.gantt.is-packed .g-bar { top: 3px; height: 18px; }
+.gantt.is-packed .g-label .g-name { color: var(--text-dim); font-size: 11.5px; }
+
+.g-bar.is-clickable { cursor: pointer; }
+.g-bar.is-clickable:hover { outline: 1.5px solid var(--white); outline-offset: 1px; }
+
+/* Progress inside the bar. Only completion sets it today; floor tracking is
+   the eventual source. */
+.g-fill {
+  position: absolute; left: 0; top: 0; bottom: 0;
+  background: rgba(255,255,255,.28); pointer-events: none;
+}
+.g-bar.is-done { background: #2f5d33; border-color: #5fb85f; }
+.g-bar.is-done .g-fill { background: rgba(255,255,255,.18); }
+.g-row.is-done .g-label .g-name { color: var(--text-dim); text-decoration: line-through; }
+
+/* Bars carry their own state classes in packed mode, where the row cannot. */
+.g-bar.is-overdue { background: #7a1114; border-color: var(--red-bright); border-style: dashed; }
+.g-bar.is-stock { background: var(--line); border-color: var(--text-dim); }

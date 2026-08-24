@@ -107,17 +107,38 @@
     <div id="warnings"></div>
 
     <div class="tabs">
-      <button class="tab" id="tabEditBtn" aria-current="page">Review &amp; edit</button>
+      <button class="tab" id="tabEditBtn" aria-current="page">Current orders</button>
       <button class="tab" id="tabGanttBtn">Gantt</button>
+      <button class="tab" id="tabHistoryBtn">History</button>
       <button class="tab" id="tabPrintBtn">Print preview</button>
     </div>
 
     <section id="tabEdit">
+      <div class="view-bar">
+        <button class="mini" id="completePastDue">Complete past due…</button>
+        <button class="mini" id="collapseAll">Collapse all</button>
+        <span class="spacer"></span>
+        <span class="hint" id="boardCount"></span>
+      </div>
       <div id="board"></div>
     </section>
 
     <section id="tabGantt" class="offstage">
+      <div class="view-bar">
+        <button class="mini" id="ganttPacked" aria-pressed="false">Stack into lanes</button>
+        <button class="mini" id="ganttAll" aria-pressed="false">Show everything</button>
+        <span class="spacer"></span>
+        <span class="hint" id="ganttHint">Click a bar to mark it complete.</span>
+      </div>
       <div id="gantt"></div>
+    </section>
+
+    <section id="tabHistory" class="offstage">
+      <div class="view-bar">
+        <span class="hint">Completed work. It stays off the board and off every future
+          board, whatever the ERP keeps saying, until it is reopened here.</span>
+      </div>
+      <div id="history"></div>
     </section>
 
     <section id="tabPrint" class="offstage">
@@ -237,6 +258,29 @@
         ERP description for those jobs and warns until it is resolved.
       </span>
     </div>
+  </div>
+</div>
+
+<!-- ============ COMPLETE PAST DUE ============
+     A sweep rather than one job at a time: the backlog of never-closed orders
+     arrives all at once, and clearing it row by row is the reason it does not
+     get cleared. Everything is ticked by default and can be unticked. -->
+<div class="overlay" id="completeOverlay">
+  <div class="box wide">
+    <h3>Mark completed</h3>
+    <div class="lede" id="completeLede"></div>
+    <div class="c-actions-top">
+      <button class="mini" id="completeAll">Tick all</button>
+      <button class="mini" id="completeNone">Untick all</button>
+      <span class="spacer"></span>
+      <span class="hint" id="completeCount"></span>
+    </div>
+    <div id="completeList" class="c-list"></div>
+    <div class="actions">
+      <button class="primary" id="completeConfirm">Mark ticked as complete</button>
+      <button class="ghost" id="completeCancel">Cancel</button>
+    </div>
+    <div class="hint">Reversible — anything marked here can be reopened from the History tab.</div>
   </div>
 </div>
 

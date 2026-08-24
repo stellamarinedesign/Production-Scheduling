@@ -10,7 +10,7 @@ import { buildBoard, toDateOnly, toAU, toISO, addWeeks } from '../js/transform.j
 import { resolveDisplays, aliasGroups, stellaCode, labelFor, detectNewCodes,
          existingBoats, acceptNewCode, applyTemplate } from '../js/vessel-codes.js';
 import { renderPrint, measure, fitToPage, balanceColumns } from '../js/print.js';
-import { ganttLayout } from '../js/gantt.js';
+import { ganttLayout, packLanes } from '../js/gantt.js';
 
 const results = [];
 const check = (name, pass, detail = '') => results.push({ name, pass, detail });
@@ -490,6 +490,97 @@ export async function run() {
   eq('a job with no dates is counted, not dropped',
     ganttLayout([{ prod_no: 'N', label: 'N', category: 'Davits', start_date: null, end_date: null }],
       { asOf }).undated, 1);
+
+  // ---- completion ---------------------------------------------------------
+  // The handoff assumed finished work never arrives, because the ERP filter
+  // drops Completed/Canceled/Closed. That holds only while the ERP status
+  // actually flips; a job finished on the floor and never closed stays
+  // In Process in every export after it, and the board accumulates it forever.
+  const doneNo = board.jobs[0].prod_no;
+  const withDone = buildBoard(src.rows, {
+    codeMap, horizonWeeks: 12, asOf,
+    overrides: { [doneNo]: { completed: true, completedAt: '2026-08-20T01:00:00.000Z', completedBy: 'x@y' } },
+  });
+  check('a completed job leaves the board', !withDone.jobs.some((j) => j.prod_no === doneNo), '');
+  eq('...and lands in history', withDone.completed.map((j) => j.prod_no), [doneNo]);
+  eq('...carrying who and when', withDone.completed[0].completed_by, 'x@y');
+  eq('...counted out of the board total', withDone.meta.job_count, board.meta.job_count - 1);
+  eq('...and reads as fully done for the bar fill', withDone.completed[0].progress, 1);
+
+  // Completion is checked ahead of the horizon, or a job finished months ago
+  // would be a horizon exclusion and never reach History at all.
+  const oldJob = board.excluded.find((e) => e.kind === 'horizon');
+  if (oldJob) {
+    const farDone = buildBoard(src.rows, {
+      codeMap, horizonWeeks: 12, asOf,
+      overrides: { [oldJob.prod_no]: { completed: true } },
+    });
+    eq('a job completed outside the horizon still reaches history',
+      farDone.completed.map((j) => j.prod_no), [oldJob.prod_no]);
+  }
+
+  eq('past-due is what the sweep offers, and it is not empty',
+    board.warnings.pastDue.length > 0, true);
+  check('everything offered is genuinely past its end date and on the board',
+    board.warnings.pastDue.every((j) => j.end_date < toISO(asOf) && !j.hidden && !j.completed), '');
+
+  // includeCompleted is what the everything-view uses.
+  const everything = buildBoard(src.rows, {
+    codeMap, horizonWeeks: null, asOf, includeCompleted: true,
+    overrides: { [doneNo]: { completed: true } },
+  });
+  check('the everything view keeps completed work on the chart',
+    everything.jobs.some((j) => j.prod_no === doneNo && j.completed), '');
+
+  // ---- lane packing -------------------------------------------------------
+  const lane = (rows) => packLanes(rows).map((l) => l.map((r) => r.prod_no));
+  eq('jobs that never overlap share one lane',
+    lane([
+      { prod_no: 'a', start_date: '2026-01-01', end_date: '2026-01-05' },
+      { prod_no: 'b', start_date: '2026-01-10', end_date: '2026-01-15' },
+    ]), [['a', 'b']]);
+  eq('jobs that overlap take a lane each',
+    lane([
+      { prod_no: 'a', start_date: '2026-01-01', end_date: '2026-01-10' },
+      { prod_no: 'b', start_date: '2026-01-05', end_date: '2026-01-15' },
+    ]), [['a'], ['b']]);
+  eq('a lane is reused once it frees up',
+    lane([
+      { prod_no: 'a', start_date: '2026-01-01', end_date: '2026-01-10' },
+      { prod_no: 'b', start_date: '2026-01-05', end_date: '2026-01-15' },
+      { prod_no: 'c', start_date: '2026-01-20', end_date: '2026-01-25' },
+    ]), [['a', 'c'], ['b']]);
+  // Friday-then-Monday should still read as two jobs, not one long block.
+  eq('touching jobs do not share a lane',
+    lane([
+      { prod_no: 'a', start_date: '2026-01-01', end_date: '2026-01-05' },
+      { prod_no: 'b', start_date: '2026-01-06', end_date: '2026-01-09' },
+    ]), [['a'], ['b']]);
+  eq('input order does not matter',
+    lane([
+      { prod_no: 'c', start_date: '2026-01-20', end_date: '2026-01-25' },
+      { prod_no: 'b', start_date: '2026-01-05', end_date: '2026-01-15' },
+      { prod_no: 'a', start_date: '2026-01-01', end_date: '2026-01-10' },
+    ]), [['a', 'c'], ['b']]);
+  eq('nothing packs into nothing', packLanes([]), []);
+
+  // Interval partitioning is optimal: lanes used == peak simultaneous jobs.
+  const gLanes = ganttLayout(gJobs, { asOf });
+  for (const grp of gLanes.groups) {
+    const peak = Math.max(...grp.rows.map((r) =>
+      grp.rows.filter((o) => o.start_date <= r.end_date && o.end_date >= r.start_date).length));
+    check(`lanes for ${grp.category} are as few as the overlaps allow`,
+      grp.lanes.length <= peak, `${grp.lanes.length} lanes, peak overlap ${peak}`);
+  }
+  check('packing loses no job',
+    gLanes.groups.every((grp) => grp.lanes.flat().length === grp.rows.length), '');
+
+  // The window narrows only when the chart has to fit. A scrolling chart shows
+  // the whole span, which is the point of it.
+  const wide = ganttLayout(gJobs, { asOf, scaleFromAll: true });
+  check('the everything scale reaches back to the oldest job',
+    toISO(wide.start) < toISO(gLanes.start), `${toISO(wide.start)} vs ${toISO(gLanes.start)}`);
+  eq('...so nothing needs listing separately', wide.unscheduled.length, 0);
 
   // ---- print layout + auto-fit -------------------------------------------
   // A real A4-sized host, laid out but off-screen, so heights are truthful.

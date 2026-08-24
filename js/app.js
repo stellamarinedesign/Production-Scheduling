@@ -2,12 +2,13 @@
 
 import { xlsxAdapter } from './adapters/index.js';
 import { buildBoard, byCategory, today, toAU, toDateOnly } from './transform.js';
-import { CATEGORY_ORDER, EXCLUSION_ORDER, EXCLUSION_GROUP_LABEL } from './rules.js';
+import { CATEGORY_ORDER, PRINT_LAYOUT, EXCLUSION_ORDER, EXCLUSION_GROUP_LABEL } from './rules.js';
 import { stellaCode, labelFor, existingBoats, acceptNewCode, applyTemplate } from './vessel-codes.js';
 import { Auth, ROLE, friendlyAuthError } from './auth.js';
 import { Store } from './store.js';
 import { renderPrint, measure, fitToPage } from './print.js';
 import { renderGantt } from './gantt.js';
+import { balanceColumns } from './print.js';
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => {
@@ -23,6 +24,7 @@ const state = {
   codeMap: {},
   overrides: {},
   itemOverrides: {},
+  gantt: { packed: false, all: false },
   settings: { horizonWeeks: 12, maxStock: null, autoFit: true },
   board: null,
   fit: null,
@@ -252,7 +254,27 @@ function wireControls() {
 
   $('tabEditBtn').addEventListener('click', () => showTab('edit'));
   $('tabGanttBtn').addEventListener('click', () => showTab('gantt'));
+  $('tabHistoryBtn').addEventListener('click', () => showTab('history'));
   $('tabPrintBtn').addEventListener('click', () => showTab('print'));
+
+  $('completePastDue').addEventListener('click', () =>
+    openCompleteDialog(state.board.warnings.pastDue ?? []));
+
+  $('collapseAll').addEventListener('click', () => {
+    if (collapsed.size) collapsed.clear();
+    else for (const c of CATEGORY_ORDER) collapsed.add(c);
+    saveCollapsed(collapsed);
+    renderBoard();
+  });
+
+  const ganttToggle = (id, key) => $(id).addEventListener('click', () => {
+    state.gantt[key] = !state.gantt[key];
+    $(id).classList.toggle('on', state.gantt[key]);
+    $(id).setAttribute('aria-pressed', String(state.gantt[key]));
+    renderGanttView();
+  });
+  ganttToggle('ganttPacked', 'packed');
+  ganttToggle('ganttAll', 'all');
   $('printBtn').addEventListener('click', () => { showTab('print'); window.print(); });
 }
 
@@ -265,7 +287,7 @@ function setAutoFit(on, { save = true } = {}) {
   if (save) { Store.saveSettings({ autoFit: on }); rebuild(); }
 }
 
-const TABS = ['edit', 'gantt', 'print'];
+const TABS = ['edit', 'gantt', 'history', 'print'];
 
 function showTab(which) {
   for (const t of TABS) {
@@ -312,9 +334,8 @@ function rebuild() {
   renderWarnings();
   renderBoard();
   renderFitStatus();
-  // Same jobs as the board, hidden ones dropped — the chart is a second view of
-  // one dataset, not a second dataset.
-  renderGantt($('gantt'), state.board.jobs.filter((j) => !j.hidden), { asOf: today() });
+  renderGanttView();
+  renderHistory();
 }
 
 function renderProvenance() {
@@ -503,37 +524,75 @@ function renderBoard() {
   host.textContent = '';
   const groups = byCategory(state.board.jobs, { includeHidden: true });
 
-  let any = false;
-  for (const cat of CATEGORY_ORDER) {
-    const jobs = groups.get(cat) ?? [];
-    if (!jobs.length) continue;
-    any = true;
+  const counts = Object.fromEntries(
+    CATEGORY_ORDER.map((c) => [c, (groups.get(c) ?? []).length]));
 
-    const block = el('div', 'cat-block');
-    const head = el('div', 'cat-head');
-    head.append(el('h2', null, cat));
-    const shown = jobs.filter((j) => !j.hidden).length;
-    head.append(el('span', 'n', shown === jobs.length ? `${shown}` : `${shown} of ${jobs.length}`));
-    block.append(head);
+  // Same shape as the printed sheet: the four narrow categories side by side,
+  // davits full width underneath. Same balancer too, so the two views agree
+  // about which category sits where instead of drifting apart.
+  const { left, right } = balanceColumns(counts);
 
-    // Column headers per category, not once at the top: the categories are far
-    // enough apart that a single header row scrolls away and stops helping.
-    const hdr = el('div', 'job col-head');
-    hdr.append(el('span', null, 'Prod Nbr'), el('span', null, 'PO'),
-      el('span', null, 'Vessel'), el('span', null, 'Due'),
-      el('span', null, 'Status'), el('span', null, ''));
-    block.append(hdr);
+  const grid = el('div', 'board-grid');
+  for (const side of [left, right]) {
+    const col = el('div', 'board-col');
+    for (const cat of side) {
+      const block = categoryBlock(cat, groups.get(cat) ?? []);
+      if (block) col.append(block);
+    }
+    grid.append(col);
+  }
+  host.append(grid);
 
-    for (const j of jobs) block.append(jobRow(j));
-    host.append(block);
+  for (const cat of PRINT_LAYOUT.full) {
+    const block = categoryBlock(cat, groups.get(cat) ?? [], { full: true });
+    if (block) { block.classList.add('is-full'); host.append(block); }
   }
 
+  const any = CATEGORY_ORDER.some((c) => (groups.get(c) ?? []).length);
   $('emptyState').hidden = any;
   $('stockNote').textContent = `${state.board.jobs.filter((j) => j.is_stock).length} stock`;
+
+  const pastDue = state.board.warnings.pastDue?.length ?? 0;
+  $('boardCount').textContent = `${state.board.meta.job_count} on the board`
+    + (pastDue ? ` · ${pastDue} past due` : '');
+  $('completePastDue').disabled = !pastDue;
+  $('collapseAll').textContent = collapsed.size ? 'Expand all' : 'Collapse all';
 }
 
-function jobRow(j) {
-  const row = el('div', `job${j.on_hold ? ' on-hold' : ''}${j.hidden ? ' is-hidden' : ''}`);
+function categoryBlock(cat, jobs, { full = false } = {}) {
+  if (!jobs.length) return null;
+  const isShut = collapsed.has(cat);
+  const block = el('div', `cat-block${isShut ? ' is-collapsed' : ''}`);
+
+  const head = el('button', 'cat-head');
+  head.setAttribute('aria-expanded', String(!isShut));
+  head.append(el('span', 'cat-caret', isShut ? '\u25b8' : '\u25be'));
+  head.append(el('h2', null, cat));
+  const shown = jobs.filter((j) => !j.hidden).length;
+  head.append(el('span', 'n', shown === jobs.length ? `${shown}` : `${shown} of ${jobs.length}`));
+  head.addEventListener('click', () => {
+    if (collapsed.has(cat)) collapsed.delete(cat); else collapsed.add(cat);
+    saveCollapsed(collapsed);
+    renderBoard();
+  });
+  block.append(head);
+
+  if (isShut) return block;
+
+  const body = el('div', 'cat-body');
+  const hdr = el('div', `job col-head${full ? ' is-full' : ''}`);
+  hdr.append(el('span', null, 'Prod Nbr'), el('span', null, 'PO'),
+    el('span', null, 'Vessel'), el('span', null, 'Due'),
+    el('span', null, 'Status'), el('span', null, ''));
+  body.append(hdr);
+  for (const j of jobs) body.append(jobRow(j, { full }));
+  block.append(body);
+  return block;
+}
+
+function jobRow(j, { full = false } = {}) {
+  const row = el('div', `job${j.on_hold ? ' on-hold' : ''}${j.hidden ? ' is-hidden' : ''}`
+    + `${full ? ' is-full' : ''}`);
 
   row.append(el('span', 'prod', j.prod_no));
 
@@ -559,8 +618,156 @@ function jobRow(j) {
   hide.addEventListener('click', () => (j.hidden ? unhide(j) : openHideDialog(j)));
   acts.append(hide);
 
+  const done = el('button', 'mini', 'Done');
+  done.title = 'Mark completed — off the board for good, reversible from History';
+  done.addEventListener('click', () => openCompleteDialog([j]));
+  acts.append(done);
+
   row.append(acts);
   return row;
+}
+
+function renderGanttView() {
+  const { packed, all } = state.gantt;
+
+  // "Everything" drops the horizon and puts completed work back, so the chart
+  // can show the whole span rather than the printable slice. It scrolls at a
+  // fixed day width instead of compressing — two years squeezed onto one screen
+  // is a smear, not a chart.
+  const jobs = all
+    ? buildBoard(state.rows, {
+        codeMap: state.codeMap, asOf: today(), overrides: state.overrides,
+        itemOverrides: state.itemOverrides, horizonWeeks: null, includeCompleted: true,
+      }).jobs.filter((j) => !j.hidden)
+    : state.board.jobs.filter((j) => !j.hidden);
+
+  const g = renderGantt($('gantt'), jobs, {
+    asOf: today(),
+    mode: packed ? 'packed' : 'rows',
+    pxPerDay: all ? 8 : null,
+    onBarClick: Auth.isManager ? (r) => openCompleteDialog([r]) : null,
+  });
+
+  $('ganttHint').textContent = all
+    ? `Every order, horizon and completion ignored \u2014 ${g.rowCount} bars, scroll sideways.`
+    : 'Click a bar to mark it complete.';
+}
+
+function renderHistory() {
+  const host = $('history');
+  host.textContent = '';
+  const done = state.board.completed ?? [];
+
+  $('tabHistoryBtn').textContent = done.length ? `History (${done.length})` : 'History';
+
+  if (!done.length) {
+    host.append(el('div', 'state', 'Nothing completed yet. Jobs marked done from the '
+      + 'orders view or the Gantt land here.'));
+    return;
+  }
+
+  const table = el('div', 'hist');
+  const hdr = el('div', 'hist-row hist-head');
+  hdr.append(el('span', null, 'Prod Nbr'), el('span', null, 'Vessel'),
+    el('span', null, 'Category'), el('span', null, 'Due'),
+    el('span', null, 'Completed'), el('span', null, ''));
+  table.append(hdr);
+
+  for (const j of done) {
+    const row = el('div', 'hist-row');
+    row.append(el('span', 'prod', j.prod_no));
+    row.append(el('span', 'label', j.label));
+    row.append(el('span', 'cat', j.category));
+    row.append(el('span', 'due', j.due_display));
+    const when = j.completed_at ? new Date(j.completed_at) : null;
+    const stamp = el('span', 'when', when
+      ? when.toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      : '\u2014');
+    if (j.completed_by) stamp.title = `Marked by ${j.completed_by}`;
+    row.append(stamp);
+
+    const acts = el('span', 'acts');
+    const reopen = el('button', 'mini', 'Reopen');
+    reopen.title = 'Put it back on the board';
+    reopen.addEventListener('click', async () => {
+      await Store.setCompleted([j.prod_no], false, Auth.user?.email);
+      delete state.overrides[j.prod_no]?.completed;
+      state.overrides = await Store.loadOverrides();
+      rebuild();
+      toast(`${j.prod_no} reopened.`);
+    });
+    acts.append(reopen);
+    row.append(acts);
+    table.append(row);
+  }
+  host.append(table);
+}
+
+// ---------------------------------------------------------------------------
+// completion
+//
+// The ERP saved filter drops Completed/Canceled/Closed, so the handoff assumed
+// finished work never arrives. That holds only while the ERP status actually
+// flips. A job finished on the floor and never closed in the system stays
+// `In Process` in every export after it — which is what the past-due rows and
+// the stale stock builds are. Marking it here is the missing half.
+// ---------------------------------------------------------------------------
+
+let completing = [];
+
+function openCompleteDialog(jobs) {
+  completing = jobs.map((j) => ({ job: j, ticked: true }));
+
+  $('completeLede').textContent = jobs.length === 1
+    ? `${jobs[0].prod_no} — ${jobs[0].label}, due ${jobs[0].due_display}.`
+    : `${jobs.length} jobs are past their end date and still open. Untick anything `
+      + `still in the shop.`;
+
+  renderCompleteList();
+  $('completeOverlay').classList.add('show');
+}
+
+function renderCompleteList() {
+  const host = $('completeList');
+  host.textContent = '';
+  for (const entry of completing) {
+    const { job } = entry;
+    const row = el('label', 'c-row');
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = entry.ticked;
+    box.addEventListener('change', () => { entry.ticked = box.checked; updateCompleteCount(); });
+    row.append(box);
+    row.append(el('span', 'c-prod', job.prod_no));
+    row.append(el('span', 'c-name', job.label));
+    row.append(el('span', 'c-cat', job.category));
+    row.append(el('span', 'c-due', job.due_display));
+    host.append(row);
+  }
+  updateCompleteCount();
+}
+
+function updateCompleteCount() {
+  const n = completing.filter((e) => e.ticked).length;
+  $('completeCount').textContent = `${n} of ${completing.length} ticked`;
+  $('completeConfirm').disabled = n === 0;
+}
+
+async function confirmComplete() {
+  const picked = completing.filter((e) => e.ticked).map((e) => e.job.prod_no);
+  if (!picked.length) return;
+  $('completeConfirm').disabled = true;
+  try {
+    await Store.setCompleted(picked, true, Auth.user?.email);
+    state.overrides = await Store.loadOverrides();
+    $('completeOverlay').classList.remove('show');
+    rebuild();
+    toast(`${picked.length} marked complete. Reopen from History if that was wrong.`);
+  } catch (e) {
+    toast(`Could not save — ${e.message}`, 6000);
+  } finally {
+    $('completeConfirm').disabled = false;
+  }
 }
 
 function renderFitStatus() {
@@ -816,16 +1023,22 @@ function wireOverlays() {
     closeLabel();
   });
 
+  $('completeCancel').addEventListener('click', () => $('completeOverlay').classList.remove('show'));
+  $('completeConfirm').addEventListener('click', confirmComplete);
+  $('completeAll').addEventListener('click', () => { completing.forEach((e) => { e.ticked = true; }); renderCompleteList(); });
+  $('completeNone').addEventListener('click', () => { completing.forEach((e) => { e.ticked = false; }); renderCompleteList(); });
+
   $('hideCancel').addEventListener('click', () => $('hideOverlay').classList.remove('show'));
   $('hideSave').addEventListener('click', saveHide);
 
-  for (const id of ['labelOverlay', 'hideOverlay']) {
+  for (const id of ['labelOverlay', 'hideOverlay', 'completeOverlay']) {
     $(id).addEventListener('click', (e) => { if (e.target.id === id) $(id).classList.remove('show'); });
   }
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     $('labelOverlay').classList.remove('show');
     $('hideOverlay').classList.remove('show');
+    $('completeOverlay').classList.remove('show');
   });
 }
 
@@ -911,6 +1124,19 @@ async function setOverride(prodNo, patch) {
 }
 
 // ---------------------------------------------------------------------------
+
+// Which categories are rolled up. A device preference, not a shared setting —
+// it says nothing about the work, so it does not belong in Firestore, and a
+// write per toggle would be needlessly chatty.
+const COLLAPSE_KEY = 'stella.board.collapsed';
+const loadCollapsed = () => {
+  try { return new Set(JSON.parse(localStorage.getItem(COLLAPSE_KEY) ?? '[]')); }
+  catch { return new Set(); }
+};
+const saveCollapsed = (set) => {
+  try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...set])); } catch {}
+};
+let collapsed = loadCollapsed();
 
 let toastTimer;
 function toast(msg, ms = 3200) {

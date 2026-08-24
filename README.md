@@ -16,8 +16,8 @@ build step.
 3. Check the warnings, adjust the horizon, hide or relabel anything that needs it.
 4. **Print board.**
 
-Three tabs over the same data: **Review & edit**, **Gantt** (start/end bars,
-grouped by category), and **Print preview**.
+Four tabs over the same data: **Current orders**, **Gantt**, **History**, and
+**Print preview**.
 
 Everything is parsed in the browser. The spreadsheet is never uploaded anywhere.
 
@@ -46,7 +46,7 @@ Normalising happens in the transform, once, downstream.
 | `js/transform.js` | `RawRow[] → Job[]`. The only place that knows ERP column names. |
 | `js/adapters/xlsx.js` | Reads the export, validates its columns, stamps provenance. |
 | `js/print.js` | The A4 layout, column balancing, and the measured auto-fit. |
-| `js/gantt.js` | Start/end bars. Layout is a pure function; only the renderer touches the DOM. |
+| `js/gantt.js` | Start/end bars, lane packing. Layout is a pure function; only the renderer touches the DOM. |
 | `js/store.js` | Firestore, with a localStorage fallback. |
 | `js/auth.js` | Sign-in and roles. |
 | `js/firebase.js` | One Firebase app, shared by the store and the auth gate. |
@@ -100,6 +100,15 @@ Normalising happens in the transform, once, downstream.
   Letting them set the left edge stretched the chart from 16 weeks to 35 and
   halved every bar. Anything the window cannot place is listed under the chart
   with its dates rather than drawn as a sliver.
+- **Completion is marked here, not read from the ERP.** The handoff assumed
+  finished work never arrives, because the ERP saved filter drops
+  Completed/Canceled/Closed. That only holds while the ERP status actually
+  flips — a job finished on the floor and never closed stays `In Process` in
+  every export after it, so the board accumulates work that is long done. A
+  completed job leaves the board for good and lands in History; it is keyed on
+  the production number, so it never returns. Reversible from History.
+- **Completion is not hiding.** Hidden means "not on this print"; completed
+  means "finished". They are separate fields with separate consequences.
 - Nothing is ever dropped silently. Every excluded row carries a reason.
 
 Full background: `handoff/STELLA_PRODUCTION_BOARD_CONTEXT.md`.
@@ -128,7 +137,7 @@ To run the tests, copy from the private handoff folder into `tests/fixtures/`:
 python -m http.server 8777
 ```
 
-Then open <http://127.0.0.1:8777/tests/>. 130 assertions, checked against the
+Then open <http://127.0.0.1:8777/tests/>. 153 assertions, checked against the
 reference implementation's own output row by row.
 
 Four deliberate differences from that output, each asserted explicitly rather

@@ -187,12 +187,15 @@ export function shortLabel({
  * @param {Object}  opts.itemOverrides  inventoryId -> { label, displayCode } — pins
  *                                    a product's label across every future order
  * @param {number|null} opts.maxStock  cap stock rows per category; null = off
+ * @param {boolean} opts.includeCompleted  keep completed jobs on the board too;
+ *                                    the Gantt's "everything" view needs them
  * @returns {{jobs: Array, excluded: Array, warnings: Object, meta: Object}}
  */
 export function buildBoard(rows, opts = {}) {
   const {
     codeMap = {}, horizonWeeks = 12, asOf = today(),
     overrides = {}, itemOverrides = {}, maxStock = null,
+    includeCompleted = false,
   } = opts;
 
   const resolved = resolveDisplays(codeMap);
@@ -201,6 +204,7 @@ export function buildBoard(rows, opts = {}) {
 
   const jobs = [];
   const excluded = [];
+  const completed = [];
 
   // Codes this export carries that the map has never seen. Detected across ALL
   // rows, not just the ones on the board: a code first appearing outside the
@@ -241,13 +245,6 @@ export function buildBoard(rows, opts = {}) {
     const customer = text(r['Customer Name']);
     const isStock = customer === INTERNAL_CUSTOMER;
 
-    // Stock builds carry no real due-date commitment — they stay on the board
-    // regardless of horizon, shown as STOCK.
-    if (cutoffOrd !== null && ord(endDate) > cutoffOrd && !isStock) {
-      drop(`due ${toAU(endDate)}, beyond the ${horizonWeeks}-week horizon`, 'horizon');
-      continue;
-    }
-
     const ov = overrides[prodNo] ?? {};
     const itemOverride = itemOverrides[text(inv)] ?? null;
     const label = shortLabel({
@@ -262,7 +259,7 @@ export function buildBoard(rows, opts = {}) {
 
     const startDate = toDateOnly(r['Start Date']);
 
-    jobs.push({
+    const job = {
       prod_no: prodNo,
       category,
       description: text(r['Production Description']),
@@ -290,7 +287,41 @@ export function buildBoard(rows, opts = {}) {
       on_hold: status === 'On Hold',
       hidden: Boolean(ov.hidden),
       hidden_reason: ov.hiddenReason ?? null,
-    });
+      // COMPLETION — marked here, not in the ERP.
+      //
+      // The handoff assumed completed work never arrives, because the ERP saved
+      // filter drops Completed/Canceled/Closed before the export is written.
+      // That only holds while the ERP status actually flips. A job finished on
+      // the floor but never closed in the ERP stays `In Process` in every
+      // export from then on, so the board accumulates work that is long done —
+      // which is what the six past-due rows and all seven stock builds are.
+      //
+      // Hiding was the nearest existing tool and it is the wrong one: hidden
+      // means "not on this print", completed means "finished, for good".
+      completed: Boolean(ov.completed),
+      completed_at: ov.completedAt ?? null,
+      completed_by: ov.completedBy ?? null,
+      // 0..1. No UI sets this yet; a completed job reads as done so the bar is
+      // full the moment it is marked, rather than waiting on tracking.
+      progress: ov.completed ? 1 : (typeof ov.progress === 'number' ? ov.progress : null),
+    };
+
+    // Completed work leaves the board permanently and lands in History. The
+    // check sits ahead of the horizon so a job finished months ago is still a
+    // full record rather than a horizon exclusion.
+    if (job.completed) {
+      completed.push(job);
+      if (!includeCompleted) continue;
+    }
+
+    // Stock builds carry no real due-date commitment — they stay on the board
+    // regardless of horizon, shown as STOCK.
+    if (cutoffOrd !== null && ord(endDate) > cutoffOrd && !isStock && !job.completed) {
+      drop(`due ${toAU(endDate)}, beyond the ${horizonWeeks}-week horizon`, 'horizon');
+      continue;
+    }
+
+    jobs.push(job);
   }
 
   // Category order, then stock last within category, then due date ascending.
@@ -336,16 +367,21 @@ export function buildBoard(rows, opts = {}) {
     || String(a.reason).localeCompare(String(b.reason))
     || String(a.prod_no).localeCompare(String(b.prod_no)));
 
-  const visible = kept.filter((j) => !j.hidden);
+  const visible = kept.filter((j) => !j.hidden && !j.completed);
   return {
     jobs: kept,
     excluded,
+    completed: completed.sort((a, b) =>
+      String(b.completed_at ?? '').localeCompare(String(a.completed_at ?? ''))),
     warnings: {
       // Only warn for jobs that would actually appear — an On Hold job outside
       // the horizon is already gone and is not worth flagging.
       onHold: visible.filter((j) => j.on_hold),
       hidden: kept.filter((j) => j.hidden),
       unmapped: excluded.filter((e) => e.kind === 'unmapped'),
+      // On the board, past its end date, and not marked done. The prompt for
+      // the bulk-complete sweep.
+      pastDue: visible.filter((j) => j.end_date && j.end_date < toISO(asOf)),
       components: visible.filter((j) => j.is_component),
       newCodes,
       codeConflicts: resolved.conflicts,

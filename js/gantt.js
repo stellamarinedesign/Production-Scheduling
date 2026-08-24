@@ -25,13 +25,51 @@ function weekStart(d) {
 }
 
 /**
+ * Pack rows into lanes so a category can occupy fewer lines.
+ *
+ * Greedy by start date: each job takes the first lane whose last job has
+ * already finished, otherwise it opens a new one. Sorting by start first makes
+ * this optimal — it uses the fewest lanes any arrangement could — which is the
+ * standard interval-partitioning result, and the reason not to reach for
+ * anything cleverer.
+ *
+ * `gapDays` keeps two bars that merely touch from reading as one continuous
+ * block; a job ending Friday and the next starting Monday should still look
+ * like two jobs.
+ *
+ * @returns {Array<Array<row>>} lanes, each a list of non-overlapping rows
+ */
+export function packLanes(rows, { gapDays = 1 } = {}) {
+  const lanes = [];
+  const ends = [];   // last end date per lane, as a comparable ISO string
+
+  for (const r of [...rows].sort((a, b) =>
+    String(a.start_date).localeCompare(String(b.start_date))
+    || String(a.end_date).localeCompare(String(b.end_date)))) {
+    const s = toDateOnly(r.start_date);
+    let placed = false;
+    for (let i = 0; i < lanes.length; i++) {
+      const freeFrom = addDays(toDateOnly(ends[i]), gapDays);
+      if (utc(s) > utc(freeFrom)) {
+        lanes[i].push(r);
+        ends[i] = r.end_date;
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) { lanes.push([r]); ends.push(r.end_date); }
+  }
+  return lanes;
+}
+
+/**
  * Work out where every bar sits, as percentages of the chart width.
  *
  * @param {Array} jobs      board jobs (hidden ones should already be gone)
  * @param {{asOf}} opts     defaults to today; drives the "now" marker
  * @returns {{start, end, totalDays, todayPct, groups, months, weeks, overdue}}
  */
-export function ganttLayout(jobs, { asOf = todayDate() } = {}) {
+export function ganttLayout(jobs, { asOf = todayDate(), scaleFromAll = false } = {}) {
   const dated = jobs
     .map((j) => ({ job: j, s: toDateOnly(j.start_date), e: toDateOnly(j.end_date ?? j.due_date) }))
     .filter((r) => r.s && r.e);
@@ -52,8 +90,11 @@ export function ganttLayout(jobs, { asOf = todayDate() } = {}) {
   // So the scale comes from non-stock jobs, and a stock bar starting before the
   // window is clamped to the edge and marked as continuing off-chart. Nothing
   // is hidden; the scale just stops being dictated by rows with no commitment.
+  // ...unless the caller can afford the full span. The everything-view scrolls
+  // at a fixed day width rather than fitting, so compressing it costs nothing
+  // and the historical stock bars are the whole point of looking.
   const committed = dated.filter((r) => !r.job.is_stock);
-  const scaleFrom = committed.length ? committed : dated;
+  const scaleFrom = scaleFromAll || !committed.length ? dated : committed;
 
   let min = scaleFrom[0].s, max = scaleFrom[0].e;
   for (const r of scaleFrom) {
@@ -126,10 +167,10 @@ export function ganttLayout(jobs, { asOf = todayDate() } = {}) {
     || String(a.end_date).localeCompare(String(b.end_date));
 
   const groups = CATEGORY_ORDER
-    .map((category) => ({
-      category,
-      rows: (byCat.get(category) ?? []).filter((r) => !outside(r)).sort(byStart),
-    }))
+    .map((category) => {
+      const rows = (byCat.get(category) ?? []).filter((r) => !outside(r)).sort(byStart);
+      return { category, rows, lanes: packLanes(rows) };
+    })
     .filter((g) => g.rows.length);
 
   const unscheduled = CATEGORY_ORDER
@@ -176,10 +217,19 @@ const el = (tag, cls, text) => {
   return n;
 };
 
-/** Draw the chart into a host element. */
+/**
+ * Draw the chart into a host element.
+ *
+ * @param {Object} opts
+ * @param {'rows'|'packed'} opts.mode   one bar per line, or lanes per category
+ * @param {number|null} opts.pxPerDay   fixed scale (scrolls) instead of fitting
+ * @param {(job)=>void} opts.onBarClick called when a bar is clicked
+ */
 export function renderGantt(host, jobs, opts = {}) {
+  const { mode = 'rows', pxPerDay = null, onBarClick = null } = opts;
   host.textContent = '';
-  const g = ganttLayout(jobs, opts);
+  // A scrolling chart has no reason to narrow its window.
+  const g = ganttLayout(jobs, { ...opts, scaleFromAll: opts.scaleFromAll ?? Boolean(pxPerDay) });
 
   if (!g.groups.length) {
     host.append(el('div', 'state', 'Nothing to chart — no job on the board has both a start and an end date.'));
@@ -211,7 +261,15 @@ export function renderGantt(host, jobs, opts = {}) {
   }
   host.append(summary);
 
-  const chart = el('div', 'gantt');
+  const chart = el('div', `gantt${mode === 'packed' ? ' is-packed' : ''}`);
+
+  // A fixed day width makes the chart scroll rather than compress, which is
+  // what the everything-view needs — a two-year span squeezed into one screen
+  // is a smear.
+  if (pxPerDay) {
+    chart.classList.add('is-wide');
+    chart.style.setProperty('--g-track', `${Math.round(g.totalDays * pxPerDay)}px`);
+  }
 
   // --- header: months over the timeline ---
   const head = el('div', 'g-row g-head');
@@ -249,37 +307,74 @@ export function renderGantt(host, jobs, opts = {}) {
     banner.append(bscale);
     chart.append(banner);
 
-    for (const r of group.rows) {
-      const row = el('div', `g-row${r.overdue ? ' is-overdue' : ''}${r.is_stock ? ' is-stock' : ''}`
+    const makeBar = (r, { showLabel }) => {
+      const bar = el('div', `g-bar${r.overdue ? ' is-overdue' : ''}${r.is_stock ? ' is-stock' : ''}`
+        + `${r.completed ? ' is-done' : ''}`
         + `${r.clippedStart ? ' clip-start' : ''}${r.clippedEnd ? ' clip-end' : ''}`);
-
-      const label = el('div', 'g-label');
-      label.append(el('span', 'g-prod', r.prod_no));
-      label.append(el('span', 'g-name', r.label));
-      label.title = `${r.prod_no} — ${r.label}`;
-      row.append(label);
-
-      const track = el('div', 'g-scale');
-      gridlines(track);
-
-      const bar = el('div', 'g-bar');
       bar.style.left = `${r.leftPct}%`;
       bar.style.width = `${r.widthPct}%`;
-      bar.title = `${r.label}\n${r.startDisplay} → ${r.endDisplay}  (${r.days} days)`
+      bar.title = `${r.prod_no} — ${r.label}`
+        + `\n${r.startDisplay} → ${r.endDisplay}  (${r.days} days)`
         + `${r.is_stock ? '\nStock build — no committed date' : ''}`
+        + `${r.completed ? '\nCompleted' : ''}`
         + `${r.overdue ? '\nEnd date has passed' : ''}`
         + `${r.clippedStart ? '\nStarts before this chart begins' : ''}`
-        + `${r.clippedEnd ? '\nRuns past the end of this chart' : ''}`;
-      bar.append(el('span', 'g-bar-text', r.days >= 8 ? r.label : ''));
-      track.append(bar);
+        + `${r.clippedEnd ? '\nRuns past the end of this chart' : ''}`
+        + (onBarClick ? '\n\nClick to mark complete' : '');
 
-      // The dates sit outside the bar so a short job is still readable.
-      const tag = el('div', 'g-dates', `${r.startDisplay} – ${r.endDisplay}`);
-      tag.style.left = `calc(${r.leftPct + r.widthPct}% + 8px)`;
-      track.append(tag);
+      // Progress fill. Nothing sets this yet beyond completion, but a done job
+      // reads as full immediately rather than waiting on floor tracking.
+      if (typeof r.progress === 'number' && r.progress > 0) {
+        const fill = el('div', 'g-fill');
+        fill.style.width = `${Math.min(100, r.progress * 100)}%`;
+        bar.append(fill);
+      }
+      if (showLabel) bar.append(el('span', 'g-bar-text', r.days >= 8 ? r.label : ''));
+      if (onBarClick) {
+        bar.classList.add('is-clickable');
+        bar.addEventListener('click', () => onBarClick(r));
+      }
+      return bar;
+    };
 
-      row.append(track);
-      chart.append(row);
+    if (mode === 'packed') {
+      // Every job in the category on as few lines as they fit on. Labels move
+      // into the bars, because a lane holds several jobs and the label column
+      // can only name one.
+      group.lanes.forEach((lane, i) => {
+        const row = el('div', 'g-row g-lane');
+        const label = el('div', 'g-label');
+        if (i === 0) label.append(el('span', 'g-name', `${group.lanes.length} lane${group.lanes.length > 1 ? 's' : ''}`));
+        row.append(label);
+        const track = el('div', 'g-scale');
+        gridlines(track);
+        for (const r of lane) track.append(makeBar(r, { showLabel: true }));
+        row.append(track);
+        chart.append(row);
+      });
+    } else {
+      for (const r of group.rows) {
+        const row = el('div', `g-row${r.overdue ? ' is-overdue' : ''}${r.is_stock ? ' is-stock' : ''}`
+          + `${r.completed ? ' is-done' : ''}`);
+
+        const label = el('div', 'g-label');
+        label.append(el('span', 'g-prod', r.prod_no));
+        label.append(el('span', 'g-name', r.label));
+        label.title = `${r.prod_no} — ${r.label}`;
+        row.append(label);
+
+        const track = el('div', 'g-scale');
+        gridlines(track);
+        track.append(makeBar(r, { showLabel: true }));
+
+        // The dates sit outside the bar so a short job is still readable.
+        const tag = el('div', 'g-dates', `${r.startDisplay} – ${r.endDisplay}`);
+        tag.style.left = `calc(${r.leftPct + r.widthPct}% + 8px)`;
+        track.append(tag);
+
+        row.append(track);
+        chart.append(row);
+      }
     }
   }
 

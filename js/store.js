@@ -11,7 +11,8 @@
 // Collections (STELLA_PRODUCTION_BOARD_CONTEXT.md §6, as amended):
 //   vesselCodes/{stellaCode}  { boat, riviera[], hull_prefix[], items[],
 //                               display, _confirmed }
-//   jobOverrides/{prodNo}     { hidden, hiddenReason, labelOverride, updatedAt }
+//   jobOverrides/{prodNo}     { hidden, hiddenReason, labelOverride, updatedAt,
+//                               completed, completedAt, completedBy, progress }
 //   itemOverrides/{itemId}    { inventoryId, label, displayCode, updatedAt }
 //   imports/{importId}        { retrievedAt, sourceId, sourceLabel,
 //                               horizonWeeks, maxStock, jobs[] }
@@ -122,6 +123,19 @@ export const Store = {
     return out;
   },
 
+  /**
+   * Mark jobs done, or undo it. Completion rides on jobOverrides because it is
+   * the same kind of thing — a manager decision keyed on a production number
+   * that has to survive the next upload — and because reusing the collection
+   * means no Firestore rules change, which is the step most easily forgotten.
+   */
+  async setCompleted(prodNos, done, who) {
+    const patch = done
+      ? { completed: true, completedAt: new Date().toISOString(), completedBy: who ?? null }
+      : { completed: false, completedAt: null, completedBy: null };
+    for (const prodNo of prodNos) await this.setOverride(prodNo, patch);
+  },
+
   async setOverride(prodNo, patch) {
     const stamped = { ...patch, updatedAt: new Date().toISOString() };
     if (this.mode === 'local') {
@@ -129,7 +143,7 @@ export const Store = {
       all[prodNo] = { ...(all[prodNo] ?? {}), ...stamped };
       // Drop the record entirely once nothing meaningful is left on it.
       const o = all[prodNo];
-      if (!o.hidden && !o.labelOverride) delete all[prodNo];
+      if (!o.hidden && !o.labelOverride && !o.completed) delete all[prodNo];
       lsSet('jobOverrides', all);
       return;
     }
@@ -137,7 +151,7 @@ export const Store = {
     const ref = doc(this._db, 'jobOverrides', prodNo);
     await setDoc(ref, stamped, { merge: true });
     const after = (await getDoc(ref)).data() ?? {};
-    if (!after.hidden && !after.labelOverride) await deleteDoc(ref);
+    if (!after.hidden && !after.labelOverride && !after.completed) await deleteDoc(ref);
   },
 
   // ---- per-item overrides -------------------------------------------------
