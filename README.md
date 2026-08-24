@@ -146,8 +146,15 @@ is ever emptied the app falls back to **local-only** — no sign-in, edits in
 
 ## Deploying
 
-GitHub Pages, serving the repo root. No build step: everything is ES modules
-loaded directly, SheetJS from CDN. Push to `main`.
+Live at <https://stellamarinedesign.github.io/Production-Scheduling/>.
+
+GitHub Pages serves `main` at the repo root. No build step — everything is ES
+modules loaded directly, SheetJS from CDN — so the files here are the files
+that ship, and a deploy is one push:
+
+```bash
+git push origin main
+```
 
 ---
 
