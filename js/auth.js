@@ -75,6 +75,25 @@ export const Auth = {
     await fa.signOut(auth);
   },
 
+  /**
+   * Send a set-your-own-password link.
+   *
+   * This is how somebody gets a password nobody else knows. An account still
+   * has to be created in the Firebase console first — self-signup stays off,
+   * because anyone who found the URL could otherwise create an account and,
+   * although they would only get the floor role, that is enough to read the
+   * whole production schedule.
+   *
+   * Firebase deliberately resolves this the same way whether or not the
+   * address exists, so it cannot be used to discover who has an account. That
+   * also means a typo looks exactly like success — hence the wording in the UI.
+   */
+  async sendPasswordReset(email) {
+    if (this.mode === 'local') throw new Error('Local mode — there are no accounts.');
+    const { fa, auth } = this._fb;
+    await fa.sendPasswordResetEmail(auth, email.trim());
+  },
+
   get isManager() { return this.role === ROLE.MANAGER; },
   get isFloor() { return this.role === ROLE.FLOOR; },
 };

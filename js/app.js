@@ -137,6 +137,29 @@ function wireAuth() {
     }
   };
   $('loginBtn').addEventListener('click', submit);
+
+  // Lets somebody set a password nobody else has seen — including whoever
+  // created their account. The account itself still comes from the console.
+  $('resetBtn').addEventListener('click', async () => {
+    const email = $('loginEmail').value.trim();
+    const err = $('loginErr');
+    if (!email) { err.textContent = 'Type your email address above first.'; return; }
+    $('resetBtn').disabled = true;
+    try {
+      await Auth.sendPasswordReset(email);
+      err.style.color = 'var(--text-dim)';
+      // Firebase answers identically for an address that has no account, so
+      // promising "it has been sent" would be a lie for a typo. Say what was
+      // actually done, and where to look.
+      err.textContent = `If ${email} has an account, a link to set a password is on its `
+        + `way. It can take a minute, and it may land in junk mail.`;
+    } catch (e) {
+      err.style.color = '';
+      err.textContent = friendlyAuthError(e);
+    } finally {
+      $('resetBtn').disabled = false;
+    }
+  });
   for (const id of ['loginEmail', 'loginPass']) {
     $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
   }

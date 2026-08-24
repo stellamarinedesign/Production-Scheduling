@@ -149,6 +149,12 @@ view, so a new account can never arrive with edit rights by accident. Hiding
 manager controls is tidiness, not security; the Firestore rules are the
 enforcement.
 
+Accounts are created in the Firebase console, never by self-signup: the floor
+role can read the whole published schedule, so read access is what is being
+protected. Passwords are not: **"Set or reset my password"** on the sign-in
+screen emails a link, so people choose their own and whoever created the
+account never sees it.
+
 Firebase project `production-scheduling-stella` is configured; sign-in and the
 Firestore rules are the gate, and App Check is deliberately off. If the config
 is ever emptied the app falls back to **local-only** — no sign-in, edits in
