@@ -514,8 +514,6 @@ function jobRow(j) {
   const label = el('span', 'label', j.label);
   if (j.label !== j.base_label) label.append(el('span', 'edited', 'EDITED'));
   else if (j.item_override) label.append(el('span', 'pinned', 'ITEM'));
-  // Booked as a component part but genuinely built here. Shown, not filtered.
-  if (j.is_component) label.append(el('span', 'pinned', 'COMPONENT'));
   row.append(label);
 
   row.append(el('span', `due${j.is_stock ? ' stock' : ''}`, j.due_display));

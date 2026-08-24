@@ -182,7 +182,11 @@ button.mini.on { background: var(--red-deep); border-color: var(--red-bright); }
 
 .job {
   display: grid;
-  grid-template-columns: 76px 78px minmax(200px, 1.8fr) 96px 92px auto;
+  /* The actions column is a FIXED width, not `auto`. With `auto` it sized to
+     content — 100px of buttons on a job row, 0px on the empty header cell — so
+     the flexible vessel column absorbed the difference and the Due and Status
+     headers sat 100px right of the data they labelled. */
+  grid-template-columns: 76px 78px minmax(200px, 1.8fr) 96px 92px 104px;
   gap: 12px; align-items: center;
   padding: 9px 10px; border-bottom: 1px solid var(--line);
   font-size: 14px;
@@ -334,7 +338,12 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
   letter-spacing: .06em; text-transform: uppercase; color: #5F5F5F;
 }
 #printRoot tbody tr:nth-child(even) td { background: #FAF8F8; }
-#printRoot .c-prod { width: 22%; }
+/* 26%, not 22%: the column headers render uppercase with letter-spacing, so
+   "PROD NBR:" needs 81px where 22% gave it 73 and it wrapped onto two lines —
+   which cost the whole table a row of height. Measured, not guessed. Above 27%
+   the vessel column gets squeezed and "Custom Lifter - Riviera 48" wraps
+   instead, so this is the window. */
+#printRoot .c-prod { width: 26%; }
 #printRoot .c-due  { width: 24%; text-align: center; }
 #printRoot .full .c-prod { width: 13%; }
 #printRoot .full .c-due  { width: 14%; }
