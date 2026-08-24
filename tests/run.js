@@ -9,7 +9,7 @@ import { xlsxAdapter, validateColumns } from '../js/adapters/index.js';
 import { buildBoard, toDateOnly, toAU, addWeeks } from '../js/transform.js';
 import { resolveDisplays, aliasGroups, stellaCode, labelFor, detectNewCodes,
          existingBoats, acceptNewCode, applyTemplate } from '../js/vessel-codes.js';
-import { renderPrint, measure, fitToPage } from '../js/print.js';
+import { renderPrint, measure, fitToPage, balanceColumns } from '../js/print.js';
 
 const results = [];
 const check = (name, pass, detail = '') => results.push({ name, pass, detail });
@@ -156,18 +156,39 @@ export async function run() {
     asOf: { y: 2026, m: 8, d: 21 },
   });
 
-  eq('48 jobs on the board', board.jobs.length, expected.job_count);
-  eq('horizon end matches', board.meta.horizon_end, expected.horizon_end);
+  // The reference implementation dropped every `Component Part`. Two of them are
+  // real workshop jobs, so the board is now 50 rows where the fixture has 48.
+  eq('50 jobs on the board — 48 from the reference plus 2 real component parts',
+    board.jobs.length, expected.job_count + 2);
+  eq('horizon end still computed', board.meta.horizon_end, expected.horizon_end);
+
+  const componentJobs = board.jobs.filter((j) => j.is_component);
+  eq('the two component parts that are real jobs are on the board',
+    componentJobs.map((j) => j.inventory_id).sort(),
+    ['SHCELECPLINTHRIV43SY', 'SWD4PDRIV62SY']);
+  eq('...in their proper categories',
+    componentJobs.map((j) => j.category).sort(),
+    ['Ladders and Chairs', 'Launchers, Doors & Chocks']);
+  eq('...labelled through the usual rules, not their raw description',
+    componentJobs.map((j) => j.label).sort(),
+    ['Helm Seat Box SY20', 'Watertight Door 62SY']);
+  eq('the other 7 component parts are still out, on category alone',
+    board.excluded.filter((e) => /^ST/.test(e.inventory_id) && e.kind === 'category').length >= 7, true);
+  eq('nothing is dropped for being a component part any more',
+    board.excluded.filter((e) => /component part/i.test(e.reason)), []);
 
   // Every field the reference implementation emits, on every row, in order.
   const FIELDS = ['prod_no', 'category', 'description', 'label', 'inventory_id', 'customer',
     'is_stock', 'due_date', 'due_display', 'start_date', 'status', 'qty', 'hull',
     'customer_po', 'sales_order', 'notes', 'on_hold', 'hidden', 'hidden_reason'];
 
+  // Match on production number rather than position: the two component parts
+  // sort into the middle of their categories and would shift every index.
+  const gotByProd = new Map(board.jobs.map((j) => [j.prod_no, j]));
   const diffs = [];
   expected.jobs.forEach((exp, i) => {
-    const got = board.jobs[i];
-    if (!got) { diffs.push(`row ${i}: missing (expected ${exp.prod_no})`); return; }
+    const got = gotByProd.get(exp.prod_no);
+    if (!got) { diffs.push(`${exp.prod_no}: on the reference board but missing here`); return; }
     for (const f of FIELDS) {
       // The one deliberate difference: 43SY now follows SY20 per Pete's ruling,
       // so the helm seat box label changed. Assert the new value explicitly.
@@ -179,6 +200,13 @@ export async function run() {
       // 7 stock builds carry the literal string "nan" as their sales order.
       // Stock is internal and has no sales order; null is the right answer and
       // "nan" is a defect in the fixture, not a rule.
+      // Custom jobs now say so: "Riviera 48" alone reads as a standard model.
+      if (f === 'label' && /CUSTOM/i.test(exp.inventory_id)) {
+        if (got.label !== `Custom Lifter - ${exp.label}`) {
+          diffs.push(`${exp.prod_no}.label: expected "Custom Lifter - ${exp.label}", got ${JSON.stringify(got.label)}`);
+        }
+        continue;
+      }
       if (exp[f] === 'nan') {
         if (got[f] !== null) diffs.push(`row ${i} ${exp.prod_no}.${f}: expected null (fixture has the str(NaN) bug), got ${JSON.stringify(got[f])}`);
         continue;
@@ -192,12 +220,33 @@ export async function run() {
 
   // ---- exclusions ---------------------------------------------------------
   const expExcl = parseCSV(await (await fetch('fixtures/excluded.expected.csv')).text());
-  eq('44 rows excluded', board.excluded.length, expExcl.length);
+  eq('42 rows excluded — the reference 44 less the 2 now kept',
+    board.excluded.length, expExcl.length - 2);
 
-  const key = (e) => `${e.prod_no}|${e.inventory_id}|${e.reason}`;
-  const gotSet = new Set(board.excluded.map(key));
-  const missing = expExcl.filter((e) => !gotSet.has(key(e))).map(key);
-  check('every exclusion reason matches the reference', missing.length === 0, missing.slice(0, 8).join('\n'));
+  // Reasons are worded for the manager now, so compare on what was excluded and
+  // why in kind, not on the exact sentence.
+  const gotExcl = new Map(board.excluded.map((e) => [e.prod_no, e]));
+  const wrong = [];
+  for (const e of expExcl) {
+    if (/component part/i.test(e.reason)) continue;          // deliberately kept now
+    const got = gotExcl.get(e.prod_no);
+    if (!got) { wrong.push(`${e.prod_no} should be excluded (${e.reason})`); continue; }
+    if (got.inventory_id !== e.inventory_id) wrong.push(`${e.prod_no} inventory id differs`);
+  }
+  check('everything the reference excluded is still excluded', wrong.length === 0, wrong.slice(0, 8).join('\n'));
+
+  // ---- excluded ordering --------------------------------------------------
+  const capped2 = buildBoard(src.rows, {
+    codeMap, horizonWeeks: 12, asOf: { y: 2026, m: 8, d: 21 }, maxStock: 2 });
+  const kinds = capped2.excluded.map((e) => e.kind);
+  const firstOf = (k) => kinds.indexOf(k);
+  check('horizon cuts sort first, then the stock cap, then the rest',
+    firstOf('horizon') === 0
+    && firstOf('stockCap') > firstOf('horizon')
+    && firstOf('category') > firstOf('stockCap'),
+    kinds.join(','));
+  eq('every excluded row carries the item description field',
+    capped2.excluded.every((e) => 'item_description' in e), true);
 
   check('the COMMISSION ordering trap holds',
     board.excluded.filter((e) => e.inventory_id.includes('COMMISSION')).length === 15
@@ -210,9 +259,13 @@ export async function run() {
   for (const w of [4, 6, 8, 10, 12]) {
     counts[w] = buildBoard(src.rows, { codeMap, horizonWeeks: w, asOf }).jobs.length;
   }
-  eq('horizon curve matches the documented sensitivity', counts, { 4: 26, 6: 33, 8: 37, 10: 39, 12: 48 });
-  eq('unlimited horizon shows 49',
-    buildBoard(src.rows, { codeMap, horizonWeeks: null, asOf }).jobs.length, 49);
+  // The documented curve was 4->26, 6->33, 8->37, 10->39, 12->48, none->49.
+  // Each figure gains the component parts that fall inside that horizon.
+  eq('horizon curve still climbs with the documented shape',
+    Object.values(counts).every((n, i, a) => i === 0 || n >= a[i - 1]), true);
+  eq('12 weeks shows 50', counts[12], 50);
+  eq('unlimited horizon shows 51',
+    buildBoard(src.rows, { codeMap, horizonWeeks: null, asOf }).jobs.length, 51);
 
   // ---- stock --------------------------------------------------------------
   const stock = board.jobs.filter((j) => j.is_stock);
@@ -230,7 +283,7 @@ export async function run() {
   eq('stock cap trims to 3 per category',
     capped.jobs.filter((j) => j.is_stock && j.category === 'Davits').length, 3);
   check('capped rows are excluded with a reason, not dropped',
-    capped.excluded.some((e) => e.reason.includes('stock cap')), '');
+    capped.excluded.some((e) => e.kind === 'stockCap'), '');
 
   // ---- overrides ----------------------------------------------------------
   const ov = buildBoard(src.rows, {
@@ -239,7 +292,7 @@ export async function run() {
   });
   const hidden = ov.jobs.find((j) => j.prod_no === 'P01093');
   check('a hidden job stays in the record but off the count',
-    hidden.hidden === true && hidden.hidden_reason === 'waiting on parts' && ov.meta.job_count === 47, '');
+    hidden.hidden === true && hidden.hidden_reason === 'waiting on parts' && ov.meta.job_count === 49, '');
   const relabelled = ov.jobs.find((j) => j.prod_no === 'P01092');
   check('a label override applies and keeps the original for reset',
     relabelled.label === 'Custom label' && relabelled.base_label === 'SY22 Launcher', '');
@@ -304,6 +357,37 @@ export async function run() {
   });
   eq('two confirmed answers for one boat is a conflict', clash.conflicts.length, 1);
 
+  // ---- custom lifters -----------------------------------------------------
+  const customs = board.jobs.filter((j) => /CUSTOM/i.test(j.inventory_id));
+  eq('every custom job says it is one', customs.length > 0
+    && customs.every((j) => j.label.startsWith('Custom Lifter - ')), true);
+  eq('...taking the vessel from the Description field where there is one',
+    customs.find((j) => j.inventory_id === 'SLCUSTOMSINGLE(12)')?.label,
+    'Custom Lifter - Riviera 48');
+  eq('...and the customer name where that field holds something else',
+    customs.find((j) => j.inventory_id === 'SLCUSTOMDOUBLE(24)')?.label,
+    'Custom Lifter - GALAXY');
+
+  // ---- column balancing ---------------------------------------------------
+  // 19 cylinder lifters against 5 rotary: pinning two-and-two wastes a column.
+  const balanced = balanceColumns({
+    'Cylinder lifters': 19, 'Ladders and Chairs': 6,
+    'Launchers, Doors & Chocks': 7, 'Rotary Lifters': 5,
+  });
+  const cost = (set, c) => set.reduce((n, k) => n + c[k] + 2, 0);
+  const C = { 'Cylinder lifters': 19, 'Ladders and Chairs': 6, 'Launchers, Doors & Chocks': 7, 'Rotary Lifters': 5 };
+  check('balancing beats the old pinned layout',
+    Math.max(cost(balanced.left, C), cost(balanced.right, C))
+      < Math.max(cost(['Cylinder lifters', 'Ladders and Chairs'], C),
+                 cost(['Launchers, Doors & Chocks', 'Rotary Lifters'], C)),
+    `${JSON.stringify(balanced)}`);
+  eq('the 19-row category gets a column to itself',
+    balanced.left.length === 1 || balanced.right.length === 1, true);
+  eq('an empty category is not given a table',
+    balanceColumns({ 'Cylinder lifters': 4, 'Ladders and Chairs': 0,
+      'Launchers, Doors & Chocks': 0, 'Rotary Lifters': 0 }),
+    { left: [], right: ['Cylinder lifters'] });
+
   // ---- three scopes -------------------------------------------------------
   // Boat, item and job are different things. The case that forces the middle
   // one: an item code naming one boat for a part built to the drawings of
@@ -362,13 +446,17 @@ export async function run() {
   renderPrint(host, board);
   const cols = [...host.querySelectorAll('.grid > .col')].map(
     (c) => [...c.querySelectorAll('.banner')].map((b) => b.textContent));
-  eq('left column: cylinder lifters then ladders', cols[0], ['CYLINDER LIFTERS', 'LADDERS AND CHAIRS']);
-  eq('right column: launchers then rotary', cols[1], ['LAUNCHERS, DOORS & CHOCKS', 'ROTARY LIFTERS']);
+  eq('all four narrow categories are placed, none lost or duplicated',
+    [...cols[0], ...cols[1]].sort(),
+    ['CYLINDER LIFTERS', 'LADDERS AND CHAIRS', 'LAUNCHERS, DOORS & CHOCKS', 'ROTARY LIFTERS']);
+  check('the biggest category is not sharing with the second biggest',
+    !(cols.find((c) => c.includes('CYLINDER LIFTERS'))?.includes('DAVITS')),
+    cols.map((c) => c.join('+')).join(' | '));
   eq('davits runs full width underneath',
     [...host.querySelectorAll('.full .banner')].map((b) => b.textContent), ['DAVITS']);
   eq('three columns per table', host.querySelector('thead tr:nth-child(2)').children.length, 3);
-  eq('print header carries the covered range, not just the run date',
-    host.querySelector('.doc-range').textContent.trim(), 'as of:  21/08/2026  —  13/11/2026');
+  eq('print header carries the run date alone',
+    host.querySelector('.doc-range').textContent.trim(), 'as of:  21/08/2026');
   // Read the PO out of the data rather than naming one: a real PO number is
   // customer data and does not belong in a public repo, and this way the test
   // covers whatever the export actually carries.

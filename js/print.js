@@ -4,12 +4,48 @@
 // A4 page: an invisible two-column grid holds the four narrow categories,
 // Davits runs full-width underneath because its descriptions are long.
 
-import { PRINT_LAYOUT } from './rules.js';
+import { PRINT_LAYOUT, CATEGORY_ORDER } from './rules.js';
 import { byCategory, toAU, toDateOnly } from './transform.js';
 
 // A4 at 96dpi, less the margins in the @page rule.
 const PAGE_H = 1123;
 const CONTENT_H = PAGE_H - Math.round(0.625 * 96) - Math.round(0.49 * 96);   // 1016px
+
+/**
+ * Split the narrow categories across two columns so the page is as short as
+ * possible.
+ *
+ * The old layout pinned them: cylinder lifters + ladders on the left, launchers
+ * + rotary on the right. With 19 cylinder-lifter rows against 5 rotary that
+ * leaves the right column half empty and the page taller than it needs to be.
+ *
+ * Four categories is 16 possible splits, so this takes the genuine optimum
+ * rather than a heuristic. Cost is rows plus TABLE_OVERHEAD for the banner and
+ * column-header rows each table carries; the taller column sets the height.
+ * Ties keep board order, so the layout only moves when it actually gains
+ * something — a board that reshuffles between prints is hard to read.
+ */
+const TABLE_OVERHEAD = 2;
+
+export function balanceColumns(counts, categories = PRINT_LAYOUT.narrow) {
+  const present = categories.filter((c) => (counts[c] ?? 0) > 0);
+  const cost = (set) => set.reduce((n, c) => n + counts[c] + TABLE_OVERHEAD, 0);
+
+  let best = null;
+  for (let mask = 0; mask < (1 << present.length); mask++) {
+    const left = present.filter((_, i) => mask & (1 << i));
+    const right = present.filter((_, i) => !(mask & (1 << i)));
+    const height = Math.max(cost(left), cost(right));
+    // Prefer the shorter page; then the more even split; then board order.
+    const skew = Math.abs(cost(left) - cost(right));
+    const score = [height, skew, mask];
+    if (!best || score[0] < best.score[0]
+        || (score[0] === best.score[0] && score[1] < best.score[1])) {
+      best = { left, right, score };
+    }
+  }
+  return { left: best.left, right: best.right };
+}
 
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
@@ -59,20 +95,23 @@ export function renderPrint(host, board) {
   host.textContent = '';
 
   const asOf = toAU(toDateOnly(board.meta.as_of));
-  const end = board.meta.horizon_end ? toAU(toDateOnly(board.meta.horizon_end)) : null;
 
-  host.append(el('div', 'doc-title', 'Current production orders'));
-  // The covered range, not just the run date. A board that was trimmed says so
-  // on its face — a silently shortened horizon that looks identical to a full
-  // one is worse than no auto-fit at all.
-  host.append(el('div', 'doc-range', `as of:  ${asOf}${end ? `  —  ${end}` : ''}`));
+  const head = el('div', 'doc-head');
+  head.append(el('div', 'doc-title', 'Current production orders'));
+  head.append(el('div', 'doc-range', `as of:  ${asOf}`));
+  host.append(head);
 
   const groups = byCategory(board.jobs);
-  const grid = el('div', 'grid');
 
-  for (const side of ['left', 'right']) {
+  // Which category sits in which column is decided by row count, not pinned.
+  const counts = Object.fromEntries(
+    CATEGORY_ORDER.map((c) => [c, (groups.get(c) ?? []).length]));
+  const { left, right } = balanceColumns(counts);
+
+  const grid = el('div', 'grid');
+  for (const side of [left, right]) {
     const col = el('div', 'col');
-    for (const cat of PRINT_LAYOUT[side]) {
+    for (const cat of side) {
       const jobs = groups.get(cat) ?? [];
       if (jobs.length) col.append(categoryTable(cat, jobs));
     }

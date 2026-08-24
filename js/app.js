@@ -2,7 +2,7 @@
 
 import { xlsxAdapter } from './adapters/index.js';
 import { buildBoard, byCategory, today, toAU, toDateOnly } from './transform.js';
-import { CATEGORY_ORDER } from './rules.js';
+import { CATEGORY_ORDER, EXCLUSION_ORDER, EXCLUSION_GROUP_LABEL } from './rules.js';
 import { stellaCode, labelFor, existingBoats, acceptNewCode, applyTemplate } from './vessel-codes.js';
 import { Auth, ROLE, friendlyAuthError } from './auth.js';
 import { Store } from './store.js';
@@ -431,16 +431,37 @@ function renderWarnings() {
     }));
   }
 
-  // Nothing disappears silently: if a job is missing, this says why.
+  // Nothing disappears silently: if a job is missing, this says why. Grouped so
+  // the horizon cut — the one the manager acts on, by widening it — is first.
   host.append(panel({
     title: 'Excluded rows', count: state.board.excluded.length,
     build: (b) => {
       b.append(el('div', null,
         `${state.board.meta.row_count} rows in the export, ${state.board.meta.job_count} on the board.`));
+
+      const byKind = new Map();
       for (const e of state.board.excluded) {
-        const r = el('div', 'xrow');
-        r.append(el('span', 'id', e.prod_no), el('span', null, e.inventory_id), el('span', 'why', e.reason));
-        b.append(r);
+        const k = e.kind ?? 'category';
+        if (!byKind.has(k)) byKind.set(k, []);
+        byKind.get(k).push(e);
+      }
+
+      for (const kind of EXCLUSION_ORDER) {
+        const rows = byKind.get(kind);
+        if (!rows?.length) continue;
+        const h = el('div', `xgroup ${kind}`);
+        h.append(el('span', null, EXCLUSION_GROUP_LABEL[kind] ?? kind));
+        h.append(el('span', 'count', String(rows.length)));
+        b.append(h);
+        for (const e of rows) {
+          const r = el('div', 'xrow');
+          r.append(el('span', 'id', e.prod_no));
+          r.append(el('span', null, e.inventory_id));
+          // The item's own description, which is often the clearer of the two.
+          r.append(el('span', 'desc', e.item_description || e.description || ''));
+          r.append(el('span', 'why', e.reason));
+          b.append(r);
+        }
       }
     },
   }));
@@ -464,6 +485,14 @@ function renderBoard() {
     head.append(el('span', 'n', shown === jobs.length ? `${shown}` : `${shown} of ${jobs.length}`));
     block.append(head);
 
+    // Column headers per category, not once at the top: the categories are far
+    // enough apart that a single header row scrolls away and stops helping.
+    const hdr = el('div', 'job col-head');
+    hdr.append(el('span', null, 'Prod Nbr'), el('span', null, 'PO'),
+      el('span', null, 'Vessel'), el('span', null, 'Due'),
+      el('span', null, 'Status'), el('span', null, ''));
+    block.append(hdr);
+
     for (const j of jobs) block.append(jobRow(j));
     host.append(block);
   }
@@ -477,18 +506,20 @@ function jobRow(j) {
 
   row.append(el('span', 'prod', j.prod_no));
 
+  // Riviera's PO sits next to the production number because that is the pair
+  // the manager reads together when checking an order against Riviera. It is
+  // manager-view only and never reaches the printed board.
+  row.append(el('span', 'po', j.customer_po ?? ''));
+
   const label = el('span', 'label', j.label);
   if (j.label !== j.base_label) label.append(el('span', 'edited', 'EDITED'));
   else if (j.item_override) label.append(el('span', 'pinned', 'ITEM'));
+  // Booked as a component part but genuinely built here. Shown, not filtered.
+  if (j.is_component) label.append(el('span', 'pinned', 'COMPONENT'));
   row.append(label);
 
   row.append(el('span', `due${j.is_stock ? ' stock' : ''}`, j.due_display));
   row.append(el('span', 'status', j.status));
-
-  // Riviera's PO number — manager view only. It never reaches the printed board.
-  const po = el('span', 'po');
-  if (j.customer_po) { po.append(document.createTextNode('PO ')); po.append(el('b', null, j.customer_po)); }
-  row.append(po);
 
   const acts = el('span', 'acts');
   const edit = el('button', 'mini', 'Label');

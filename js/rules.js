@@ -54,17 +54,47 @@ export const CATEGORY_ORDER = [
   'Davits',
 ];
 
-// Print layout: which categories sit where on the A4 page. Davits runs
-// full-width underneath because its descriptions are long.
+// Print layout. Davits runs full-width underneath because its descriptions are
+// long; the other four share a two-column grid.
+//
+// Which of the four sits in which column is NOT fixed — print.js balances them
+// by row count so the page comes out as short as possible. With 19 cylinder
+// lifters against 5 rotary, a pinned layout wastes most of one column.
 export const PRINT_LAYOUT = {
-  left:  ['Cylinder lifters', 'Ladders and Chairs'],
-  right: ['Launchers, Doors & Chocks', 'Rotary Lifters'],
-  full:  ['Davits'],
+  narrow: ['Cylinder lifters', 'Ladders and Chairs', 'Launchers, Doors & Chocks', 'Rotary Lifters'],
+  full:   ['Davits'],
 };
 
 // Statuses that appear on the board. Completed/Canceled/Closed are already
 // excluded by the ERP saved filter, but re-check in case that filter is edited.
 export const BOARD_STATUSES = new Set(['Planned', 'Released', 'In Process', 'On Hold']);
+
+// `Type` is NOT a filter.
+//
+// It used to be: only `Finished Good` reached the board. That was wrong.
+// SWD4PDRIV62SY (a watertight door) and SHCELECPLINTHRIV43SY (a helm seat box)
+// are both booked as `Component Part` and are both real workshop jobs — the ERP
+// classification reflects how they are sold, not whether the floor builds them.
+//
+// The filter was also doing no work. Of the 9 component parts in the 21/08
+// export, 7 are ST* water treatment and were already excluded by category; the
+// only two it ever caught were those two legitimate jobs. The category prefix
+// list is the filter, and it decides alone.
+//
+// `Type` is still carried on every job so the manager view can flag it.
+export const COMPONENT_TYPE = 'Component Part';
+
+// Order the excluded panel groups its rows in. Whatever the horizon cut comes
+// first — that is the list the manager actually acts on, by widening it — then
+// whatever the stock cap trimmed, then codes needing a rule, then the rest.
+export const EXCLUSION_ORDER = ['horizon', 'stockCap', 'unmapped', 'category'];
+
+export const EXCLUSION_GROUP_LABEL = {
+  horizon:  'Beyond the horizon',
+  stockCap: 'Trimmed by the stock cap',
+  unmapped: 'Unmapped code — needs a rule',
+  category: 'Not a board category',
+};
 
 // Customer name that means "no external customer — stock / internal build".
 export const INTERNAL_CUSTOMER = 'Stella Marine Group Pty Ltd';
@@ -72,8 +102,8 @@ export const INTERNAL_CUSTOMER = 'Stella Marine Group Pty Ltd';
 // Columns the transform needs. The adapter warns by name on any that are
 // missing rather than yielding a board that looks correct and is wrong.
 export const REQUIRED_COLUMNS = [
-  'Production Nbr.', 'Inventory ID', 'Production Description', 'Status',
-  'End Date', 'Start Date', 'Customer Name', 'Customer Order Nbr.',
+  'Production Nbr.', 'Inventory ID', 'Production Description', 'Item Description',
+  'Status', 'End Date', 'Start Date', 'Customer Name', 'Customer Order Nbr.',
   'Order Nbr.', 'Type', 'Qty. to Produce', 'Description', 'Internal Notes',
 ];
 

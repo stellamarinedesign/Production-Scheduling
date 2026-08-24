@@ -42,7 +42,7 @@ Normalising happens in the transform, once, downstream.
 | `js/vessel-codes.js` | Stella code derivation, boat groups, new-code detection, labels. |
 | `js/transform.js` | `RawRow[] → Job[]`. The only place that knows ERP column names. |
 | `js/adapters/xlsx.js` | Reads the export, validates its columns, stamps provenance. |
-| `js/print.js` | The A4 layout and the measured auto-fit. |
+| `js/print.js` | The A4 layout, column balancing, and the measured auto-fit. |
 | `js/store.js` | Firestore, with a localStorage fallback. |
 | `js/auth.js` | Sign-in and roles. |
 | `js/firebase.js` | One Firebase app, shared by the store and the auth gate. |
@@ -78,8 +78,18 @@ Normalising happens in the transform, once, downstream.
 - **A code the map has never seen is never auto-accepted.** It is queued on
   import and answered by hand, because the alternative is the board printing a
   guess that nobody knows is one.
+- **`Type` is not a filter.** The board used to require `Finished Good`, which
+  dropped a watertight door and a helm seat box that are real workshop jobs —
+  the ERP field reflects how a thing is sold, not whether the floor builds it.
+  Every other component part in the export is `ST*` water treatment and is
+  already excluded by category, so the prefix list is the filter and decides
+  alone. Component parts that reach the board are flagged, not hidden.
 - **The horizon runs from today**, not from the export date, so a stale export
   shows a shrinking board rather than a wrong one.
+- **Print column placement is computed, not pinned.** `balanceColumns` tries all
+  16 splits of the four narrow categories and takes the shortest page. With 19
+  cylinder lifters against 5 rotary, a fixed two-and-two layout wastes half a
+  column.
 - Nothing is ever dropped silently. Every excluded row carries a reason.
 
 Full background: `handoff/STELLA_PRODUCTION_BOARD_CONTEXT.md`.
@@ -108,14 +118,20 @@ To run the tests, copy from the private handoff folder into `tests/fixtures/`:
 python -m http.server 8777
 ```
 
-Then open <http://127.0.0.1:8777/tests/>. 97 assertions; the transform is only
-correct if it reproduces all 48 board rows and all 44 exclusion reasons.
+Then open <http://127.0.0.1:8777/tests/>. 111 assertions, checked against the
+reference implementation's own output row by row.
 
-Two deliberate differences from the reference output, both asserted explicitly:
+Four deliberate differences from that output, each asserted explicitly rather
+than quietly tolerated:
 
-- `43SY` displays `SY20` — same boat as the SY20 lifter.
-- Stock rows have `sales_order: null` rather than the string `"nan"`, which is
-  what Python's `str(NaN)` produced.
+- **50 jobs, not 48** — `SWD4PDRIV62SY` and `SHCELECPLINTHRIV43SY` are booked as
+  `Component Part` but are real workshop jobs, so the `Type` filter is gone.
+  42 exclusions rather than 44 follows from the same change.
+- **`43SY` displays `SY20`** — same boat as the SY20 lifter.
+- **Custom jobs read `Custom Lifter - Riviera 48`** — the vessel alone made a
+  one-off look like a standard model.
+- **Stock rows have `sales_order: null`** rather than the string `"nan"`, which
+  is what Python's `str(NaN)` wrote into every empty cell.
 
 ---
 

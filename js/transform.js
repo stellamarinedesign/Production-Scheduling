@@ -10,7 +10,8 @@
 
 import {
   CATEGORY_ORDER, BOARD_STATUSES, INTERNAL_CUSTOMER, HULL_RE,
-  VESSEL_IN_DESC_RE, CUSTOMER_SUFFIX_RE, LABEL_OVERRIDES, classify,
+  VESSEL_IN_DESC_RE, CUSTOMER_SUFFIX_RE, LABEL_OVERRIDES, COMPONENT_TYPE,
+  EXCLUSION_ORDER, classify,
 } from './rules.js';
 import { resolveDisplays, labelFor, detectNewCodes, applyTemplate } from './vessel-codes.js';
 
@@ -140,12 +141,16 @@ export function shortLabel({
   // back to the customer name when it holds something else entirely
   // ("5% drawing fee" starts with a digit, so it falls through).
   if (/CUSTOM/i.test(inv)) {
+    // The vessel alone does not say this is a one-off. "Riviera 48" next to a
+    // row of standard lifters reads as just another model; "Custom Lifter -
+    // Riviera 48" tells the floor to expect different drawings.
+    const prefix = 'Custom Lifter - ';
     if (!isBlank(descField) && descField !== '') {
       const m = VESSEL_IN_DESC_RE.exec(String(descField));
-      if (m) return m[1].replace(/\s+/g, ' ').trim();
+      if (m) return prefix + m[1].replace(/\s+/g, ' ').trim();
     }
     const name = text(customer).replace(CUSTOMER_SUFFIX_RE, '');
-    return name ? name.toUpperCase() : desc;
+    return prefix + (name ? name.toUpperCase() : desc);
   }
 
   // Davits are labelled by capacity + configuration, not by vessel.
@@ -205,23 +210,33 @@ export function buildBoard(rows, opts = {}) {
   for (const r of rows) {
     const prodNo = text(r['Production Nbr.']);
     const inv = r['Inventory ID'];
-    const drop = (reason) => excluded.push({
+    const drop = (reason, kind) => excluded.push({
       prod_no: prodNo,
       inventory_id: text(inv),
       description: text(r['Production Description']).slice(0, 70),
+      // The item's own description, which is often the more canonical of the
+      // two — STFKITAQ reads "Jumbo filter kit Aquarius" here against
+      // "4.5\" x 10\" 5/20 micron prefilter set" on the production order.
+      item_description: text(r['Item Description']).slice(0, 70),
       reason,
+      kind,
     });
 
     const { category, excludeReason } = classify(inv);
-    if (excludeReason) { drop(excludeReason); continue; }
+    if (excludeReason) {
+      drop(excludeReason, excludeReason.startsWith('unmapped') ? 'unmapped' : 'category');
+      continue;
+    }
 
-    if (text(r['Type']) !== 'Finished Good') { drop('component part, not a finished good'); continue; }
+    // `Type` is deliberately NOT a filter — see rules.js. It is carried on the
+    // record so the manager view can flag a component part, not used to drop it.
+    const type = text(r['Type']);
 
     const status = text(r['Status']);
-    if (!BOARD_STATUSES.has(status)) { drop(`status '${status}' not shown on board`); continue; }
+    if (!BOARD_STATUSES.has(status)) { drop(`status '${status}' not shown on board`, 'category'); continue; }
 
     const endDate = toDateOnly(r['End Date']);
-    if (!endDate) { drop('no End Date'); continue; }
+    if (!endDate) { drop('no End Date', 'category'); continue; }
 
     const customer = text(r['Customer Name']);
     const isStock = customer === INTERNAL_CUSTOMER;
@@ -229,7 +244,7 @@ export function buildBoard(rows, opts = {}) {
     // Stock builds carry no real due-date commitment — they stay on the board
     // regardless of horizon, shown as STOCK.
     if (cutoffOrd !== null && ord(endDate) > cutoffOrd && !isStock) {
-      drop(`due ${toISO(endDate)}, beyond ${horizonWeeks}-week horizon`);
+      drop(`due ${toAU(endDate)}, beyond the ${horizonWeeks}-week horizon`, 'horizon');
       continue;
     }
 
@@ -262,8 +277,11 @@ export function buildBoard(rows, opts = {}) {
       end_date: toISO(endDate),                // real date even for stock — Gantt needs it
       start_date: toISO(startDate),
       status,
+      type,
+      is_component: type === COMPONENT_TYPE,
       qty: Number(r['Qty. to Produce']) || 1,
       // Background fields — captured, not displayed on the printed board:
+      item_description: text(r['Item Description']),
       hull: extractHull(r['Description'], r['Production Description']),
       customer_po: textOrNull(r['Customer Order Nbr.']),
       sales_order: textOrNull(r['Order Nbr.']),
@@ -298,7 +316,9 @@ export function buildBoard(rows, opts = {}) {
             prod_no: j.prod_no,
             inventory_id: j.inventory_id,
             description: j.description.slice(0, 70),
-            reason: `stock build beyond stock cap ${maxStock}`,
+            item_description: j.item_description ?? '',
+            reason: `stock build beyond the cap of ${maxStock} per category`,
+            kind: 'stockCap',
           });
           continue;
         }
@@ -306,6 +326,15 @@ export function buildBoard(rows, opts = {}) {
       kept.push(j);
     }
   }
+
+  // Horizon cuts first — that is the group the manager acts on, by widening it.
+  // Then the stock-cap trim, then codes needing a rule, then everything else
+  // grouped by reason so like sits with like.
+  const kindRank = new Map(EXCLUSION_ORDER.map((k, i) => [k, i]));
+  excluded.sort((a, b) =>
+    (kindRank.get(a.kind) ?? 99) - (kindRank.get(b.kind) ?? 99)
+    || String(a.reason).localeCompare(String(b.reason))
+    || String(a.prod_no).localeCompare(String(b.prod_no)));
 
   const visible = kept.filter((j) => !j.hidden);
   return {
@@ -316,7 +345,8 @@ export function buildBoard(rows, opts = {}) {
       // the horizon is already gone and is not worth flagging.
       onHold: visible.filter((j) => j.on_hold),
       hidden: kept.filter((j) => j.hidden),
-      unmapped: excluded.filter((e) => e.reason.startsWith('unmapped')),
+      unmapped: excluded.filter((e) => e.kind === 'unmapped'),
+      components: visible.filter((j) => j.is_component),
       newCodes,
       codeConflicts: resolved.conflicts,
       codeUndecided: resolved.undecided,
