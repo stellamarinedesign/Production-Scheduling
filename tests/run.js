@@ -6,10 +6,11 @@
 // all 44 exclusion reasons exactly.
 
 import { xlsxAdapter, validateColumns } from '../js/adapters/index.js';
-import { buildBoard, toDateOnly, toAU, addWeeks } from '../js/transform.js';
+import { buildBoard, toDateOnly, toAU, toISO, addWeeks } from '../js/transform.js';
 import { resolveDisplays, aliasGroups, stellaCode, labelFor, detectNewCodes,
          existingBoats, acceptNewCode, applyTemplate } from '../js/vessel-codes.js';
 import { renderPrint, measure, fitToPage, balanceColumns } from '../js/print.js';
+import { ganttLayout } from '../js/gantt.js';
 
 const results = [];
 const check = (name, pass, detail = '') => results.push({ name, pass, detail });
@@ -432,6 +433,63 @@ export async function run() {
 
   eq('the override is carried on the job so the UI can show it',
     Boolean(ladder56(pinnedCode).item_override), true);
+
+  // ---- gantt --------------------------------------------------------------
+  const gJobs = board.jobs.filter((j) => !j.hidden);
+  const g = ganttLayout(gJobs, { asOf });
+
+  eq('every job is either charted or listed, none lost',
+    g.groups.flatMap((x) => x.rows).length + g.unscheduled.length, gJobs.length);
+  eq('bands follow board order, not date order',
+    g.groups.map((x) => x.category),
+    ['Launchers, Doors & Chocks', 'Cylinder lifters', 'Ladders and Chairs', 'Rotary Lifters', 'Davits']);
+  check('within a band, earliest start first',
+    g.groups.every((x) => x.rows.every((r, i, a) => i === 0 || a[i - 1].start_date <= r.start_date)), '');
+
+  // The window is driven by committed work. Every stock build on this export
+  // has dates months in the past; letting them set the left edge stretched the
+  // chart from 16 weeks to 35 and halved every bar.
+  const stockStarts = gJobs.filter((j) => j.is_stock).map((j) => j.start_date).sort();
+  check('the window ignores stale stock dates',
+    toISO(g.start) > stockStarts[0], `window starts ${toISO(g.start)}, earliest stock ${stockStarts[0]}`);
+  eq('...and everything it cannot place is listed instead',
+    g.unscheduled.length, gJobs.filter((j) => j.is_stock).length);
+  check('the listed ones really do sit outside the window',
+    g.unscheduled.every((r) => r.end_date < toISO(g.start) || r.start_date >= toISO(g.end)), '');
+
+  check('every drawn bar sits inside the chart', g.groups.flatMap((x) => x.rows)
+    .every((r) => r.leftPct >= 0 && r.leftPct + r.widthPct <= 100.001), '');
+  check('no bar is invisible', g.groups.flatMap((x) => x.rows).every((r) => r.widthPct > 0), '');
+  check('today is on the chart', g.todayPct >= 0 && g.todayPct <= 100, String(g.todayPct));
+  check('the window starts on a Monday',
+    new Date(Date.UTC(g.start.y, g.start.m - 1, g.start.d)).getUTCDay() === 1, toISO(g.start));
+
+  // A job whose end date has passed and which is still open. Nothing else in
+  // the app surfaces this — the board sorts by due date, so it just looks like
+  // the top row.
+  eq('overdue counts jobs whose end date has passed',
+    g.overdue, g.groups.flatMap((x) => x.rows).filter((r) => r.end_date < toISO(asOf) && !r.is_stock).length);
+  check('overdue is more than nothing on this export', g.overdue > 0, String(g.overdue));
+  check('stock is never called overdue — it carries no promised date',
+    g.groups.flatMap((x) => x.rows).every((r) => !(r.is_stock && r.overdue)), '');
+
+  // Bar geometry, on a window we control exactly.
+  const synth = ganttLayout([
+    { prod_no: 'A', label: 'A', category: 'Davits', start_date: '2026-01-05', end_date: '2026-01-11', is_stock: false },
+    { prod_no: 'B', label: 'B', category: 'Davits', start_date: '2026-01-12', end_date: '2026-01-18', is_stock: false },
+  ], { asOf: { y: 2026, m: 1, d: 12 } });
+  eq('two flush weeks span the whole chart', synth.totalDays, 14);
+  eq('the first week is the first half', Math.round(synth.groups[0].rows[0].widthPct), 50);
+  eq('the second starts at the midpoint', Math.round(synth.groups[0].rows[1].leftPct), 50);
+  eq('a same-day job still gets a day of width',
+    Math.round(ganttLayout([{ prod_no: 'X', label: 'X', category: 'Davits',
+      start_date: '2026-01-05', end_date: '2026-01-05', is_stock: false }],
+      { asOf: { y: 2026, m: 1, d: 5 } }).groups[0].rows[0].widthPct), 14);
+
+  eq('no jobs means no chart, not a crash', ganttLayout([], { asOf }).groups, []);
+  eq('a job with no dates is counted, not dropped',
+    ganttLayout([{ prod_no: 'N', label: 'N', category: 'Davits', start_date: null, end_date: null }],
+      { asOf }).undated, 1);
 
   // ---- print layout + auto-fit -------------------------------------------
   // A real A4-sized host, laid out but off-screen, so heights are truthful.

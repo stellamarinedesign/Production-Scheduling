@@ -16,6 +16,9 @@ build step.
 3. Check the warnings, adjust the horizon, hide or relabel anything that needs it.
 4. **Print board.**
 
+Three tabs over the same data: **Review & edit**, **Gantt** (start/end bars,
+grouped by category), and **Print preview**.
+
 Everything is parsed in the browser. The spreadsheet is never uploaded anywhere.
 
 ---
@@ -43,6 +46,7 @@ Normalising happens in the transform, once, downstream.
 | `js/transform.js` | `RawRow[] → Job[]`. The only place that knows ERP column names. |
 | `js/adapters/xlsx.js` | Reads the export, validates its columns, stamps provenance. |
 | `js/print.js` | The A4 layout, column balancing, and the measured auto-fit. |
+| `js/gantt.js` | Start/end bars. Layout is a pure function; only the renderer touches the DOM. |
 | `js/store.js` | Firestore, with a localStorage fallback. |
 | `js/auth.js` | Sign-in and roles. |
 | `js/firebase.js` | One Firebase app, shared by the store and the auth gate. |
@@ -90,6 +94,12 @@ Normalising happens in the transform, once, downstream.
   16 splits of the four narrow categories and takes the shortest page. With 19
   cylinder lifters against 5 rotary, a fixed two-and-two layout wastes half a
   column.
+- **The Gantt window follows committed work, not every bar.** Stock ignores the
+  horizon and its ERP dates are set once and never revised — on the 21/08 export
+  all seven stock builds have spans entirely in the past, the oldest from March.
+  Letting them set the left edge stretched the chart from 16 weeks to 35 and
+  halved every bar. Anything the window cannot place is listed under the chart
+  with its dates rather than drawn as a sliver.
 - Nothing is ever dropped silently. Every excluded row carries a reason.
 
 Full background: `handoff/STELLA_PRODUCTION_BOARD_CONTEXT.md`.
@@ -118,7 +128,7 @@ To run the tests, copy from the private handoff folder into `tests/fixtures/`:
 python -m http.server 8777
 ```
 
-Then open <http://127.0.0.1:8777/tests/>. 111 assertions, checked against the
+Then open <http://127.0.0.1:8777/tests/>. 130 assertions, checked against the
 reference implementation's own output row by row.
 
 Four deliberate differences from that output, each asserted explicitly rather
@@ -182,8 +192,6 @@ git push origin main
 
 ## Not built
 
-- **Gantt view.** `start_date` and `end_date` are populated on every job and
-  carried on the record, so it needs no new data.
 - **Acumatica OData adapter.** Designed for, deliberately deferred — the
   blockers are organisational, and it needs a Cloud Function to hold the OAuth
   secret. See `handoff/DATA_SOURCE_ARCHITECTURE.md` §5.

@@ -7,6 +7,7 @@ import { stellaCode, labelFor, existingBoats, acceptNewCode, applyTemplate } fro
 import { Auth, ROLE, friendlyAuthError } from './auth.js';
 import { Store } from './store.js';
 import { renderPrint, measure, fitToPage } from './print.js';
+import { renderGantt } from './gantt.js';
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => {
@@ -250,6 +251,7 @@ function wireControls() {
   $('autoFit').addEventListener('click', () => setAutoFit(!state.settings.autoFit));
 
   $('tabEditBtn').addEventListener('click', () => showTab('edit'));
+  $('tabGanttBtn').addEventListener('click', () => showTab('gantt'));
   $('tabPrintBtn').addEventListener('click', () => showTab('print'));
   $('printBtn').addEventListener('click', () => { showTab('print'); window.print(); });
 }
@@ -263,11 +265,14 @@ function setAutoFit(on, { save = true } = {}) {
   if (save) { Store.saveSettings({ autoFit: on }); rebuild(); }
 }
 
+const TABS = ['edit', 'gantt', 'print'];
+
 function showTab(which) {
-  $('tabEdit').classList.toggle('offstage', which !== 'edit');
-  $('tabPrint').classList.toggle('offstage', which !== 'print');
-  $('tabEditBtn').setAttribute('aria-current', which === 'edit' ? 'page' : 'false');
-  $('tabPrintBtn').setAttribute('aria-current', which === 'print' ? 'page' : 'false');
+  for (const t of TABS) {
+    const cap = t[0].toUpperCase() + t.slice(1);
+    $(`tab${cap}`).classList.toggle('offstage', which !== t);
+    $(`tab${cap}Btn`).setAttribute('aria-current', which === t ? 'page' : 'false');
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -307,6 +312,9 @@ function rebuild() {
   renderWarnings();
   renderBoard();
   renderFitStatus();
+  // Same jobs as the board, hidden ones dropped — the chart is a second view of
+  // one dataset, not a second dataset.
+  renderGantt($('gantt'), state.board.jobs.filter((j) => !j.hidden), { asOf: today() });
 }
 
 function renderProvenance() {

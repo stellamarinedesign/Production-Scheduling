@@ -500,3 +500,110 @@ button.linkish {
 }
 button.linkish:hover { color: var(--white); }
 button.linkish:disabled { opacity: .5; cursor: default; }
+
+/* ============================================================
+   GANTT
+   One bar per production order, grouped by board category.
+   A fixed label column and a percentage-positioned track, so the
+   chart reflows with the window instead of scrolling sideways.
+   ============================================================ */
+.g-summary {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: var(--band); border: 1.5px solid var(--line); border-radius: 10px;
+  padding: 10px 14px; margin-bottom: 14px; font-size: 13px; color: var(--text-dim);
+}
+.g-summary .sep { opacity: .5; }
+.g-summary .g-overdue-count { color: var(--red-bright); font-weight: 700; }
+
+.gantt { --g-label: 264px; font-size: 13px; }
+
+.g-row { display: grid; grid-template-columns: var(--g-label) 1fr; align-items: center; min-height: 26px; }
+.g-label {
+  display: flex; align-items: baseline; gap: 9px; padding-right: 14px;
+  overflow: hidden; white-space: nowrap;
+}
+.g-label .g-prod { color: var(--text-dim); font-size: 12px; font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.g-label .g-name { overflow: hidden; text-overflow: ellipsis; }
+
+/* The track. position:relative is what every bar and gridline is placed against. */
+.g-scale { position: relative; height: 100%; min-height: 26px; }
+
+.g-head { min-height: 30px; border-bottom: 1px solid var(--line); margin-bottom: 4px; }
+.g-month {
+  position: absolute; top: 4px; bottom: 4px;
+  border-left: 1px solid var(--line);
+  padding-left: 6px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text-dim); overflow: hidden; white-space: nowrap;
+}
+
+.g-week { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,.05); }
+.g-today {
+  position: absolute; top: 0; bottom: 0; width: 2px;
+  background: var(--red-bright); opacity: .85; z-index: 2;
+}
+
+.g-banner { min-height: 30px; margin-top: 12px; }
+.g-banner .g-label {
+  font-size: 11px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase;
+  color: var(--white);
+}
+.g-banner .g-scale { border-bottom: 2px solid var(--red-deep); }
+.g-banner-n {
+  position: absolute; right: 0; bottom: 4px;
+  font-size: 11px; color: var(--text-dim); font-variant-numeric: tabular-nums;
+}
+
+.g-bar {
+  position: absolute; top: 5px; height: 16px;
+  background: var(--red-deep); border: 1px solid var(--red-bright); border-radius: 4px;
+  min-width: 3px; z-index: 1;
+  display: flex; align-items: center; overflow: hidden;
+}
+.g-bar-text {
+  padding: 0 7px; font-size: 11px; color: #fff; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.g-row:hover .g-bar { filter: brightness(1.25); }
+
+/* Past its end date and still open. Nothing else in the app surfaces this —
+   the board sorts by due date, so an overdue job just looks like the top row. */
+.g-row.is-overdue .g-bar { background: #7a1114; border-color: var(--red-bright); border-style: dashed; }
+.g-row.is-overdue .g-label .g-name { color: var(--red-bright); }
+
+/* Stock has no committed date, so it should not read like a commitment. */
+.g-row.is-stock .g-bar { background: var(--line); border-color: var(--text-dim); }
+.g-row.is-stock .g-label .g-name { color: var(--text-dim); }
+
+.g-dates {
+  position: absolute; top: 6px; font-size: 10.5px; color: var(--text-dim);
+  white-space: nowrap; font-variant-numeric: tabular-nums; pointer-events: none;
+}
+
+@media (max-width: 900px) { .gantt { --g-label: 170px; } .g-dates { display: none; } }
+
+/* A bar that runs past the window edge. The chevron says the work continues
+   rather than that it stops here. */
+.g-row.clip-start .g-bar { border-left-style: dashed; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.g-row.clip-end   .g-bar { border-right-style: dashed; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.g-row.clip-start .g-bar::before,
+.g-row.clip-end .g-bar::after {
+  font-size: 10px; color: #fff; opacity: .9; flex-shrink: 0; padding: 0 2px;
+}
+.g-row.clip-start .g-bar::before { content: "‹"; }
+.g-row.clip-end .g-bar::after { content: "›"; margin-left: auto; }
+
+/* Jobs the chart cannot place: their whole span sits outside the window.
+   Listed rather than drawn, because a sliver pinned to an edge is noise. */
+.g-unscheduled {
+  margin-top: 26px; border: 1.5px solid var(--line); border-radius: 11px;
+  background: var(--band); padding: 14px 16px;
+}
+.g-unsched-head { margin-bottom: 10px; font-size: 13px; line-height: 1.6; color: var(--text-dim); }
+.g-unsched-head strong { display: block; color: var(--white); font-size: 14px; margin-bottom: 3px; }
+.g-unsched-row {
+  display: grid; grid-template-columns: 74px 1.4fr 1fr 150px; gap: 12px;
+  padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; align-items: baseline;
+}
+.g-unsched-row:last-child { border-bottom: none; }
+.g-unsched-row .g-cat { color: var(--text-dim); font-size: 12px; }
+.g-unsched-row .g-when { color: var(--text-dim); font-variant-numeric: tabular-nums; text-align: right; }
