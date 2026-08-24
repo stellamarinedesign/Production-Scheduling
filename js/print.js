@@ -68,7 +68,7 @@ function categoryTable(category, jobs, { full = false } = {}) {
   bcell.colSpan = 3;
   banner.append(bcell);
   const head = el('tr');
-  head.append(el('th', null, 'Prod Nbr:'), el('th', null, 'Vessel'), el('th', 'c-due', 'Due date'));
+  head.append(el('th', null, 'Prod Nbr'), el('th', null, 'Vessel'), el('th', 'c-due', 'Due date'));
   thead.append(banner, head);
   table.append(thead);
 
