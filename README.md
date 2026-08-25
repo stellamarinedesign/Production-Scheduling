@@ -70,6 +70,9 @@ Normalising happens in the transform, once, downstream.
 - **The display code is a human decision.** `SY23` prints as `56SY` but `SY20`
   prints as `SY20`. Both are correct and confirmed individually. It lives in
   `data/vessel-codes.seed.json` and is maintained by hand.
+- **Grouping merges on the display, not just the stored key.** Two codes that
+  print the same thing are one boat whatever `boat` says, so a legacy value
+  cannot split a line — the model heals itself rather than needing a migration.
 - **The display code IS the boat.** It is what the floor reads and what the
   board prints, so it is the key on the vessel codes page, the first column, and
   the thing you edit — `boat` and `display` are kept equal. Keying on the Stella
@@ -142,7 +145,7 @@ To run the tests, copy from the private handoff folder into `tests/fixtures/`:
 python -m http.server 8777
 ```
 
-Then open <http://127.0.0.1:8777/tests/>. 171 assertions, checked against the
+Then open <http://127.0.0.1:8777/tests/>. 181 assertions, checked against the
 reference implementation's own output row by row.
 
 Four deliberate differences from that output, each asserted explicitly rather

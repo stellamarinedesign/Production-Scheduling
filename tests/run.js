@@ -470,6 +470,56 @@ export async function run() {
   check('every product line falls under a real board category',
     products.every((r) => r.category === null || CATEGORY_ORDER.includes(r.category)), '');
 
+  // ---- assigning a new code to an existing boat ---------------------------
+  // A new product arrives naming a boat the map already knows.
+  eq('an item spelling a KNOWN code raises nothing and resolves on its own',
+    detectNewCodes([{ 'Inventory ID': 'SBLRIV43SY',
+      'Production Description': 'Stella Folding Boarding Ladder - Riviera 43SY' }], codeMap), []);
+  eq('...printing the boat it belongs to, not its own spelling',
+    labelFor('SBLRIV43SY', resolved, codeMap), 'Boarding Ladder SY20');
+
+  // A genuinely unseen spelling — the hull code rather than the model.
+  const unseen = detectNewCodes([{ 'Inventory ID': 'SBLRIV43SE',
+    'Production Description': 'Stella Folding Boarding Ladder - Riviera 43SE', Description: '' }], codeMap);
+  eq('an unseen spelling is raised for a decision', unseen.map((u) => u.code), ['43SE']);
+  eq('...and the dropdown offers boats by what they print',
+    existingBoats(codeMap).map((b) => b.display),
+    ['56SY', '62SY', 'FB31', 'Riv 505', 'Riv 64', 'SU12', 'SY20', 'SY22', 'SY26']);
+
+  // Route 1: pick the existing boat from the dropdown.
+  const viaDropdown = { ...codeMap, '43SE': acceptNewCode('43SE', { mode: 'existing', boat: 'SY20' }, unseen[0]) };
+  eq('joining an existing boat lands on its line',
+    aliasGroups(viaDropdown).find((g) => g.codes.includes('43SE')).codes, ['43SE', '43SY', 'SY20']);
+  eq('...and prints that boat', labelFor('SBLRIV43SE', resolveDisplays(viaDropdown), viaDropdown),
+    'Boarding Ladder SY20');
+
+  // Route 2: type the display by hand instead. Same destination.
+  const viaTyping = { ...codeMap, '43SE': acceptNewCode('43SE', { mode: 'custom', value: 'SY20' }, unseen[0]) };
+  eq('typing the display merges it just the same',
+    aliasGroups(viaTyping).find((g) => g.codes.includes('43SE')).codes, ['43SE', '43SY', 'SY20']);
+
+  // THE DISPLAY IS THE BOAT — grouping must not depend on the stored key alone.
+  // Firestore holds entries written before boat and display were aligned, so a
+  // legacy boat:'43SY' can sit beside a new boat:'SY20' while both print SY20.
+  // Keying on the stored value put those on two rows that printed the same
+  // thing, which is the exact confusion this page exists to remove.
+  const legacyMix = {
+    SY20:   { boat: '43SY', display: 'SY20', _confirmed: true, riviera: ['43SY'], items: ['SLRIVSY20(24)'] },
+    '43SY': { boat: '43SY', display: 'SY20', _confirmed: true, riviera: ['43SY'], items: ['SHCELECPLINTHRIV43SY'] },
+    '43SE': { boat: 'SY20', display: 'SY20', _confirmed: true, riviera: ['43SE'], items: ['SBLRIV43SE'] },
+  };
+  eq('a legacy key mismatch still lands on ONE line',
+    boatRows(legacyMix, classify, { mode: 'boats' }).filter((r) => r.display === 'SY20').length, 1);
+  eq('...carrying every code', boatRows(legacyMix, classify, { mode: 'boats' })[0].codes,
+    ['43SE', '43SY', 'SY20']);
+
+  // ...but a deliberate split still holds: same model, different displays.
+  eq('two different displays stay two boats',
+    aliasGroups({
+      A: { riviera: ['66SY'], boat: 'one', display: 'Alpha', _confirmed: true },
+      B: { riviera: ['66SY'], boat: 'two', display: 'Beta', _confirmed: true },
+    }).map((g) => g.codes), [['A'], ['B']]);
+
   // ---- gantt --------------------------------------------------------------
   const gJobs = board.jobs.filter((j) => !j.hidden);
   const g = ganttLayout(gJobs, { asOf });

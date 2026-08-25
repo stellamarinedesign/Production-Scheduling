@@ -89,7 +89,26 @@ export function aliasGroups(codeMap) {
     else byBoat.set(key, code);
   }
 
-  // 2. A shared Riviera model only suggests a group, and only for codes nobody
+  // 2. THE DISPLAY IS THE BOAT, so two codes printing the same thing are one
+  //    boat whatever their stored key says.
+  //
+  //    This is what makes the model self-healing. `boat` and `display` are
+  //    written together now, but Firestore still holds entries from before they
+  //    were aligned — SY20 stored with boat '43SY' — and a code given the
+  //    display 'SY20' by hand takes boat 'SY20'. Grouping on the key alone put
+  //    those on two rows that both printed SY20, which is precisely the
+  //    confusion the page exists to remove. No migration needed: they merge on
+  //    what they print.
+  const byDisplay = new Map();
+  for (const [code, entry] of Object.entries(codeMap)) {
+    const d = entry?.display;
+    if (!d) continue;
+    const key = String(d).trim().toUpperCase();
+    if (byDisplay.has(key)) union(code, byDisplay.get(key));
+    else byDisplay.set(key, code);
+  }
+
+  // 3. A shared Riviera model only suggests a group, and only for codes nobody
   //    has assigned. Never merge across two different explicit assignments.
   const byModel = new Map();
   for (const [code, entry] of Object.entries(codeMap)) {
@@ -115,11 +134,20 @@ export function aliasGroups(codeMap) {
     .map((codes) => {
       const models = new Set();
       let boat = null;
+      let display = null;
       for (const c of codes) {
         for (const m of codeMap[c]?.riviera ?? []) models.add(String(m).toUpperCase());
         boat ??= boatOf(codeMap, c);
+        // A confirmed display speaks for the group; fall back to any display.
+        if (codeMap[c]?._confirmed && codeMap[c]?.display) display ??= codeMap[c].display;
       }
-      return { codes: codes.sort(), models: [...models].sort(), boat, assigned: Boolean(boat) };
+      for (const c of codes) display ??= codeMap[c]?.display;
+      // Report the boat as what it prints. The stored key may still be a legacy
+      // value; the display is the identity.
+      return {
+        codes: codes.sort(), models: [...models].sort(),
+        boat: display ?? boat, assigned: Boolean(boat ?? display),
+      };
     })
     .sort((a, b) => a.codes[0].localeCompare(b.codes[0]));
 }
