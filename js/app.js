@@ -670,41 +670,70 @@ function renderHistory() {
     return;
   }
 
-  const table = el('div', 'hist');
-  const hdr = el('div', 'hist-row hist-head');
-  hdr.append(el('span', null, 'Prod Nbr'), el('span', null, 'Vessel'),
-    el('span', null, 'Category'), el('span', null, 'Due'),
-    el('span', null, 'Completed'), el('span', null, ''));
-  table.append(hdr);
+  // Grouped by board category, same order as everywhere else, so History reads
+  // like the orders view rather than as one long undifferentiated list.
+  const byCat = new Map(CATEGORY_ORDER.map((c) => [c, []]));
+  for (const j of done) byCat.get(j.category)?.push(j);
 
-  for (const j of done) {
-    const row = el('div', 'hist-row');
-    row.append(el('span', 'prod', j.prod_no));
-    row.append(el('span', 'label', j.label));
-    row.append(el('span', 'cat', j.category));
-    row.append(el('span', 'due', j.due_display));
-    const when = j.completed_at ? new Date(j.completed_at) : null;
-    const stamp = el('span', 'when', when
-      ? when.toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' })
-      : '\u2014');
-    if (j.completed_by) stamp.title = `Marked by ${j.completed_by}`;
-    row.append(stamp);
+  for (const cat of CATEGORY_ORDER) {
+    const rows = byCat.get(cat) ?? [];
+    if (!rows.length) continue;
 
-    const acts = el('span', 'acts');
-    const reopen = el('button', 'mini', 'Reopen');
-    reopen.title = 'Put it back on the board';
-    reopen.addEventListener('click', async () => {
-      await Store.setCompleted([j.prod_no], false, Auth.user?.email);
-      delete state.overrides[j.prod_no]?.completed;
-      state.overrides = await Store.loadOverrides();
-      rebuild();
-      toast(`${j.prod_no} reopened.`);
+    const key = `hist:${cat}`;
+    const shut = collapsed.has(key);
+    const block = el('div', `hist-cat${shut ? ' is-collapsed' : ''}`);
+
+    const head = el('button', 'hist-cat-head');
+    head.setAttribute('aria-expanded', String(!shut));
+    head.append(el('span', 'cat-caret', shut ? '\u25b8' : '\u25be'));
+    head.append(el('h2', null, cat));
+    head.append(el('span', 'n', String(rows.length)));
+    head.addEventListener('click', () => {
+      if (collapsed.has(key)) collapsed.delete(key); else collapsed.add(key);
+      saveCollapsed(collapsed);
+      renderHistory();
     });
-    acts.append(reopen);
-    row.append(acts);
-    table.append(row);
+    block.append(head);
+
+    if (!shut) {
+      const table = el('div', 'hist');
+      const hdr = el('div', 'hist-row hist-head');
+      hdr.append(el('span', null, 'Prod Nbr'), el('span', null, 'Vessel'),
+        el('span', null, 'Due'), el('span', null, 'Completed'), el('span', null, ''));
+      table.append(hdr);
+
+      // Most recently completed first within a category.
+      rows.sort((a, b) => String(b.completed_at ?? '').localeCompare(String(a.completed_at ?? '')));
+
+      for (const j of rows) {
+        const row = el('div', 'hist-row');
+        row.append(el('span', 'prod', j.prod_no));
+        row.append(el('span', 'label', j.label));
+        row.append(el('span', 'due', j.due_display));
+        const when = j.completed_at ? new Date(j.completed_at) : null;
+        const stamp = el('span', 'when', when
+          ? when.toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' })
+          : '\u2014');
+        if (j.completed_by) stamp.title = `Marked by ${j.completed_by}`;
+        row.append(stamp);
+
+        const acts = el('span', 'acts');
+        const reopen = el('button', 'mini', 'Reopen');
+        reopen.title = 'Put it back on the board';
+        reopen.addEventListener('click', async () => {
+          await Store.setCompleted([j.prod_no], false, Auth.user?.email);
+          state.overrides = await Store.loadOverrides();
+          rebuild();
+          toast(`${j.prod_no} reopened.`);
+        });
+        acts.append(reopen);
+        row.append(acts);
+        table.append(row);
+      }
+      block.append(table);
+    }
+    host.append(block);
   }
-  host.append(table);
 }
 
 // ---------------------------------------------------------------------------

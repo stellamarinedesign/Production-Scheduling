@@ -1,4 +1,4 @@
-// vessel-codes.js — Stella code derivation, alias grouping, board labels.
+// vessel-codes.js — Stella code derivation, boat grouping, board labels.
 //
 // Riviera issue concept hull codes to conceal unreleased vessel models, so a
 // Stella item code (SY23) and the model actually used in practice (56SY) can
@@ -271,18 +271,126 @@ export function detectNewCodes(rows, codeMap) {
     .sort((a, b) => a.code.localeCompare(b.code));
 }
 
+// ---------------------------------------------------------------------------
+// BOATS FOR THE CODES PAGE
+//
+// The display code IS the boat. That is the identity everyone actually uses —
+// the floor reads "56SY", not "SY23" — so it is the key, the first column, and
+// the thing you edit. `boat` still stores it, but the two are kept equal: a row
+// whose display says one thing and whose grouping key says another was the main
+// source of confusion on the old page, where SY20 and 43SY sat on separate
+// lines despite printing the same code.
+//
+// Category comes from the item codes a boat carries, through the same prefix
+// rules the board uses. A boat usually has several — a 56SY has a lifter AND a
+// boarding ladder — so there are two ways to look at it:
+//
+//   'boats'    one line per boat, tagged with its PRIMARY category
+//   'products' one line per boat per category, so the 56SY lifter and the
+//              56SY boarding ladder are separate rows
+// ---------------------------------------------------------------------------
+
+// Which category speaks for a boat when it has several. Lifters first because
+// that is the product line most boats are known by, rotary next, then the rest
+// in board order.
+export const CATEGORY_PRIORITY = [
+  'Cylinder lifters',
+  'Rotary Lifters',
+  'Launchers, Doors & Chocks',
+  'Ladders and Chairs',
+  'Davits',
+];
+
+const categoryRank = (c) => {
+  const i = CATEGORY_PRIORITY.indexOf(c);
+  return i === -1 ? CATEGORY_PRIORITY.length : i;
+};
+
+/**
+ * One row per boat, or one row per boat per product category.
+ *
+ * @param {Object} codeMap
+ * @param {(inv:string)=>({category:string|null})} classify  from rules.js
+ * @param {{mode:'boats'|'products'}} opts
+ */
+export function boatRows(codeMap, classify, { mode = 'boats' } = {}) {
+  const groups = aliasGroups(codeMap);
+
+  const built = groups.map((g) => {
+    const display = codeMap[g.codes.find((c) => codeMap[c]?._confirmed) ?? g.codes[0]]?.display
+      ?? g.boat ?? g.codes[0];
+
+    // Item codes bucketed by the board category their prefix resolves to.
+    const byCategory = new Map();
+    const riviera = new Set();
+    const hulls = new Set();
+    for (const code of g.codes) {
+      const e = codeMap[code] ?? {};
+      for (const m of e.riviera ?? []) riviera.add(m);
+      for (const h of e.hull_prefix ?? []) hulls.add(h);
+      for (const item of e.items ?? []) {
+        const { category } = classify(item);
+        if (!category) continue;
+        if (!byCategory.has(category)) byCategory.set(category, []);
+        byCategory.get(category).push({ item, code });
+      }
+    }
+
+    const categories = [...byCategory.keys()].sort((a, b) => categoryRank(a) - categoryRank(b));
+    return {
+      display,
+      boat: g.boat ?? display,
+      codes: g.codes,
+      confirmed: g.codes.some((c) => codeMap[c]?._confirmed),
+      riviera: [...riviera].sort(),
+      hulls: [...hulls].sort(),
+      byCategory,
+      categories,
+      primaryCategory: categories[0] ?? null,
+      itemCount: [...byCategory.values()].reduce((n, v) => n + v.length, 0),
+    };
+  });
+
+  if (mode === 'products') {
+    // A boat appears once per category it builds for, so the 56SY lifter and
+    // the 56SY boarding ladder are separate lines.
+    return built
+      .flatMap((b) => (b.categories.length ? b.categories : [null]).map((category) => ({
+        ...b,
+        category,
+        items: category ? b.byCategory.get(category) : [],
+        codes: category
+          ? [...new Set(b.byCategory.get(category).map((x) => x.code))].sort()
+          : b.codes,
+      })))
+      .sort((a, x) => categoryRank(a.category) - categoryRank(x.category)
+        || a.display.localeCompare(x.display));
+  }
+
+  return built
+    .map((b) => ({
+      ...b,
+      category: b.primaryCategory,
+      items: [...b.byCategory.values()].flat(),
+    }))
+    .sort((a, x) => categoryRank(a.category) - categoryRank(x.category)
+      || a.display.localeCompare(x.display));
+}
+
 /**
  * Existing boats, for the "add to an existing code" dropdown.
  * @returns {Array<{boat, codes[], display}>}
  */
 export function existingBoats(codeMap) {
   return aliasGroups(codeMap)
-    .map((g) => ({
-      boat: g.boat ?? g.codes[0],
-      codes: g.codes,
-      display: codeMap[g.codes.find((c) => codeMap[c]?._confirmed) ?? g.codes[0]]?.display
-        ?? g.codes[0],
-    }))
+    .map((g) => {
+      const display = codeMap[g.codes.find((c) => codeMap[c]?._confirmed) ?? g.codes[0]]?.display
+        ?? g.codes[0];
+      // Keyed on the display: it is the identity in practice, and keeping the
+      // two equal is what stops a row printing one code while grouping under
+      // another.
+      return { boat: g.boat ?? display, codes: g.codes, display };
+    })
     .sort((a, b) => a.display.localeCompare(b.display));
 }
 

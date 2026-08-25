@@ -7,8 +7,9 @@
 
 import { xlsxAdapter, validateColumns } from '../js/adapters/index.js';
 import { buildBoard, toDateOnly, toAU, toISO, addWeeks } from '../js/transform.js';
+import { classify, CATEGORY_ORDER } from '../js/rules.js';
 import { resolveDisplays, aliasGroups, stellaCode, labelFor, detectNewCodes,
-         existingBoats, acceptNewCode, applyTemplate } from '../js/vessel-codes.js';
+         existingBoats, acceptNewCode, applyTemplate, boatRows } from '../js/vessel-codes.js';
 import { renderPrint, measure, fitToPage, balanceColumns } from '../js/print.js';
 import { ganttLayout, packLanes, renderGantt as renderGanttChart } from '../js/gantt.js';
 
@@ -433,6 +434,41 @@ export async function run() {
 
   eq('the override is carried on the job so the UI can show it',
     Boolean(ladder56(pinnedCode).item_override), true);
+
+  // ---- the codes page: one line per boat ----------------------------------
+  // The DISPLAY is the boat. The old page keyed on the Stella code, which put
+  // SY20 and 43SY on separate lines despite printing the same thing.
+  const boats = boatRows(codeMap, classify, { mode: 'boats' });
+  eq('nine boats, not eleven Stella codes', boats.length, 9);
+  eq('...and every code is accounted for on exactly one line',
+    boats.flatMap((b) => b.codes).sort(), Object.keys(codeMap).sort());
+  eq('SY20 and 43SY share a line', boats.find((b) => b.display === 'SY20').codes, ['43SY', 'SY20']);
+  eq('56 and SY23 share a line', boats.find((b) => b.display === '56SY').codes, ['56', 'SY23']);
+  eq('SY26 keeps its own', boats.find((b) => b.display === 'SY26').codes, ['SY26']);
+
+  // Lifters lead, then rotary, then the rest.
+  eq('boats sort by category priority, lifters first',
+    [...new Set(boats.map((b) => b.category))], ['Cylinder lifters', 'Rotary Lifters']);
+  eq('a boat is tagged with the line it is best known by',
+    boats.find((b) => b.display === '56SY').primaryCategory, 'Cylinder lifters');
+  eq('...while still listing everything it builds',
+    boats.find((b) => b.display === '56SY').categories,
+    ['Cylinder lifters', 'Ladders and Chairs']);
+
+  // Split by product gives a boat a line per category.
+  const products = boatRows(codeMap, classify, { mode: 'products' });
+  check('splitting by product yields more lines than boats',
+    products.length > boats.length, `${products.length} vs ${boats.length}`);
+  eq('the 56SY lifter and the 56SY ladder are separate lines',
+    products.filter((r) => r.display === '56SY').map((r) => r.category),
+    ['Cylinder lifters', 'Ladders and Chairs']);
+  eq('...each carrying only its own items',
+    products.find((r) => r.display === '56SY' && r.category === 'Ladders and Chairs')
+      .items.map((x) => x.item), ['SBLRIV56']);
+  eq('...and only the codes that build for it',
+    products.find((r) => r.display === '56SY' && r.category === 'Ladders and Chairs').codes, ['56']);
+  check('every product line falls under a real board category',
+    products.every((r) => r.category === null || CATEGORY_ORDER.includes(r.category)), '');
 
   // ---- gantt --------------------------------------------------------------
   const gJobs = board.jobs.filter((j) => !j.hidden);

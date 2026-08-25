@@ -70,6 +70,11 @@ Normalising happens in the transform, once, downstream.
 - **The display code is a human decision.** `SY23` prints as `56SY` but `SY20`
   prints as `SY20`. Both are correct and confirmed individually. It lives in
   `data/vessel-codes.seed.json` and is maintained by hand.
+- **The display code IS the boat.** It is what the floor reads and what the
+  board prints, so it is the key on the vessel codes page, the first column, and
+  the thing you edit — `boat` and `display` are kept equal. Keying on the Stella
+  code instead is what put `SY20` and `43SY` on separate lines despite printing
+  the same thing.
 - **Which codes are the same boat is assigned by hand,** via the `boat` field.
   It has to be — nothing upstream records it. `56` is office shorthand for the
   56SY and groups with `SY23`; `SY26` is the **5000, a different boat**. A
@@ -137,7 +142,7 @@ To run the tests, copy from the private handoff folder into `tests/fixtures/`:
 python -m http.server 8777
 ```
 
-Then open <http://127.0.0.1:8777/tests/>. 158 assertions, checked against the
+Then open <http://127.0.0.1:8777/tests/>. 171 assertions, checked against the
 reference implementation's own output row by row.
 
 Four deliberate differences from that output, each asserted explicitly rather

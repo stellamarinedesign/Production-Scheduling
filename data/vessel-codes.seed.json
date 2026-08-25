@@ -1,7 +1,7 @@
 {
   "43SY": {
     "_confirmed": false,
-    "boat": "43SY",
+    "boat": "SY20",
     "display": "SY20",
     "hull_prefix": [],
     "items": [
@@ -13,7 +13,7 @@
   },
   "505": {
     "_confirmed": true,
-    "boat": "505S",
+    "boat": "Riv 505",
     "display": "Riv 505",
     "hull_prefix": [
       "505S"
@@ -57,7 +57,7 @@
   },
   "64": {
     "_confirmed": true,
-    "boat": "64SMY",
+    "boat": "Riv 64",
     "display": "Riv 64",
     "hull_prefix": [
       "64S2"
@@ -71,7 +71,7 @@
   },
   "FB31": {
     "_confirmed": true,
-    "boat": "465S",
+    "boat": "FB31",
     "display": "FB31",
     "hull_prefix": [
       "465S"
@@ -85,7 +85,7 @@
   },
   "SU12": {
     "_confirmed": true,
-    "boat": "585S",
+    "boat": "SU12",
     "display": "SU12",
     "hull_prefix": [
       "585S",
@@ -100,7 +100,7 @@
   },
   "SY20": {
     "_confirmed": true,
-    "boat": "43SY",
+    "boat": "SY20",
     "display": "SY20",
     "hull_prefix": [
       "43SE"
@@ -114,7 +114,7 @@
   },
   "SY22": {
     "_confirmed": true,
-    "boat": "68SY",
+    "boat": "SY22",
     "display": "SY22",
     "hull_prefix": [
       "68SY"
@@ -144,7 +144,7 @@
   },
   "SY26": {
     "_confirmed": true,
-    "boat": "5000",
+    "boat": "SY26",
     "display": "SY26",
     "hull_prefix": [
       "5000"

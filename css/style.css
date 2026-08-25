@@ -272,13 +272,25 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 .scope-opt span { color: var(--text-dim); font-size: 12.5px; line-height: 1.55; }
 
 /* ---------- toast ---------- */
+/* The hidden state used translateY(140%) against bottom:26px. 140% of a ~44px
+   toast is 62px, which left its top edge 8px INSIDE the viewport — so a sliver
+   of border and corner radius sat at the bottom of the screen permanently and
+   the real message was mostly below the fold. Hidden is now opacity and
+   visibility, which does not depend on the element's height. */
 #toast {
-  position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(140%);
-  background: var(--shadow-grey); border: 1.5px solid var(--red-bright); border-radius: 10px;
-  padding: 12px 20px; font-size: 14px; z-index: 90; transition: transform .22s ease-out;
-  max-width: min(560px, 90vw);
+  position: fixed; left: 50%; bottom: 28px;
+  transform: translateX(-50%) translateY(12px);
+  opacity: 0; visibility: hidden; pointer-events: none;
+  background: var(--shadow-grey); border: 1.5px solid var(--red-bright);
+  border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.55);
+  padding: 13px 22px; font-size: 14px; line-height: 1.45; z-index: 90;
+  max-width: min(560px, 90vw); text-align: center;
+  transition: transform .2s ease-out, opacity .2s ease-out, visibility .2s;
 }
-#toast.show { transform: translateX(-50%) translateY(0); }
+#toast.show {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1; visibility: visible;
+}
 
 .state { text-align: center; padding: 50px 30px; color: var(--text-dim); line-height: 1.6; }
 .state strong { color: var(--white); display: block; font-size: 17px; margin-bottom: 8px; }
@@ -671,8 +683,22 @@ button.linkish:disabled { opacity: .5; cursor: default; }
 
 /* ---------- history ---------- */
 .hist { font-size: 13.5px; }
+.hist-cat { margin-bottom: 18px; }
+.hist-cat-head {
+  display: flex; align-items: baseline; gap: 10px; width: 100%;
+  background: none; border: none; border-bottom: 2px solid var(--red-deep);
+  color: var(--white); font-family: inherit; text-align: left;
+  padding: 0 0 6px; margin-bottom: 4px; cursor: pointer;
+}
+.hist-cat-head:hover { border-bottom-color: var(--red-bright); }
+.hist-cat-head h2 {
+  font-size: 14px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+}
+.hist-cat-head .cat-caret { color: var(--text-dim); font-size: 11px; }
+.hist-cat-head .n { font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.hist-cat.is-collapsed .hist-cat-head { border-bottom-color: var(--line); }
 .hist-row {
-  display: grid; grid-template-columns: 78px 1.5fr 1.1fr 96px 104px 92px;
+  display: grid; grid-template-columns: 78px 1.5fr 96px 104px 92px;
   gap: 12px; align-items: baseline;
   padding: 8px 8px; border-bottom: 1px solid var(--line);
 }
@@ -739,3 +765,61 @@ button.linkish:disabled { opacity: .5; cursor: default; }
 /* Bars carry their own state classes in packed mode, where the row cannot. */
 .g-bar.is-overdue { background: #7a1114; border-color: var(--red-bright); border-style: dashed; }
 .g-bar.is-stock { background: var(--line); border-color: var(--text-dim); }
+
+/* ---------- vessel codes: one line per boat ---------- */
+.codes-head, .code-row {
+  display: grid;
+  grid-template-columns: 190px 200px 130px 130px minmax(200px, 1fr) 132px;
+  gap: 14px; align-items: baseline; padding: 9px 10px;
+}
+.codes-head {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase;
+  color: var(--text-dim); border-bottom: 2px solid var(--line);
+}
+.code-row { border-bottom: 1px solid var(--line); font-size: 13px; }
+.code-row:hover { background: rgba(255,255,255,.03); }
+
+/* The display is the answer, so it carries the weight. */
+.c-display { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.c-display .c-code {
+  font-size: 16px; font-weight: 700; color: var(--white); letter-spacing: .02em;
+}
+.c-codes { display: flex; gap: 5px; flex-wrap: wrap; }
+.c-tag {
+  font-size: 11px; font-variant-numeric: tabular-nums; color: var(--text-dim);
+  border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px;
+}
+/* An ERP code identical to the display needs no explaining. */
+.c-tag.is-same { border-style: dashed; opacity: .55; }
+.c-riv, .c-hull { color: var(--text-dim); font-size: 12.5px; }
+.c-items { display: flex; gap: 5px; flex-wrap: wrap; }
+.c-item {
+  font-size: 11px; color: var(--text-dim);
+  border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px;
+}
+.c-catchip {
+  font-size: 11px; font-weight: 700; letter-spacing: .04em;
+  color: var(--red-bright); border: 1px solid var(--red-deep);
+  border-radius: 5px; padding: 1px 7px; cursor: help;
+}
+.c-act { display: flex; gap: 6px; justify-content: flex-end; }
+.c-act .mini:disabled { opacity: .35; cursor: default; }
+
+.codes-cat {
+  display: flex; align-items: baseline; gap: 10px; width: 100%;
+  background: none; border: none; border-bottom: 2px solid var(--red-deep);
+  color: var(--white); font-family: inherit; text-align: left;
+  padding: 18px 10px 6px; margin-bottom: 2px; cursor: pointer;
+}
+.codes-cat:hover { border-bottom-color: var(--red-bright); }
+.codes-cat .cat-caret { color: var(--text-dim); font-size: 11px; }
+.codes-cat .name {
+  font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+}
+.codes-cat .n { font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.codes-cat.is-collapsed { border-bottom-color: var(--line); }
+
+@media (max-width: 1100px) {
+  .codes-head { display: none; }
+  .code-row { grid-template-columns: 1fr 1fr; gap: 6px 14px; }
+}

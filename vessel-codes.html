@@ -17,8 +17,8 @@
   <span class="sub">Stella Marine</span>
   <span class="spacer"></span>
   <nav>
-    <a href="index.html">Board</a>
-    <a href="vessel-codes.html" aria-current="page">Vessel codes</a>
+    <a href="./">Board</a>
+    <a href="vessel-codes" aria-current="page">Vessel codes</a>
   </nav>
 </header>
 
@@ -35,38 +35,40 @@
 
   <div id="warnings"></div>
 
-  <table class="codes">
-    <thead>
-      <tr>
-        <th>Stella code</th>
-        <th>Boat</th>
-        <th>Riviera model</th>
-        <th>Hull prefix</th>
-        <th>Display</th>
-        <th>Item codes</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody id="rows"></tbody>
-  </table>
+  <div class="view-bar">
+    <button class="tab" id="modeBoats" aria-current="page">One line per boat</button>
+    <button class="tab" id="modeProducts" aria-current="false">Split by product</button>
+    <span class="spacer"></span>
+    <span class="hint" id="modeHint"></span>
+  </div>
 
-  <div class="panel" style="margin-top:20px">
+  <div class="codes-head">
+    <div>Display</div><div>ERP codes</div><div>Riviera</div><div>Hull</div>
+    <div>Products</div><div></div>
+  </div>
+  <div id="rows"></div>
+
+  <div class="panel" style="margin-top:22px">
     <div class="body" style="padding:14px 15px">
-      <strong style="color:var(--white)">Same boat, two codes.</strong>
-      Codes on the same <b>boat</b> are one vessel and print one code, whichever
-      product line raised the item — a lifter and a helm seat box for the same
-      boat must not print different codes. Grouped rows are marked
-      <span class="chip alias">ALIAS</span> and edit together.
+      <strong style="color:var(--white)">The display code is the boat.</strong>
+      It is what the floor reads and what the board prints, so it is the key here
+      rather than something derived further down the line. Every ERP code that
+      resolves to it sits on the same row &mdash; <code>SY20</code> and
+      <code>43SY</code> are one boat, not two.
+      <br><br>
+      A boat usually builds more than one product. <b>One line per boat</b> tags
+      each with the line it is best known by, lifters first. <b>Split by product</b>
+      gives it a row per category, so the 56SY lifter and the 56SY boarding ladder
+      are separate.
       <br><br>
       <strong style="color:var(--white)">Grouping is manual, and has to be.</strong>
-      <code>56</code>, <code>SY23</code> and <code>SY26</code> are one boat:
-      <code>56</code> was office shorthand for 56SY, and Riviera call the same
-      hull both <code>56SY</code> and <code>5000SY</code>. Nothing upstream says
-      so. A shared Riviera model is used as a <em>suggestion</em> for a code
-      nobody has assigned yet — set the boat and that suggestion is overruled,
-      in either direction.
+      Riviera call one hull both <code>56SY</code> and <code>5000SY</code>, and
+      <code>56</code> was office shorthand. Nothing upstream records which codes
+      mean the same boat, so <b>Rename</b> sets what a line reads and <b>Split</b>
+      moves a code off a row that grouped wrongly.
     </div>
   </div>
+
 </main>
 
 <div id="toast"></div>
