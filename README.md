@@ -121,6 +121,10 @@ Normalising happens in the transform, once, downstream.
   the production number, so it never returns. Reversible from History.
 - **Completion is not hiding.** Hidden means "not on this print"; completed
   means "finished". They are separate fields with separate consequences.
+- **An upload reaches every manager, not just the one who did it.** The import
+  record carries the raw rows as well as the rendered board, so the second
+  manager continues from the same export rather than being asked to upload it
+  again. Local cache wins only when it is genuinely newer.
 - Nothing is ever dropped silently. Every excluded row carries a reason.
 
 Full background: `handoff/STELLA_PRODUCTION_BOARD_CONTEXT.md`.
@@ -149,7 +153,7 @@ To run the tests, copy from the private handoff folder into `tests/fixtures/`:
 python -m http.server 8777
 ```
 
-Then open <http://127.0.0.1:8777/tests/>. 194 assertions, checked against the
+Then open <http://127.0.0.1:8777/tests/>. 199 assertions, checked against the
 reference implementation's own output row by row.
 
 Four deliberate differences from that output, each asserted explicitly rather

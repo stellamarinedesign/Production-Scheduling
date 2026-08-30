@@ -13,6 +13,7 @@ import { resolveDisplays, aliasGroups, stellaCode, labelFor, detectNewCodes,
 import { renderPrint, measure, fitToPage, balanceColumns } from '../js/print.js';
 import { ganttLayout, packLanes, renderGantt as renderGanttChart } from '../js/gantt.js';
 import { fitCodesSheet, measureSheet, renderCodesSheet, CONTENT_H, TYPE_STEPS } from '../js/codes-print.js';
+import { packRows, unpackRows } from '../js/store.js';
 
 const results = [];
 const check = (name, pass, detail = '') => results.push({ name, pass, detail });
@@ -708,6 +709,40 @@ export async function run() {
       Math.abs(lbl.getBoundingClientRect().x - before) < 1, '');
     gh.remove();
   }
+
+  // ---- rows survive a round trip through Firestore -------------------------
+  // An upload used to live only in the uploading device's localStorage, so the
+  // second manager signed in to an empty drop zone. The import record now
+  // carries the raw rows, which means they have to survive being stored.
+  const packed = packRows(src.rows);
+  const revived = unpackRows(packed);
+
+  eq('every row survives the round trip', revived.length, src.rows.length);
+  eq('...with its ERP column names intact',
+    Object.keys(revived[0]).slice(0, 4),
+    Object.keys(src.rows[0]).slice(0, 4));
+
+  // THE TRAP. JSON.stringify emits UTC for a Date, so a local-midnight 12 Nov
+  // becomes "2026-11-11T14:00:00Z" east of Greenwich — and toDateOnly reads the
+  // date off the front of an ISO string, so every date would come back a day
+  // early. Brisbane is UTC+10, exactly the direction that breaks.
+  const naive = JSON.parse(JSON.stringify(src.rows));
+  const naiveBoard = buildBoard(naive, { codeMap, horizonWeeks: 12, asOf });
+  const revivedBoard = buildBoard(revived, { codeMap, horizonWeeks: 12, asOf });
+
+  eq('a stored board matches the board built from the original file',
+    revivedBoard.jobs.map((j) => `${j.prod_no}:${j.due_date}:${j.start_date}`),
+    board.jobs.map((j) => `${j.prod_no}:${j.due_date}:${j.start_date}`));
+  eq('...and the same rows are excluded for the same reasons',
+    revivedBoard.excluded.map((e) => `${e.prod_no}:${e.kind}`),
+    board.excluded.map((e) => `${e.prod_no}:${e.kind}`));
+
+  // Prove the naive version really would have been wrong somewhere, so this
+  // test is guarding a real hazard rather than restating an identity.
+  check('a naive JSON round trip would shift dates in a positive-offset zone',
+    new Date().getTimezoneOffset() >= 0
+      || naiveBoard.jobs.some((j, i) => j.due_date !== board.jobs[i]?.due_date),
+    `offset ${new Date().getTimezoneOffset()}`);
 
   // ---- vessel code cheat sheet --------------------------------------------
   // Landscape A4. The board fits by shortening its horizon; this sheet has no

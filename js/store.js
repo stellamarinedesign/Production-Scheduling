@@ -14,11 +14,12 @@
 //   jobOverrides/{prodNo}     { hidden, hiddenReason, labelOverride, updatedAt,
 //                               completed, completedAt, completedBy, progress }
 //   itemOverrides/{itemId}    { inventoryId, label, displayCode, updatedAt }
-//   imports/{importId}        { retrievedAt, sourceId, sourceLabel,
-//                               horizonWeeks, maxStock, jobs[] }
+//   imports/{importId}        { retrievedAt, sourceId, sourceLabel, uploadedBy,
+//                               horizonWeeks, maxStock, jobs[], rowsJson }
 //   settings/board            { horizonWeeks, maxStock, autoFit }
 
 import { getFirebase, failureReason, isConfigured } from './firebase.js';
+import { toDateOnly, toISO } from './transform.js';
 
 const LS_PREFIX = 'stella.board.';
 const lsGet = (k, fallback) => {
@@ -29,6 +30,30 @@ const lsGet = (k, fallback) => {
 const encodeItemId = (id) => String(id).replace(/\//g, '__');
 
 const lsSet = (k, v) => { try { localStorage.setItem(LS_PREFIX + k, JSON.stringify(v)); } catch {} };
+
+/**
+ * Pack raw ERP rows for storage on the import record.
+ *
+ * As a JSON STRING, not a nested object: Firestore would otherwise coerce the
+ * values to its own types on the way back out, and the adapter contract is that
+ * rows reach the transform exactly as the source produced them.
+ *
+ * Date cells are written as YYYY-MM-DD from their LOCAL parts. JSON.stringify
+ * emits UTC for a Date, so a local-midnight 12 Nov becomes
+ * "2026-11-11T14:00:00Z" in a positive-offset timezone — and toDateOnly reads
+ * the date off the front of an ISO string, so every date would come back a day
+ * early. Brisbane is UTC+10, which is exactly the direction that breaks.
+ */
+export function packRows(rows) {
+  return JSON.stringify(rows, function reviveDates(key, value) {
+    // `this[key]` is the pre-toJSON value, so the Date is still a Date here.
+    const raw = this[key];
+    if (raw instanceof Date) return toISO(toDateOnly(raw));
+    return value;
+  });
+}
+
+export const unpackRows = (json) => (json ? JSON.parse(json) : null);
 
 export const Store = {
   mode: 'local',          // 'firestore' | 'local'

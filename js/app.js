@@ -5,7 +5,7 @@ import { buildBoard, byCategory, today, toAU, toDateOnly } from './transform.js'
 import { CATEGORY_ORDER, PRINT_LAYOUT, EXCLUSION_ORDER, EXCLUSION_GROUP_LABEL } from './rules.js';
 import { stellaCode, labelFor, existingBoats, acceptNewCode, applyTemplate } from './vessel-codes.js';
 import { Auth, ROLE, friendlyAuthError } from './auth.js';
-import { Store } from './store.js';
+import { Store, packRows, unpackRows } from './store.js';
 import { renderPrint, measure, fitToPage } from './print.js';
 import { renderGantt } from './gantt.js';
 import { balanceColumns } from './print.js';
@@ -94,15 +94,54 @@ async function start(st) {
   wireControls();
   wireOverlays();
 
-  // A reload should not need a re-upload.
+  await loadLastBoard();
+}
+
+/**
+ * Pick up the most recent export, wherever it came from.
+ *
+ * An upload used to live only in the uploading device's localStorage, so the
+ * second manager signed in to an empty drop zone and was asked to upload the
+ * same file again. The import record already held the board for the floor; it
+ * now holds the raw rows too, so any manager continues from where the last one
+ * left off.
+ *
+ * Local wins only if it is genuinely newer — otherwise a stale cache would hide
+ * a colleague's fresh upload, which is the same failure the other way round.
+ */
+async function loadLastBoard() {
   const cached = Store.cachedRows();
-  if (cached?.rows?.length) {
-    state.rows = cached.rows;
-    state.source = cached.source;
-    rebuild();
-    // A code added since the last load still needs answering.
-    if (Auth.isManager) queueNewCodes();
+  let published = null;
+  try { published = await Store.latestBoard(); } catch (e) { console.warn('[board]', e.message); }
+
+  const publishedRows = published?.rowsJson ? unpackRows(published.rowsJson) : null;
+  const localAt = cached?.source?.retrievedAt ?? '';
+  const remoteAt = published?.retrievedAt ?? '';
+
+  let pick = null;
+  if (cached?.rows?.length && (!publishedRows?.length || localAt >= remoteAt)) {
+    pick = { rows: cached.rows, source: cached.source };
+  } else if (publishedRows?.length) {
+    pick = {
+      rows: publishedRows,
+      source: {
+        sourceId: published.sourceId,
+        sourceLabel: published.sourceLabel,
+        retrievedAt: published.retrievedAt,
+        uploadedBy: published.uploadedBy ?? null,
+        warnings: [],
+      },
+    };
+    // Keep it locally too, so a reload is instant and works offline.
+    Store.cacheRows(pick.rows, pick.source);
   }
+
+  if (!pick) return;
+  state.rows = pick.rows;
+  state.source = pick.source;
+  rebuild();
+  // A code added since the last load still needs answering.
+  if (Auth.isManager) queueNewCodes();
 }
 
 async function startFloor() {
@@ -218,6 +257,12 @@ async function load(file) {
       // never see the spreadsheet.
       jobs: state.board.jobs,
       meta: state.board.meta,
+      uploadedBy: Auth.user?.email ?? null,
+      // The raw export as well, so the OTHER manager picks up the same data
+      // rather than being asked to upload the same file again. The jobs array
+      // is a rendering of one horizon; the rows are what the transform needs to
+      // re-render at another.
+      rowsJson: packRows(src.rows),
     });
 
     toast(`${src.rows.length} rows in — ${state.board.meta.job_count} on the board.`);
@@ -349,6 +394,16 @@ function renderProvenance() {
 
   // The board is exactly as fresh as the last upload, and nothing else in the
   // system knows that. Say it out loud once it starts to matter.
+  const by = $('provWhen').parentElement;
+  const existing = by.parentElement.querySelector('.by');
+  if (existing) existing.remove();
+  if (s.uploadedBy && s.uploadedBy !== Auth.user?.email) {
+    const tag = el('span', 'by');
+    tag.append(document.createTextNode('Uploaded by '));
+    tag.append(el('b', null, s.uploadedBy));
+    by.after(tag);
+  }
+
   const days = Math.floor((Date.now() - when.getTime()) / 86400000);
   const age = $('provAge');
   age.textContent = days <= 0 ? 'today' : `${days} day${days === 1 ? '' : 's'} old`;
