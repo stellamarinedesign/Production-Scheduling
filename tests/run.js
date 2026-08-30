@@ -764,10 +764,14 @@ export async function run() {
       ['CYLINDER LIFTERS', 'ROTARY LIFTERS']);
     eq('the display leads each row',
       sh.querySelector('tbody tr:not(.cs-banner) td').textContent, sheetRows[0].display);
-    eq('...and the ERP codes sit beside it',
-      [...sh.querySelectorAll('tbody tr:not(.cs-banner)')]
-        .find((tr) => tr.children[0].textContent === 'SY20').children[1].textContent,
-      '43SY  ·  SY20');
+    eq('...with the Riviera model beside it, then the ERP codes',
+      [...[...sh.querySelectorAll('tbody tr:not(.cs-banner)')]
+        .find((tr) => tr.children[0].textContent === 'SY20').children]
+        .slice(0, 3).map((c) => c.textContent),
+      ['SY20', '43SY', '43SY  ·  SY20']);
+    eq('the header order matches',
+      [...sh.querySelectorAll('thead th')].map((h) => h.textContent),
+      ['Reads as', 'Riviera', 'ERP codes', 'Hull', 'Products']);
     check('the run date is on the sheet',
       sh.querySelector('.cs-range').textContent.includes(toAU(asOf)), '');
 

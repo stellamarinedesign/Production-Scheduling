@@ -59,8 +59,8 @@
 #codesSheet .cs-riv, #codesSheet .cs-hull, #codesSheet .cs-prod { color: #4A4A4A; }
 
 #codesSheet col.c-disp { width: 15%; }
-#codesSheet col.c-erp  { width: 22%; }
 #codesSheet col.c-riv  { width: 15%; }
+#codesSheet col.c-erp  { width: 22%; }
 #codesSheet col.c-hull { width: 14%; }
 #codesSheet col.c-prod { width: 34%; }
 
