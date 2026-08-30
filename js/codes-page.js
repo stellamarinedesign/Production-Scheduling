@@ -14,6 +14,7 @@ import { Store } from './store.js';
 import { resolveDisplays, boatRows } from './vessel-codes.js';
 import { classify } from './rules.js';
 import { Auth, ROLE } from './auth.js';
+import { fitCodesSheet, TYPE_STEPS } from './codes-print.js';
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => {
@@ -40,6 +41,8 @@ const collapsed = new Set();
 
   $('modeBoats').addEventListener('click', () => setMode('boats'));
   $('modeProducts').addEventListener('click', () => setMode('products'));
+  $('previewSheet').addEventListener('click', () => togglePreview());
+  $('printSheet').addEventListener('click', () => window.print());
   render();
 })();
 
@@ -80,6 +83,51 @@ function render() {
     if (collapsed.has(cat)) continue;
     host.append(boatRow(r));
   }
+
+  renderSheet(rows);
+}
+
+/**
+ * Keep the printable sheet in step with whatever the page is showing, so
+ * "Print cheat sheet" never prints a different view from the one on screen.
+ *
+ * It is rendered whether or not the preview is open, because the print
+ * stylesheet reveals it directly — the button only controls what is on screen.
+ */
+let sheetShown = false;
+
+function renderSheet(rows) {
+  const host = $('codesSheet');
+  const root = $('codesPrintRoot');
+
+  // Measuring needs layout. While the preview is closed the host is parked
+  // off-canvas rather than display:none, or the fit would measure zero and
+  // report a comfortable fit at full size — the trap the board's auto-fit hit.
+  root.hidden = false;
+  root.classList.toggle('offstage', !sheetShown);
+
+  const fit = fitCodesSheet(host, rows, { mode });
+
+  const status = $('sheetStatus');
+  status.hidden = !sheetShown;
+  status.classList.toggle('trimmed', !fit.fits || fit.shrunk);
+  status.textContent = !fit.measured
+    ? 'Could not measure the sheet.'
+    : fit.fits && !fit.shrunk
+      ? `One landscape A4 page at ${fit.pt}pt — ${rows.length} lines, `
+        + `${fit.height} of ${fit.limit}px used.`
+      : fit.fits
+        ? `Type stepped down to ${fit.pt}pt to hold one page (${rows.length} lines). `
+          + `Split by product adds rows, so the boats view will usually print larger.`
+        : `Will not fit one page even at ${TYPE_STEPS[TYPE_STEPS.length - 1]}pt — `
+          + `${rows.length} lines. It will run to a second page.`;
+}
+
+function togglePreview() {
+  sheetShown = !sheetShown;
+  $('previewSheet').classList.toggle('on', sheetShown);
+  $('previewSheet').setAttribute('aria-pressed', String(sheetShown));
+  render();
 }
 
 function categoryHead(cat, n) {

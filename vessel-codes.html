@@ -8,6 +8,9 @@
 <title>Vessel codes — Stella Marine</title>
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="css/style.css">
+<!-- AFTER style.css: it declares A4 portrait for the board, and @page cannot be
+     scoped by selector, so the landscape rule has to win by coming later. -->
+<link rel="stylesheet" href="css/codes-print.css">
 </head>
 <body>
 
@@ -40,7 +43,12 @@
     <button class="tab" id="modeProducts" aria-current="false">Split by product</button>
     <span class="spacer"></span>
     <span class="hint" id="modeHint"></span>
+    <button class="mini" id="previewSheet" aria-pressed="false">Cheat sheet</button>
+    <button class="primary" id="printSheet">Print cheat sheet</button>
   </div>
+
+  <div id="sheetStatus" class="fit-status" hidden></div>
+  <div id="codesPrintRoot" hidden><div id="codesSheet"></div></div>
 
   <div class="codes-head">
     <div>Display</div><div>ERP codes</div><div>Riviera</div><div>Hull</div>

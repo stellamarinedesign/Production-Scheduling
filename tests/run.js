@@ -12,6 +12,7 @@ import { resolveDisplays, aliasGroups, stellaCode, labelFor, detectNewCodes,
          existingBoats, acceptNewCode, applyTemplate, boatRows } from '../js/vessel-codes.js';
 import { renderPrint, measure, fitToPage, balanceColumns } from '../js/print.js';
 import { ganttLayout, packLanes, renderGantt as renderGanttChart } from '../js/gantt.js';
+import { fitCodesSheet, measureSheet, renderCodesSheet, CONTENT_H, TYPE_STEPS } from '../js/codes-print.js';
 
 const results = [];
 const check = (name, pass, detail = '') => results.push({ name, pass, detail });
@@ -706,6 +707,71 @@ export async function run() {
     check('the label column stays put while the chart scrolls',
       Math.abs(lbl.getBoundingClientRect().x - before) < 1, '');
     gh.remove();
+  }
+
+  // ---- vessel code cheat sheet --------------------------------------------
+  // Landscape A4. The board fits by shortening its horizon; this sheet has no
+  // horizon, so it fits by stepping the type down instead.
+  {
+    const sh = document.createElement('div');
+    sh.id = 'codesSheet';
+    sh.style.cssText = 'position:absolute; left:-100000px; top:0; visibility:hidden;';
+    document.body.append(sh);
+
+    const sheetRows = boatRows(codeMap, classify, { mode: 'boats' });
+    const fit = fitCodesSheet(sh, sheetRows, { mode: 'boats', asOf });
+
+    eq('the real code list fits one landscape page at full size',
+      [fit.fits, fit.pt, fit.shrunk], [true, TYPE_STEPS[0], false]);
+    check('...with room to spare rather than exactly filling it',
+      fit.height > 0 && fit.height < CONTENT_H, `${fit.height} of ${CONTENT_H}`);
+
+    // The measurement must not be scrollHeight: the on-screen preview carries a
+    // min-height of a whole page, which pins scrollHeight and would make every
+    // sheet report as exactly full however little is on it.
+    renderCodesSheet(sh, sheetRows.slice(0, 2), { mode: 'boats', asOf });
+    const small = measureSheet(sh);
+    renderCodesSheet(sh, sheetRows, { mode: 'boats', asOf });
+    const bigger = measureSheet(sh);
+    check('a shorter sheet measures shorter', small.height < bigger.height,
+      `${small.height} vs ${bigger.height}`);
+
+    // A sheet nobody can measure must not claim to fit — the trap the board's
+    // auto-fit originally had.
+    sh.style.display = 'none';
+    eq('an unmeasurable sheet never reports a fit',
+      [measureSheet(sh).measured, measureSheet(sh).fits], [false, false]);
+    sh.style.display = '';
+
+    // Step-down, on a list far longer than one page.
+    const many = Array.from({ length: 60 }, (_, i) => ({
+      display: `B${i}`, codes: [`C${i}`], riviera: [`${i}SY`], hulls: [`${i}H`],
+      categories: ['Cylinder lifters'], items: [{ item: `SLRIV${i}` }],
+      category: 'Cylinder lifters',
+    }));
+    const fat = fitCodesSheet(sh, many, { mode: 'boats', asOf });
+    eq('an oversized list is tried at every size', fat.steps.map((x) => x.pt), TYPE_STEPS);
+    check('...each smaller than the last', fat.steps.every((x, i, a) => i === 0 || x.height < a[i - 1].height),
+      fat.steps.map((x) => `${x.pt}pt=${x.height}`).join(' '));
+    check('...and it says so rather than pretending', fat.fits === false, '');
+
+    // The sheet is the same data the page shows, in board order.
+    renderCodesSheet(sh, sheetRows, { mode: 'boats', asOf });
+    eq('every boat reaches the sheet',
+      sh.querySelectorAll('tbody tr:not(.cs-banner)').length, sheetRows.length);
+    eq('banners follow category priority',
+      [...sh.querySelectorAll('.cs-banner th')].map((b) => b.textContent),
+      ['CYLINDER LIFTERS', 'ROTARY LIFTERS']);
+    eq('the display leads each row',
+      sh.querySelector('tbody tr:not(.cs-banner) td').textContent, sheetRows[0].display);
+    eq('...and the ERP codes sit beside it',
+      [...sh.querySelectorAll('tbody tr:not(.cs-banner)')]
+        .find((tr) => tr.children[0].textContent === 'SY20').children[1].textContent,
+      '43SY  ·  SY20');
+    check('the run date is on the sheet',
+      sh.querySelector('.cs-range').textContent.includes(toAU(asOf)), '');
+
+    sh.remove();
   }
 
   // ---- print layout + auto-fit -------------------------------------------

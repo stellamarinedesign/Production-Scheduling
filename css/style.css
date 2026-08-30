@@ -388,6 +388,11 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 }
 
 @media print {
+  /* `html, body { height: 100% }` is right on screen and wrong on paper — it
+     hands the document a full page height whatever the content, which is one
+     more way to end up with a blank second sheet. */
+  html, body { height: auto !important; min-height: 0 !important; }
+
   /* #printRoot lives INSIDE <main>. Hiding an ancestor with display:none takes
      the whole subtree with it — a descendant cannot opt back in — which is why
      `main { display:none }` printed a blank sheet. So hide the chrome by name

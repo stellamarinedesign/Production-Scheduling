@@ -1,0 +1,90 @@
+/* ============================================================
+   VESSEL CODE CHEAT SHEET — landscape A4
+   Loaded ONLY by the vessel codes page.
+
+   @page carries the paper size and orientation, and it cannot be scoped by a
+   selector — there is no way to say "landscape when body has this class". So
+   the landscape declaration lives in its own file that only this page loads,
+   which is also why it must come AFTER style.css: that stylesheet declares
+   A4 portrait for the board, and the later rule wins.
+   ============================================================ */
+
+@page { size: A4 landscape; margin: 0.5in; }
+
+/* On screen the sheet is a preview of the paper: a whole landscape page, so
+   the margins around the table are visible rather than implied. */
+#codesSheet {
+  --cs-pt: 11pt;
+  margin: 0 auto 40px; background: #fff; color: #1A1A1A;
+  font-family: Calibri, "Segoe UI", -apple-system, sans-serif;
+  width: 1123px;                 /* A4 landscape at 96dpi */
+  min-height: 794px;
+  padding: 48px;                 /* the 0.5in margin above */
+  box-shadow: 0 6px 30px rgba(0,0,0,.55);
+}
+
+#codesSheet .cs-head {
+  display: flex; align-items: baseline; gap: 14px;
+  border-bottom: 2.5pt solid #AF1F24; padding-bottom: 4px; margin-bottom: 12px;
+}
+#codesSheet .cs-title { font-size: 16pt; font-weight: 700; line-height: 1.15; }
+#codesSheet .cs-sub { font-size: 10pt; color: #5F5F5F; }
+#codesSheet .cs-range {
+  font-size: 10pt; font-weight: 700; color: #5F5F5F; margin-left: auto;
+}
+
+#codesSheet .cs-table {
+  width: 100%; border-collapse: collapse; table-layout: fixed;
+  font-size: var(--cs-pt);
+}
+#codesSheet th, #codesSheet td {
+  border: 1px solid #9A9A9A; padding: 2px 7px; vertical-align: top;
+  line-height: 1.18; text-align: left;
+}
+#codesSheet thead th {
+  background: #F2EFEF; color: #5F5F5F; font-weight: 700;
+  font-size: .84em; letter-spacing: .06em; text-transform: uppercase;
+}
+#codesSheet .cs-banner th {
+  background: #AF1F24; color: #fff; border-color: #AF1F24;
+  text-align: center; font-weight: 700;
+  font-size: 1.02em; letter-spacing: .06em; padding: 3px 6px;
+}
+#codesSheet tbody tr:nth-of-type(even) td { background: #FAF8F8; }
+
+/* The display code is the answer the sheet exists to give, so it carries the
+   weight — the same reasoning as the first column on the codes page. */
+#codesSheet .cs-disp { font-weight: 700; font-size: 1.08em; }
+#codesSheet .cs-erp { font-variant-numeric: tabular-nums; }
+#codesSheet .cs-riv, #codesSheet .cs-hull, #codesSheet .cs-prod { color: #4A4A4A; }
+
+#codesSheet col.c-disp { width: 15%; }
+#codesSheet col.c-erp  { width: 22%; }
+#codesSheet col.c-riv  { width: 15%; }
+#codesSheet col.c-hull { width: 14%; }
+#codesSheet col.c-prod { width: 34%; }
+
+/* Browsers drop background colours when printing unless asked not to; without
+   this the banners print white on white and the sheet loses its structure. */
+#codesSheet, #codesSheet * {
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+@media print {
+  body { background: #fff; }
+  html, body { height: auto !important; min-height: 0 !important; }
+
+  /* Same lesson as the board: an off-canvas element is not out of flow for
+     paper, so the chrome has to be display:none rather than merely parked. */
+  header, #authView, #toast, .overlay, .provenance, .view-bar,
+  #warnings, .codes-head, #rows, main > .panel { display: none !important; }
+
+  main { padding: 0 !important; margin: 0 !important; max-width: none !important; }
+
+  #codesPrintRoot { display: block !important; }
+  #codesSheet {
+    width: auto; min-height: 0; padding: 0; margin: 0; box-shadow: none;
+  }
+  #codesSheet tr, #codesSheet table { page-break-inside: avoid; }
+}

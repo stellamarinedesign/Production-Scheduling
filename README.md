@@ -19,6 +19,9 @@ build step.
 Four tabs over the same data: **Current orders**, **Gantt**, **History**, and
 **Print preview**.
 
+The vessel codes page prints its own **landscape A4 cheat sheet** — display code
+against ERP codes, Riviera model and hull — for pinning up next to the board.
+
 Everything is parsed in the browser. The spreadsheet is never uploaded anywhere.
 
 ---
@@ -45,7 +48,8 @@ Normalising happens in the transform, once, downstream.
 | `js/vessel-codes.js` | Stella code derivation, boat groups, new-code detection, labels. |
 | `js/transform.js` | `RawRow[] → Job[]`. The only place that knows ERP column names. |
 | `js/adapters/xlsx.js` | Reads the export, validates its columns, stamps provenance. |
-| `js/print.js` | The A4 layout, column balancing, and the measured auto-fit. |
+| `js/print.js` | The A4 board layout, column balancing, and the measured auto-fit. |
+| `js/codes-print.js` | The vessel code cheat sheet — landscape A4, type-step auto-fit. |
 | `js/gantt.js` | Start/end bars, lane packing. Layout is a pure function; only the renderer touches the DOM. |
 | `js/store.js` | Firestore, with a localStorage fallback. |
 | `js/auth.js` | Sign-in and roles. |
@@ -145,7 +149,7 @@ To run the tests, copy from the private handoff folder into `tests/fixtures/`:
 python -m http.server 8777
 ```
 
-Then open <http://127.0.0.1:8777/tests/>. 181 assertions, checked against the
+Then open <http://127.0.0.1:8777/tests/>. 193 assertions, checked against the
 reference implementation's own output row by row.
 
 Four deliberate differences from that output, each asserted explicitly rather
