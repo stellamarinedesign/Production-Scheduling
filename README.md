@@ -121,6 +121,13 @@ Normalising happens in the transform, once, downstream.
   the production number, so it never returns. Reversible from History.
 - **Completion is not hiding.** Hidden means "not on this print"; completed
   means "finished". They are separate fields with separate consequences.
+- **Dates are calendar days, never instants.** `JSON.stringify` writes a Date as
+  UTC, so local midnight on 12 Nov becomes `2026-11-11T14:00:00Z` — and Brisbane
+  is UTC+10, the direction that loses a day. Both stores go through the same
+  serialiser, which writes `YYYY-MM-DD` from local parts, and `toDateOnly`
+  resolves any timestamp it is handed to the local calendar day. Either alone
+  would have been enough; both together mean data already written the old way
+  reads correctly too.
 - **Shared state is live.** Board data, job overrides, item overrides, vessel
   codes and board settings are watched, so an edit on one device appears on the
   others without a reload. Rebuilds are debounced (a bulk complete writes one
@@ -163,7 +170,7 @@ To run the tests, copy from the private handoff folder into `tests/fixtures/`:
 python -m http.server 8777
 ```
 
-Then open <http://127.0.0.1:8777/tests/>. 199 assertions, checked against the
+Then open <http://127.0.0.1:8777/tests/>. 205 assertions, checked against the
 reference implementation's own output row by row.
 
 Four deliberate differences from that output, each asserted explicitly rather

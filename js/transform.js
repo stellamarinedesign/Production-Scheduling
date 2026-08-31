@@ -61,7 +61,27 @@ export function toDateOnly(v) {
   }
 
   const s = String(v).trim();
-  let m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+
+  // A bare YYYY-MM-DD is a calendar day and is taken literally.
+  let m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  if (m) return { y: +m[1], m: +m[2], d: +m[3] };
+
+  // A full timestamp is NOT. Reading the date off the front of
+  // "2026-11-11T14:00:00Z" gives the 11th, when what that instant means in
+  // Brisbane is midnight on the 12th — which is how a whole board of dates
+  // once came back a day early. Resolve it to the local calendar day instead.
+  //
+  // This assumes the timestamp was written in the same timezone it is read in,
+  // which holds here: both managers are in Brisbane, and anything written since
+  // the cache was fixed is a bare date that needs no assumption at all.
+  if (/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+    const t = new Date(s);
+    if (!Number.isNaN(t.getTime())) {
+      return { y: t.getFullYear(), m: t.getMonth() + 1, d: t.getDate() };
+    }
+  }
+
+  m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
   if (m) return { y: +m[1], m: +m[2], d: +m[3] };
   m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(s);           // dd/mm/yyyy — AU order
   if (m) return { y: +m[3], m: +m[2], d: +m[1] };

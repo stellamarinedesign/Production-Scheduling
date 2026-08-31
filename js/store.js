@@ -346,7 +346,26 @@ export const Store = {
   },
 
   /** Keep the last board so a reload does not need a re-upload. */
-  cacheRows(rows, source) { lsSet('lastRows', { rows, source }); },
-  cachedRows() { return lsGet('lastRows', null); },
+  /**
+   * The local copy goes through the SAME serialiser as the Firestore one.
+   *
+   * It used to go through plain JSON.stringify, which writes a Date as UTC — so
+   * a local-midnight 12 Nov was cached as "2026-11-11T14:00:00Z" and read back
+   * as the 11th. A fresh upload was right because it still held real Date
+   * objects; every reload after it was a day early. Brisbane is UTC+10, the
+   * direction that loses a day.
+   *
+   * One serialiser, one place where dates are handled, both destinations.
+   */
+  cacheRows(rows, source) { lsSet('lastRows', { rowsJson: packRows(rows), source }); },
+
+  cachedRows() {
+    const v = lsGet('lastRows', null);
+    if (!v) return null;
+    // Entries written before the fix hold `rows` with UTC timestamps. toDateOnly
+    // reads those back to the right local day, so they still load correctly and
+    // are rewritten in the new shape on the next cacheRows.
+    return { rows: v.rowsJson ? unpackRows(v.rowsJson) : v.rows, source: v.source };
+  },
   clearCache() { lsSet('lastRows', null); },
 };

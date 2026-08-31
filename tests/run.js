@@ -737,12 +737,47 @@ export async function run() {
     revivedBoard.excluded.map((e) => `${e.prod_no}:${e.kind}`),
     board.excluded.map((e) => `${e.prod_no}:${e.kind}`));
 
-  // Prove the naive version really would have been wrong somewhere, so this
-  // test is guarding a real hazard rather than restating an identity.
-  check('a naive JSON round trip would shift dates in a positive-offset zone',
-    new Date().getTimezoneOffset() >= 0
-      || naiveBoard.jobs.some((j, i) => j.due_date !== board.jobs[i]?.due_date),
-    `offset ${new Date().getTimezoneOffset()}`);
+  // A naive JSON round trip writes Dates as UTC, which used to shift every date
+  // back a day east of Greenwich. It no longer does, because toDateOnly now
+  // resolves a timestamp to the local calendar day — belt as well as braces, so
+  // that data already written the old way reads correctly rather than only
+  // being prevented from getting worse.
+  eq('even a naive round trip lands on the right day now',
+    naiveBoard.jobs.map((j) => `${j.prod_no}:${j.due_date}`),
+    board.jobs.map((j) => `${j.prod_no}:${j.due_date}`));
+  check('...and the timezone here is one where it used to break',
+    new Date().getTimezoneOffset() <= 0,
+    `offset ${new Date().getTimezoneOffset()} (negative means east of Greenwich)`);
+
+  // ---- a UTC timestamp means the LOCAL calendar day ------------------------
+  // A whole board of dates once came back a day early because the local cache
+  // went through plain JSON.stringify, which writes a Date as UTC: local
+  // midnight on 12 Nov becomes "2026-11-11T14:00:00Z" in Brisbane, and reading
+  // the date off the front of that gives the 11th. Two guards now.
+  eq('a bare date is taken literally', toDateOnly('2026-11-12'), { y: 2026, m: 11, d: 12 });
+  eq('a UTC timestamp resolves to the local day it represents',
+    toDateOnly(new Date(Date.UTC(2026, 10, 12)).toISOString()),
+    (() => { const d = new Date(Date.UTC(2026, 10, 12));
+      return { y: d.getFullYear(), m: d.getMonth() + 1, d: d.getDate() }; })());
+  eq('...including the exact shape the old cache wrote',
+    toDateOnly(new Date(2026, 10, 12).toISOString()), { y: 2026, m: 11, d: 12 });
+
+  // The cache round trip has to leave the board identical, which is the thing
+  // that actually broke: right on upload, a day early on every reload after.
+  const cachedShape = JSON.parse(JSON.stringify({ rowsJson: packRows(src.rows) }));
+  const fromCache = buildBoard(unpackRows(cachedShape.rowsJson),
+    { codeMap, horizonWeeks: 12, asOf });
+  eq('a board rebuilt from the cache matches the one built from the file',
+    fromCache.jobs.map((j) => `${j.prod_no}:${j.due_date}:${j.start_date}`),
+    board.jobs.map((j) => `${j.prod_no}:${j.due_date}:${j.start_date}`));
+
+  // And data already written the old way still reads correctly, so the fix
+  // repairs what is stored rather than only preventing more of it.
+  const legacyCache = JSON.parse(JSON.stringify(src.rows));   // Dates -> UTC strings
+  const fromLegacy = buildBoard(legacyCache, { codeMap, horizonWeeks: 12, asOf });
+  eq('rows cached the old way still resolve to the right day',
+    fromLegacy.jobs.map((j) => `${j.prod_no}:${j.due_date}`),
+    board.jobs.map((j) => `${j.prod_no}:${j.due_date}`));
 
   // ---- vessel code cheat sheet --------------------------------------------
   // Landscape A4. The board fits by shortening its horizon; this sheet has no
