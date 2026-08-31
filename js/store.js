@@ -228,6 +228,87 @@ export const Store = {
     await setDoc(doc(this._db, 'settings', 'board'), patch, { merge: true });
   },
 
+  // ---- live sync ----------------------------------------------------------
+  //
+  // Everything shared is watched, so a change made on one device shows on the
+  // others without a reload. Local mode has nothing to watch and no second
+  // device to tell, so every subscribe is a no-op that returns a no-op.
+  //
+  // Each callback receives `(value, meta)`. `meta.fromSelf` is true while the
+  // snapshot is this client's own write that the server has not acknowledged
+  // yet — Firestore fires those immediately for latency compensation. Callers
+  // use it to avoid redrawing a control out from under the person using it.
+
+  _watch(build, shape) {
+    if (this.mode !== 'firestore') return () => {};
+    const { onSnapshot } = this._fs;
+    return onSnapshot(build(this._fs, this._db), (snap) => {
+      shape(snap, { fromSelf: snap.metadata.hasPendingWrites });
+    }, (err) => console.warn('[live]', err.message));
+  },
+
+  watchOverrides(cb) {
+    return this._watch(
+      (fs, db) => fs.collection(db, 'jobOverrides'),
+      (snap, meta) => {
+        const out = {};
+        snap.forEach((d) => { out[d.id] = d.data(); });
+        cb(out, meta);
+      });
+  },
+
+  watchItemOverrides(cb) {
+    return this._watch(
+      (fs, db) => fs.collection(db, 'itemOverrides'),
+      (snap, meta) => {
+        const out = {};
+        snap.forEach((d) => { const v = d.data(); out[v.inventoryId ?? d.id] = v; });
+        cb(out, meta);
+      });
+  },
+
+  /**
+   * Vessel codes, merged over the shipped seed exactly as loadCodes does —
+   * otherwise a live update would drop the seed-only fields and a code could
+   * lose its `boat` mid-session.
+   */
+  watchCodes(cb) {
+    if (this.mode !== 'firestore') return () => {};
+    let seed = null;
+    const merge = (stored) => {
+      const out = { ...(seed ?? {}) };
+      for (const [code, entry] of Object.entries(stored)) {
+        out[code] = { ...((seed ?? {})[code] ?? {}), ...entry };
+      }
+      return out;
+    };
+    const start = fetch(new URL('../data/vessel-codes.seed.json', import.meta.url))
+      .then((r) => r.json()).then((j) => { seed = j; });
+
+    return this._watch(
+      (fs, db) => fs.collection(db, 'vesselCodes'),
+      async (snap, meta) => {
+        await start;
+        const stored = {};
+        snap.forEach((d) => { stored[d.id] = d.data(); });
+        cb(merge(stored), meta);
+      });
+  },
+
+  watchSettings(cb) {
+    return this._watch(
+      (fs, db) => fs.doc(db, 'settings', 'board'),
+      (snap, meta) => cb(snap.exists() ? snap.data() : {}, meta));
+  },
+
+  /** The newest published board, as it is published. */
+  watchLatestImport(cb) {
+    return this._watch(
+      (fs, db) => fs.query(fs.collection(db, 'imports'),
+        fs.orderBy('retrievedAt', 'desc'), fs.limit(1)),
+      (snap, meta) => cb(snap.empty ? null : { _id: snap.docs[0].id, ...snap.docs[0].data() }, meta));
+  },
+
   // ---- import history -----------------------------------------------------
   // Audit trail and Gantt actuals later. Note: this does NOT buy exclusion of
   // completed jobs — the ERP saved filter drops Completed/Canceled/Closed

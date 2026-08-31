@@ -44,6 +44,17 @@ const collapsed = new Set();
   $('previewSheet').addEventListener('click', () => togglePreview());
   $('printSheet').addEventListener('click', () => window.print());
   render();
+
+  // A rename made on the board page, or by the other manager, lands here
+  // without a reload. Debounced because renaming a boat writes one document per
+  // ERP code on the line, and each write fires its own snapshot.
+  let t = null;
+  const stop = Store.watchCodes((m) => {
+    codeMap = m;
+    clearTimeout(t);
+    t = setTimeout(render, 150);
+  });
+  window.addEventListener('beforeunload', () => { try { stop(); } catch {} });
 })();
 
 function setMode(m) {

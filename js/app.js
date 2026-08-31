@@ -21,6 +21,13 @@ const el = (tag, cls, text) => {
 // The export we last put in front of the other managers. Keyed on the
 // adapter's retrievedAt, so a reload does not keep appending records to an
 // append-only collection.
+const GANTT_KEY = 'stella.board.ganttView';
+function loadGanttPrefs() {
+  try { return { packed: false, all: false, ...JSON.parse(localStorage.getItem(GANTT_KEY) ?? '{}') }; }
+  catch { return { packed: false, all: false }; }
+}
+const saveGanttPrefs = (v) => { try { localStorage.setItem(GANTT_KEY, JSON.stringify(v)); } catch {} };
+
 const PUBLISHED_KEY = 'stella.board.publishedAt';
 const publishedAt = () => { try { return localStorage.getItem(PUBLISHED_KEY) ?? ''; } catch { return ''; } };
 const markPublished = (at) => { try { localStorage.setItem(PUBLISHED_KEY, at ?? ''); } catch {} };
@@ -31,7 +38,10 @@ const state = {
   codeMap: {},
   overrides: {},
   itemOverrides: {},
-  gantt: { packed: false, all: false },
+  // Per DEVICE, not shared: how somebody prefers to look at the chart says
+  // nothing about the work. Board settings — horizon, stock cap, auto-fit — are
+  // the opposite, and live in Firestore so every manager sees the same board.
+  gantt: loadGanttPrefs(),
   settings: { horizonWeeks: 12, maxStock: null, autoFit: true },
   board: null,
   fit: null,
@@ -102,7 +112,108 @@ async function start(st) {
   wireOverlays();
 
   await loadLastBoard();
+  startLiveSync();
 }
+
+// ---------------------------------------------------------------------------
+// live sync
+//
+// Everything shared is watched, so an edit on one device appears on the others
+// without a reload. Three things make that safe rather than merely live:
+//
+//   DEBOUNCED. A bulk complete writes one document per job, and each write
+//   fires its own snapshot. Thirteen jobs would otherwise mean thirteen
+//   rebuilds, each measuring and laying out the print sheet.
+//
+//   DEFERRED WHILE A DIALOG IS OPEN. The overlays hold a captured job object;
+//   rebuilding underneath them would leave the dialog editing a stale row. The
+//   change is applied when the dialog closes instead.
+//
+//   OWN WRITES IGNORED FOR CONTROLS. Firestore replays this client's own writes
+//   immediately for latency compensation, which would otherwise reset the
+//   horizon slider under the finger that is dragging it.
+// ---------------------------------------------------------------------------
+
+const unsubscribes = [];
+let rebuildTimer = null;
+let rebuildDeferred = false;
+
+const dialogOpen = () => ['labelOverlay', 'hideOverlay', 'completeOverlay', 'newCodeOverlay']
+  .some((id) => $(id)?.classList.contains('show'));
+
+function scheduleRebuild() {
+  if (dialogOpen()) { rebuildDeferred = true; return; }
+  clearTimeout(rebuildTimer);
+  rebuildTimer = setTimeout(() => { if (state.rows) rebuild(); }, 150);
+}
+
+/** Called when a dialog closes, so anything that arrived meanwhile lands. */
+function flushDeferredRebuild() {
+  if (!rebuildDeferred) return;
+  rebuildDeferred = false;
+  scheduleRebuild();
+}
+
+function startLiveSync() {
+  if (Store.mode !== 'firestore') return;
+
+  unsubscribes.push(Store.watchOverrides((o) => {
+    state.overrides = o;
+    scheduleRebuild();
+  }));
+
+  unsubscribes.push(Store.watchItemOverrides((o) => {
+    state.itemOverrides = o;
+    scheduleRebuild();
+  }));
+
+  unsubscribes.push(Store.watchCodes((m) => {
+    state.codeMap = m;
+    scheduleRebuild();
+  }));
+
+  unsubscribes.push(Store.watchSettings((v, meta) => {
+    // Board settings are shared on purpose: every manager should be looking at
+    // the same horizon. Skip the echo of our own write so the slider does not
+    // jump while it is being dragged.
+    if (meta.fromSelf) return;
+    const before = JSON.stringify(state.settings);
+    state.settings = { ...state.settings, ...v };
+    if (JSON.stringify(state.settings) === before) return;
+    $('horizon').value = state.settings.horizonWeeks;
+    $('horizonVal').textContent = `${state.settings.horizonWeeks} weeks`;
+    $('maxStock').value = state.settings.maxStock ?? '';
+    setAutoFit(state.settings.autoFit, { save: false, render: false });
+    scheduleRebuild();
+  }));
+
+  unsubscribes.push(Store.watchLatestImport((rec, meta) => {
+    if (!rec?.rowsJson || meta.fromSelf) return;
+    // A different export is a bigger event than an edit, so say so rather than
+    // swapping the board out from under somebody mid-sentence.
+    if (rec.retrievedAt === state.source?.retrievedAt) return;
+    const rows = unpackRows(rec.rowsJson);
+    if (!rows?.length) return;
+    state.rows = rows;
+    state.source = {
+      sourceId: rec.sourceId,
+      sourceLabel: rec.sourceLabel,
+      retrievedAt: rec.retrievedAt,
+      uploadedBy: rec.uploadedBy ?? null,
+      warnings: [],
+    };
+    Store.cacheRows(rows, state.source);
+    markPublished(rec.retrievedAt);
+    scheduleRebuild();
+    toast(rec.uploadedBy && rec.uploadedBy !== Auth.user?.email
+      ? `New export uploaded by ${rec.uploadedBy} — board updated.`
+      : 'Board updated from a newer export.', 5000);
+  }));
+}
+
+window.addEventListener('beforeunload', () => {
+  for (const stop of unsubscribes) { try { stop(); } catch {} }
+});
 
 /**
  * Pick up the most recent export, wherever it came from.
@@ -368,24 +479,32 @@ function wireControls() {
     renderBoard();
   });
 
-  const ganttToggle = (id, key) => $(id).addEventListener('click', () => {
-    state.gantt[key] = !state.gantt[key];
-    $(id).classList.toggle('on', state.gantt[key]);
-    $(id).setAttribute('aria-pressed', String(state.gantt[key]));
-    renderGanttView();
-  });
+  const ganttToggle = (id, key) => {
+    const paint = () => {
+      $(id).classList.toggle('on', state.gantt[key]);
+      $(id).setAttribute('aria-pressed', String(state.gantt[key]));
+    };
+    paint();
+    $(id).addEventListener('click', () => {
+      state.gantt[key] = !state.gantt[key];
+      saveGanttPrefs(state.gantt);
+      paint();
+      renderGanttView();
+    });
+  };
   ganttToggle('ganttPacked', 'packed');
   ganttToggle('ganttAll', 'all');
   $('printBtn').addEventListener('click', () => { showTab('print'); window.print(); });
 }
 
-function setAutoFit(on, { save = true } = {}) {
+function setAutoFit(on, { save = true, render = true } = {}) {
   state.settings.autoFit = on;
   const b = $('autoFit');
   b.textContent = on ? 'Auto-fit on' : 'Auto-fit off';
   b.classList.toggle('on', on);
   b.setAttribute('aria-pressed', String(on));
-  if (save) { Store.saveSettings({ autoFit: on }); rebuild(); }
+  if (save) Store.saveSettings({ autoFit: on });
+  if (save && render) rebuild();
 }
 
 const TABS = ['edit', 'gantt', 'history', 'print'];
@@ -974,7 +1093,7 @@ function queueNewCodes() {
 
 function showNewCode() {
   const item = ncQueue[ncIndex];
-  if (!item) { $('newCodeOverlay').classList.remove('show'); rebuild(); return; }
+  if (!item) { $('newCodeOverlay').classList.remove('show'); rebuild(); flushDeferredRebuild(); return; }
 
   $('ncProgress').textContent = ncQueue.length > 1 ? `${ncIndex + 1} of ${ncQueue.length}` : '';
   $('ncLede').textContent =
@@ -1174,22 +1293,31 @@ function wireOverlays() {
     closeLabel();
   });
 
-  $('completeCancel').addEventListener('click', () => $('completeOverlay').classList.remove('show'));
+  $('completeCancel').addEventListener('click', () => {
+    $('completeOverlay').classList.remove('show');
+    flushDeferredRebuild();
+  });
   $('completeConfirm').addEventListener('click', confirmComplete);
   $('completeAll').addEventListener('click', () => { completing.forEach((e) => { e.ticked = true; }); renderCompleteList(); });
   $('completeNone').addEventListener('click', () => { completing.forEach((e) => { e.ticked = false; }); renderCompleteList(); });
 
-  $('hideCancel').addEventListener('click', () => $('hideOverlay').classList.remove('show'));
+  $('hideCancel').addEventListener('click', () => {
+    $('hideOverlay').classList.remove('show');
+    flushDeferredRebuild();
+  });
   $('hideSave').addEventListener('click', saveHide);
 
   for (const id of ['labelOverlay', 'hideOverlay', 'completeOverlay']) {
-    $(id).addEventListener('click', (e) => { if (e.target.id === id) $(id).classList.remove('show'); });
+    $(id).addEventListener('click', (e) => {
+      if (e.target.id === id) { $(id).classList.remove('show'); flushDeferredRebuild(); }
+    });
   }
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     $('labelOverlay').classList.remove('show');
     $('hideOverlay').classList.remove('show');
     $('completeOverlay').classList.remove('show');
+    flushDeferredRebuild();
   });
 }
 
@@ -1235,7 +1363,11 @@ async function setItemOverride(inventoryId, patch) {
   rebuild();
 }
 
-function closeLabel() { $('labelOverlay').classList.remove('show'); editing = null; }
+function closeLabel() {
+  $('labelOverlay').classList.remove('show');
+  editing = null;
+  flushDeferredRebuild();
+}
 
 // ---------------------------------------------------------------------------
 // hide / show

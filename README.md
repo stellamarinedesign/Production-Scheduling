@@ -121,6 +121,16 @@ Normalising happens in the transform, once, downstream.
   the production number, so it never returns. Reversible from History.
 - **Completion is not hiding.** Hidden means "not on this print"; completed
   means "finished". They are separate fields with separate consequences.
+- **Shared state is live.** Board data, job overrides, item overrides, vessel
+  codes and board settings are watched, so an edit on one device appears on the
+  others without a reload. Rebuilds are debounced (a bulk complete writes one
+  document per job), deferred while a dialog is open (the overlays hold a
+  captured row), and a client ignores the echo of its own writes so a control
+  is not reset under the person using it.
+- **Board settings are shared; view settings are not.** Horizon, stock cap and
+  auto-fit live in Firestore because every manager should be looking at the same
+  board. Gantt lanes/everything and collapsed categories are per device — how
+  somebody prefers to look at the chart says nothing about the work.
 - **An upload reaches every manager, not just the one who did it.** The import
   record carries the raw rows as well as the rendered board, so the second
   manager continues from the same export rather than being asked to upload it
