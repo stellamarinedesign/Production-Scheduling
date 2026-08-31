@@ -1,7 +1,7 @@
 // app.js — the manager view. Upload, review, edit, print.
 
 import { xlsxAdapter } from './adapters/index.js';
-import { buildBoard, byCategory, today, toAU, toDateOnly } from './transform.js';
+import { buildBoard, byCategory, today, toAU, toDateOnly, jobTitle } from './transform.js';
 import { CATEGORY_ORDER, PRINT_LAYOUT, EXCLUSION_ORDER, EXCLUSION_GROUP_LABEL } from './rules.js';
 import { stellaCode, labelFor, existingBoats, acceptNewCode, applyTemplate } from './vessel-codes.js';
 import { Auth, ROLE, friendlyAuthError } from './auth.js';
@@ -692,7 +692,7 @@ function renderWarnings() {
         b.append(el('div', null, 'Confirm these before the floor starts them, or hide them.'));
         for (const j of w.onHold) {
           const r = el('div', 'xrow');
-          r.append(el('span', 'id', j.prod_no), el('span', null, j.label), el('span', 'why', `due ${j.due_display}`));
+          r.append(el('span', 'id', j.prod_no), el('span', null, jobTitle(j)), el('span', 'why', `due ${j.due_display}`));
           b.append(r);
         }
       },
@@ -705,7 +705,7 @@ function renderWarnings() {
       build: (b) => {
         for (const j of w.hidden) {
           const r = el('div', 'xrow');
-          r.append(el('span', 'id', j.prod_no), el('span', null, j.label),
+          r.append(el('span', 'id', j.prod_no), el('span', null, jobTitle(j)),
             el('span', 'why', j.hidden_reason || 'no reason given'));
           b.append(r);
         }
@@ -832,7 +832,7 @@ function jobRow(j, { full = false } = {}) {
   // manager-view only and never reaches the printed board.
   row.append(el('span', 'po', j.customer_po ?? ''));
 
-  const label = el('span', 'label', j.label);
+  const label = el('span', 'label', jobTitle(j));
   if (j.label !== j.base_label) label.append(el('span', 'edited', 'EDITED'));
   else if (j.item_override) label.append(el('span', 'pinned', 'ITEM'));
   row.append(label);
@@ -938,7 +938,7 @@ function renderHistory() {
       for (const j of rows) {
         const row = el('div', 'hist-row');
         row.append(el('span', 'prod', j.prod_no));
-        row.append(el('span', 'label', j.label));
+        row.append(el('span', 'label', jobTitle(j)));
         row.append(el('span', 'due', j.due_display));
         const when = j.completed_at ? new Date(j.completed_at) : null;
         const stamp = el('span', 'when', when
@@ -988,7 +988,7 @@ function openCompleteDialog(jobs) {
   completing = jobs.map((j) => ({ job: j, ticked: !j.is_stock }));
 
   $('completeLede').textContent = jobs.length === 1
-    ? `${jobs[0].prod_no} — ${jobs[0].label}, due ${jobs[0].due_display}.`
+    ? `${jobs[0].prod_no} — ${jobTitle(jobs[0])}, due ${jobs[0].due_display}.`
     : `${jobs.length} jobs are past their end date and still open. Untick anything `
       + `still in the shop. Stock builds start unticked — their dates are set once `
       + `and never revised, so a passed date says nothing about them.`;
@@ -1009,7 +1009,7 @@ function renderCompleteList() {
     box.addEventListener('change', () => { entry.ticked = box.checked; updateCompleteCount(); });
     row.append(box);
     row.append(el('span', 'c-prod', job.prod_no));
-    row.append(el('span', 'c-name', job.label));
+    row.append(el('span', 'c-name', jobTitle(job)));
     row.append(el('span', 'c-cat', job.category));
     row.append(el('span', 'c-due', job.due_display));
     host.append(row);
@@ -1377,7 +1377,7 @@ let hiding = null;
 
 function openHideDialog(job) {
   hiding = job;
-  $('hideLede').textContent = `${job.prod_no} — ${job.label}, due ${job.due_display}.`;
+  $('hideLede').textContent = `${job.prod_no} — ${jobTitle(job)}, due ${job.due_display}.`;
   $('hideReason').value = '';
   $('hideOverlay').classList.add('show');
   $('hideReason').focus();

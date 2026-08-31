@@ -8,7 +8,7 @@
 // `renderGantt` touches elements.
 
 import { CATEGORY_ORDER } from './rules.js';
-import { toDateOnly, toISO, toAU, today as todayDate } from './transform.js';
+import { toDateOnly, toISO, toAU, today as todayDate, jobTitle } from './transform.js';
 
 const DAY = 86400000;
 const utc = (d) => Date.UTC(d.y, d.m - 1, d.d);
@@ -313,7 +313,7 @@ export function renderGantt(host, jobs, opts = {}) {
         + `${r.clippedStart ? ' clip-start' : ''}${r.clippedEnd ? ' clip-end' : ''}`);
       bar.style.left = `${r.leftPct}%`;
       bar.style.width = `${r.widthPct}%`;
-      bar.title = `${r.prod_no} — ${r.label}`
+      bar.title = `${r.prod_no} — ${jobTitle(r)}`
         + `\n${r.startDisplay} → ${r.endDisplay}  (${r.days} days)`
         + `${r.is_stock ? '\nStock build — no committed date' : ''}`
         + `${r.completed ? '\nCompleted' : ''}`
@@ -329,7 +329,7 @@ export function renderGantt(host, jobs, opts = {}) {
         fill.style.width = `${Math.min(100, r.progress * 100)}%`;
         bar.append(fill);
       }
-      if (showLabel) bar.append(el('span', 'g-bar-text', r.days >= 8 ? r.label : ''));
+      if (showLabel) bar.append(el('span', 'g-bar-text', r.days >= 8 ? jobTitle(r) : ''));
       if (onBarClick) {
         bar.classList.add('is-clickable');
         bar.addEventListener('click', () => onBarClick(r));
@@ -359,8 +359,8 @@ export function renderGantt(host, jobs, opts = {}) {
 
         const label = el('div', 'g-label');
         label.append(el('span', 'g-prod', r.prod_no));
-        label.append(el('span', 'g-name', r.label));
-        label.title = `${r.prod_no} — ${r.label}`;
+        label.append(el('span', 'g-name', jobTitle(r)));
+        label.title = `${r.prod_no} — ${jobTitle(r)}`;
         row.append(label);
 
         const track = el('div', 'g-scale');
@@ -422,7 +422,7 @@ export function renderGantt(host, jobs, opts = {}) {
     for (const r of g.unscheduled) {
       const row = el('div', 'g-unsched-row');
       row.append(el('span', 'g-prod', r.prod_no));
-      row.append(el('span', 'g-name', r.label));
+      row.append(el('span', 'g-name', jobTitle(r)));
       row.append(el('span', 'g-cat', r.category));
       row.append(el('span', 'g-when', `${r.startDisplay} \u2013 ${r.endDisplay}`));
       box.append(row);

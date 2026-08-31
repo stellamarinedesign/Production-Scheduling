@@ -142,6 +142,12 @@ Normalising happens in the transform, once, downstream.
   record carries the raw rows as well as the rendered board, so the second
   manager continues from the same export rather than being asked to upload it
   again. Local cache wins only when it is genuinely newer.
+- **The quantity is a display suffix, not part of the label.** `x5` is appended
+  at render time from `Qty. to Produce`, and only when it is not 1 — 85 of the 92
+  rows are single builds and an `x1` on every line would bury the three that are
+  not. It is deliberately kept out of `label`: the label editor prefills from
+  `label`, so a suffix stored there would be saved into the override and
+  suffixed again on the next render.
 - Nothing is ever dropped silently. Every excluded row carries a reason.
 
 Full background: `handoff/STELLA_PRODUCTION_BOARD_CONTEXT.md`.
@@ -170,7 +176,7 @@ To run the tests, copy from the private handoff folder into `tests/fixtures/`:
 python -m http.server 8777
 ```
 
-Then open <http://127.0.0.1:8777/tests/>. 205 assertions, checked against the
+Then open <http://127.0.0.1:8777/tests/>. 212 assertions, checked against the
 reference implementation's own output row by row.
 
 Four deliberate differences from that output, each asserted explicitly rather

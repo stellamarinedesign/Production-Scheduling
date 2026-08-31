@@ -5,7 +5,7 @@
 // Davits runs full-width underneath because its descriptions are long.
 
 import { PRINT_LAYOUT, CATEGORY_ORDER } from './rules.js';
-import { byCategory, toAU, toDateOnly } from './transform.js';
+import { byCategory, toAU, toDateOnly, jobTitle } from './transform.js';
 
 // A4 at 96dpi, less the margins in the @page rule.
 const PAGE_H = 1123;
@@ -77,7 +77,7 @@ function categoryTable(category, jobs, { full = false } = {}) {
     const tr = el('tr');
     if (j.on_hold) tr.className = 'on-hold';
     tr.append(el('td', null, j.prod_no));
-    tr.append(el('td', 'vessel', j.on_hold ? `${j.label}  [ON HOLD]` : j.label));
+    tr.append(el('td', 'vessel', j.on_hold ? `${jobTitle(j)}  [ON HOLD]` : jobTitle(j)));
     const due = el('td', `due${j.is_stock ? ' stock' : ''}`, j.due_display);
     tr.append(due);
     tbody.append(tr);

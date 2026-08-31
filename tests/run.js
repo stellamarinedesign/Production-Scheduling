@@ -6,7 +6,7 @@
 // all 44 exclusion reasons exactly.
 
 import { xlsxAdapter, validateColumns } from '../js/adapters/index.js';
-import { buildBoard, toDateOnly, toAU, toISO, addWeeks } from '../js/transform.js';
+import { buildBoard, toDateOnly, toAU, toISO, addWeeks, jobTitle } from '../js/transform.js';
 import { classify, CATEGORY_ORDER } from '../js/rules.js';
 import { resolveDisplays, aliasGroups, stellaCode, labelFor, detectNewCodes,
          existingBoats, acceptNewCode, applyTemplate, boatRows } from '../js/vessel-codes.js';
@@ -360,6 +360,31 @@ export async function run() {
     B: { riviera: ['9SY'], boat: 'x', display: 'BBB', _confirmed: true },
   });
   eq('two confirmed answers for one boat is a conflict', clash.conflicts.length, 1);
+
+  // ---- quantity in the title ----------------------------------------------
+  // Shown only when there is more than one to build: "x1" on 85 of the 92 rows
+  // would bury the three that matter.
+  eq('one to build shows no quantity', jobTitle({ label: 'SY22 Launcher', qty: 1 }), 'SY22 Launcher');
+  eq('more than one does', jobTitle({ label: 'Watertight Door 62SY', qty: 5 }), 'Watertight Door 62SY x5');
+  eq('a missing quantity is treated as one', jobTitle({ label: 'X' }), 'X');
+
+  const qtyJobs = board.jobs.filter((j) => j.qty > 1);
+  eq('the export carries three multi-quantity jobs on the board',
+    qtyJobs.map((j) => `${j.inventory_id}:${j.qty}`).sort(),
+    ['SHCELECPLINTHRIV43SY:5', 'STCFXCHOCK:2', 'SWD4PDRIV62SY:5']);
+  eq('...and each shows it', qtyJobs.map((j) => jobTitle(j)).sort(),
+    ['Fixed Tender Chocks x2', 'Helm Seat Box SY20 x5', 'Watertight Door 62SY x5']);
+
+  // The suffix must NOT live in `label`. The editor prefills from `label`, so a
+  // suffix stored there would be saved into the override and suffixed again on
+  // the next render — "Chocks x2 x2".
+  check('the quantity is not baked into the stored label',
+    qtyJobs.every((j) => !/ x\d+$/.test(j.label)), qtyJobs.map((j) => j.label).join(' | '));
+  eq('a relabelled job still shows its quantity', (() => {
+    const b = buildBoard(src.rows, { codeMap, horizonWeeks: 12, asOf,
+      overrides: { [qtyJobs[0].prod_no]: { labelOverride: 'Bespoke' } } });
+    return jobTitle(b.jobs.find((j) => j.prod_no === qtyJobs[0].prod_no));
+  })(), `Bespoke x${qtyJobs[0].qty}`);
 
   // ---- custom lifters -----------------------------------------------------
   const customs = board.jobs.filter((j) => /CUSTOM/i.test(j.inventory_id));

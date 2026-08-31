@@ -419,6 +419,18 @@ export function buildBoard(rows, opts = {}) {
   };
 }
 
+/**
+ * What a job is called wherever it is shown — label plus quantity.
+ *
+ * A DISPLAY concern, deliberately not baked into `label`. The label editor
+ * prefills from `label`, so a suffix stored there would be saved back into the
+ * override and then suffixed again on the next render: "Chocks x2 x2".
+ *
+ * Only ever shown when there is more than one to build. "x1" on 85 of 92 rows
+ * would be noise that buries the three that matter.
+ */
+export const jobTitle = (j) => (Number(j?.qty) > 1 ? `${j.label} x${j.qty}` : j?.label ?? '');
+
 /** Jobs grouped by category in board order, hidden ones dropped. */
 export function byCategory(jobs, { includeHidden = false } = {}) {
   const out = new Map(CATEGORY_ORDER.map((c) => [c, []]));
