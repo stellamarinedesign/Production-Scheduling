@@ -91,6 +91,17 @@ Normalising happens in the transform, once, downstream.
   latches to the `Inventory ID` and covers every future order for one product —
   that is the layer for a part whose item code names one boat but which is
   built to the drawings of another. A job decision covers one order.
+- **A custom one-off's name is asked for, not guessed.** Custom work carries no
+  model code, so the name comes out of free text — and the two columns that
+  could supply it disagree. `Description` holds the boat on two of the three
+  custom rows in the 21/08 export ("Riviera 48", "Alaska 47 square transom") and
+  "5% drawing fee" on the third, where the answer is the customer. Where the
+  vessel rule cannot read the Description the import asks, showing the
+  production number and both columns with the label each would print, plus a
+  free-text option. The answer is an ordinary job label override keyed on the
+  production number, which is what makes "use the customer name" — the reading
+  the board would have picked anyway — stick instead of being asked again every
+  import.
 - **A code the map has never seen is never auto-accepted.** It is queued on
   import and answered by hand, because the alternative is the board printing a
   guess that nobody knows is one.
@@ -176,7 +187,7 @@ To run the tests, copy from the private handoff folder into `tests/fixtures/`:
 python -m http.server 8777
 ```
 
-Then open <http://127.0.0.1:8777/tests/>. 212 assertions, checked against the
+Then open <http://127.0.0.1:8777/tests/>. 235 assertions, checked against the
 reference implementation's own output row by row.
 
 Four deliberate differences from that output, each asserted explicitly rather
@@ -187,7 +198,9 @@ than quietly tolerated:
   42 exclusions rather than 44 follows from the same change.
 - **`43SY` displays `SY20`** — same boat as the SY20 lifter.
 - **Custom jobs read `Custom Lifter - Riviera 48`** — the vessel alone made a
-  one-off look like a standard model.
+  one-off look like a standard model. The reference printed `Custom Lifter -
+  GALAXY` for the drawing-fee row; the board still does until somebody answers
+  the import prompt, and then prints whatever they chose.
 - **Stock rows have `sales_order: null`** rather than the string `"nan"`, which
   is what Python's `str(NaN)` wrote into every empty cell.
 

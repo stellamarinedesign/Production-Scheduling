@@ -123,6 +123,79 @@ export function extractHull(...fields) {
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Naming a custom one-off
+//
+// A custom lifter carries no model code, so its name has to come out of free
+// text — and the two columns that could supply it disagree. In the 21/08 export
+// `Description` holds the vessel on two of the three custom rows ("Riviera 48",
+// "Alaska 47 square transom") and "5% drawing fee" on the third, where the real
+// answer is the customer, Galaxy. Neither column is reliably the right one.
+//
+// So this returns BOTH readings and what each would print, rather than picking.
+// `chosen` is what the board shows when nobody has been asked — the historical
+// behaviour, unchanged — and `ambiguous` says whether that was a guess. The
+// import dialog puts an ambiguous one to the manager; nothing here decides.
+// ---------------------------------------------------------------------------
+
+/**
+ * The vessel alone does not say a job is a one-off. "Riviera 48" next to a row
+ * of standard lifters reads as just another model, so every custom label is
+ * prefixed — that is what tells the floor to expect different drawings.
+ */
+export const CUSTOM_PREFIX = 'Custom Lifter - ';
+
+/**
+ * True when a typed custom name amounts to nothing. The dialog prefills the
+ * field with the prefix so the convention stays visible, and `trim()` takes the
+ * trailing space off it — so "nothing typed" has two spellings, and comparing
+ * against CUSTOM_PREFIX alone let "Custom Lifter -" through as a real answer.
+ */
+export const isEmptyCustomName = (s) => {
+  const t = String(s ?? '').trim();
+  return !t || t === CUSTOM_PREFIX.trim();
+};
+
+/**
+ * @returns {null|{
+ *   vessel: string|null, ambiguous: boolean,
+ *   description: {column: string, raw: string, label: string|null},
+ *   customer:    {column: string, raw: string, label: string},
+ *   chosen: object,
+ * }} null for anything that is not a custom item.
+ */
+export function customNameOptions({ inventoryId, productionDescription, customer, descField }) {
+  const inv = text(inventoryId);
+  if (!/CUSTOM/i.test(inv)) return null;
+
+  const descRaw = isBlank(descField) ? '' : String(descField).trim();
+  const m = descRaw ? VESSEL_IN_DESC_RE.exec(descRaw) : null;
+  const vessel = m ? m[1].replace(/\s+/g, ' ').trim() : null;
+
+  const description = {
+    column: 'Description',
+    raw: descRaw,
+    // With no vessel to read, the column can still be taken at face value — a
+    // manager who says "that IS the name" gets exactly what the cell says.
+    label: descRaw ? CUSTOM_PREFIX + (vessel ?? descRaw) : null,
+  };
+
+  const name = text(customer).replace(CUSTOMER_SUFFIX_RE, '');
+  const cust = {
+    column: 'Customer Name',
+    raw: text(customer),
+    label: CUSTOM_PREFIX + (name ? name.toUpperCase() : text(productionDescription)),
+  };
+
+  return {
+    vessel,
+    ambiguous: !vessel,
+    description,
+    customer: cust,
+    chosen: vessel ? description : cust,
+  };
+}
+
 /**
  * Short board label.
  *
@@ -156,22 +229,10 @@ export function shortLabel({
 
   if (LABEL_OVERRIDES[inv]) return LABEL_OVERRIDES[inv];
 
-  // Custom / one-off work has no model code. The ERP Description field often
-  // carries the real vessel ("Riviera 48", "Alaska 47") — prefer that, and fall
-  // back to the customer name when it holds something else entirely
-  // ("5% drawing fee" starts with a digit, so it falls through).
-  if (/CUSTOM/i.test(inv)) {
-    // The vessel alone does not say this is a one-off. "Riviera 48" next to a
-    // row of standard lifters reads as just another model; "Custom Lifter -
-    // Riviera 48" tells the floor to expect different drawings.
-    const prefix = 'Custom Lifter - ';
-    if (!isBlank(descField) && descField !== '') {
-      const m = VESSEL_IN_DESC_RE.exec(String(descField));
-      if (m) return prefix + m[1].replace(/\s+/g, ' ').trim();
-    }
-    const name = text(customer).replace(CUSTOMER_SUFFIX_RE, '');
-    return prefix + (name ? name.toUpperCase() : desc);
-  }
+  // Custom / one-off work has no model code, so the name comes out of free
+  // text — see `customNameOptions`, which is where that decision lives.
+  const custom = customNameOptions({ inventoryId, productionDescription, customer, descField });
+  if (custom) return custom.chosen.label;
 
   // Davits are labelled by capacity + configuration, not by vessel.
   //
@@ -277,6 +338,20 @@ export function buildBoard(rows, opts = {}) {
       itemOverride,
     });
 
+    // Both readings of a custom job's name, so the import dialog can offer them
+    // and so the board can say when it is guessing. Skipped where something
+    // more specific has already claimed the label — `shortLabel` returns on an
+    // item override or LABEL_OVERRIDES before it ever reaches the custom
+    // branch, and a job override replaces its answer a few lines below.
+    const nameOptions = (itemOverride?.label || itemOverride?.displayCode || LABEL_OVERRIDES[text(inv)])
+      ? null
+      : customNameOptions({
+        inventoryId: inv,
+        productionDescription: r['Production Description'],
+        customer,
+        descField: r['Description'],
+      });
+
     const startDate = toDateOnly(r['Start Date']);
 
     const job = {
@@ -286,6 +361,7 @@ export function buildBoard(rows, opts = {}) {
       label: ov.labelOverride || label,
       base_label: label,                       // pre-job-override, for reset
       item_override: itemOverride,             // so the UI can show and clear it
+      name_options: nameOptions,               // custom one-offs only; null otherwise
       inventory_id: text(inv),
       customer,
       is_stock: isStock,
@@ -403,6 +479,11 @@ export function buildBoard(rows, opts = {}) {
       // the bulk-complete sweep.
       pastDue: visible.filter((j) => j.end_date && j.end_date < toISO(asOf)),
       components: visible.filter((j) => j.is_component),
+      // Custom jobs the board can only guess the name of. A job override means
+      // a human has settled it — whichever way they answered, including the
+      // reading the board would have picked anyway, so it is never re-asked.
+      customNames: visible.filter((j) =>
+        j.name_options?.ambiguous && !overrides[j.prod_no]?.labelOverride),
       newCodes,
       codeConflicts: resolved.conflicts,
       codeUndecided: resolved.undecided,

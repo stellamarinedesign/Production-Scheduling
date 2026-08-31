@@ -1,7 +1,7 @@
 // app.js — the manager view. Upload, review, edit, print.
 
 import { xlsxAdapter } from './adapters/index.js';
-import { buildBoard, byCategory, today, toAU, toDateOnly, jobTitle } from './transform.js';
+import { buildBoard, byCategory, today, toAU, toDateOnly, jobTitle, CUSTOM_PREFIX, isEmptyCustomName } from './transform.js';
 import { CATEGORY_ORDER, PRINT_LAYOUT, EXCLUSION_ORDER, EXCLUSION_GROUP_LABEL } from './rules.js';
 import { stellaCode, labelFor, existingBoats, acceptNewCode, applyTemplate } from './vessel-codes.js';
 import { Auth, ROLE, friendlyAuthError } from './auth.js';
@@ -273,7 +273,7 @@ async function loadLastBoard() {
   state.source = pick.source;
   rebuild();
   // A code added since the last load still needs answering.
-  if (Auth.isManager) queueNewCodes();
+  if (Auth.isManager) queueImportQuestions();
 
   // SELF-HEAL. Records written before the raw rows were stored carry a board
   // but nothing another manager can rebuild from, which is exactly how the
@@ -395,7 +395,7 @@ async function load(file) {
   Store.cacheRows(src.rows, state.source);
   rebuild();
   toast(`${src.rows.length} rows in — ${state.board.meta.job_count} on the board.`);
-  queueNewCodes();
+  queueImportQuestions();
 
   // Publishing is a SEPARATE failure from parsing. Both used to sit in one try,
   // so a save that was refused reported "could not read that file" — which
@@ -648,6 +648,32 @@ function renderWarnings() {
             el('span', null, `${n.count} job(s) · ${n.items.join(', ')}`));
           const a = el('button', 'mini', 'Decide now');
           a.addEventListener('click', () => { ncQueue = w.newCodes; ncIndex = w.newCodes.indexOf(n); showNewCode(); });
+          r.append(a);
+          b.append(r);
+        }
+      },
+    }));
+  }
+
+  // Custom jobs still printing a guessed name — skipped in the import dialog,
+  // or arrived since. Not cosmetic: the floor reads this off the board.
+  if (w.customNames?.length) {
+    host.append(panel({
+      cls: 'alert', title: 'Custom jobs awaiting a name', count: w.customNames.length, open: true,
+      build: (b) => {
+        b.append(el('div', null,
+          'These are one-offs with no model code, and the Description column '
+          + 'does not read as a boat. They print the customer name until '
+          + 'somebody says otherwise.'));
+        for (const j of w.customNames) {
+          const r = el('div', 'xrow');
+          r.append(el('span', 'id', j.prod_no),
+            el('span', null, jobTitle(j)),
+            el('span', 'why', j.name_options.description.raw || 'no description'));
+          const a = el('button', 'mini', 'Decide now');
+          a.addEventListener('click', () => {
+            cnQueue = w.customNames; cnIndex = w.customNames.indexOf(j); showCustomName();
+          });
           r.append(a);
           b.append(r);
         }
@@ -1082,18 +1108,27 @@ function renderFitStatus() {
 let ncQueue = [];
 let ncIndex = 0;
 
-function queueNewCodes() {
+/**
+ * Everything an import needs answered, in order. Vessel codes first: accepting
+ * one changes labels, and a custom job asked about beforehand could be asked
+ * again about a different name.
+ */
+function queueImportQuestions() {
   if (!Auth.isManager) return;
-  const pending = state.board?.warnings?.newCodes ?? [];
-  if (!pending.length) return;
-  ncQueue = pending;
-  ncIndex = 0;
-  showNewCode();
+  const codes = state.board?.warnings?.newCodes ?? [];
+  if (codes.length) { ncQueue = codes; ncIndex = 0; showNewCode(); return; }
+  queueCustomNames();
 }
 
 function showNewCode() {
   const item = ncQueue[ncIndex];
-  if (!item) { $('newCodeOverlay').classList.remove('show'); rebuild(); flushDeferredRebuild(); return; }
+  if (!item) {
+    $('newCodeOverlay').classList.remove('show');
+    rebuild();                 // a new code can rename jobs, so ask from the rebuilt board
+    flushDeferredRebuild();
+    queueCustomNames();
+    return;
+  }
 
   $('ncProgress').textContent = ncQueue.length > 1 ? `${ncIndex + 1} of ${ncQueue.length}` : '';
   $('ncLede').textContent =
@@ -1171,6 +1206,91 @@ function wireNewCode() {
   }
   $('ncCustom').addEventListener('keydown', (e) => { if (e.key === 'Enter') chooseNewCode('custom'); });
   $('ncSkip').addEventListener('click', () => { ncIndex += 1; showNewCode(); });
+}
+
+// ---------------------------------------------------------------------------
+// naming a custom one-off
+//
+// `Description` carries the boat on most custom rows and something else
+// entirely on the rest — "5% drawing fee", where the real answer is the
+// customer. The transform reads both columns and says when it is guessing; this
+// puts the guess to the manager instead of printing it. The answer is a plain
+// job label override, keyed on the production number, so it syncs and survives
+// the next upload like any other relabel.
+// ---------------------------------------------------------------------------
+
+let cnQueue = [];
+let cnIndex = 0;
+
+function queueCustomNames() {
+  if (!Auth.isManager) return;
+  const pending = state.board?.warnings?.customNames ?? [];
+  if (!pending.length) return;
+  cnQueue = pending;
+  cnIndex = 0;
+  showCustomName();
+}
+
+function showCustomName() {
+  const job = cnQueue[cnIndex];
+  if (!job) { $('customNameOverlay').classList.remove('show'); flushDeferredRebuild(); return; }
+  const o = job.name_options;
+
+  $('cnProgress').textContent = cnQueue.length > 1 ? `${cnIndex + 1} of ${cnQueue.length}` : '';
+  $('cnLede').textContent =
+    `${job.prod_no} is a custom one-off, and neither column reads as a boat. `
+    + `Choose what the floor should see.`;
+
+  const d = $('cnDerived');
+  d.textContent = '';
+  const row = (k, v) => {
+    const r = el('div', 'row');
+    r.append(el('span', null, k), el('span', null, v || '—'));
+    d.append(r);
+  };
+  row('Production number', job.prod_no);
+  row('Item code', job.inventory_id);
+  row('Production description', job.description);
+  row('Due', job.due_display);
+
+  // An empty column is not an option. Offering "Use the Description" on a blank
+  // cell would print "Custom Lifter - " and look like a bug.
+  $('cnDescOpt').hidden = !o.description.label;
+  if (o.description.label) {
+    $('cnDescRaw').textContent = `"${o.description.raw}"`;
+    $('cnDescPreview').textContent = o.description.label;
+  }
+  $('cnCustRaw').textContent = o.customer.raw ? `"${o.customer.raw}"` : '—';
+  $('cnCustPreview').textContent = o.customer.label;
+
+  // Prefilled with the prefix rather than the guess: the convention stays
+  // visible and editable, and "Use this" is never a silent duplicate of the
+  // customer option.
+  $('cnCustom').value = CUSTOM_PREFIX;
+  $('customNameOverlay').classList.add('show');
+}
+
+async function chooseCustomName(mode) {
+  const job = cnQueue[cnIndex];
+  const o = job.name_options;
+  const label = mode === 'description' ? o.description.label
+    : mode === 'customer' ? o.customer.label
+      : $('cnCustom').value.trim();
+  if (isEmptyCustomName(label)) { toast('Type a name, or choose a column.'); return; }
+
+  await setOverride(job.prod_no, { labelOverride: label });
+  toast(`${job.prod_no} will read "${label}"`);
+
+  cnIndex += 1;
+  showCustomName();
+}
+
+function wireCustomName() {
+  for (const b of document.querySelectorAll('#customNameOverlay [data-mode]')) {
+    b.addEventListener('click', () => chooseCustomName(b.dataset.mode));
+  }
+  $('cnCustom').addEventListener('keydown', (e) => { if (e.key === 'Enter') chooseCustomName('custom'); });
+  $('cnSkip').addEventListener('click', () => { cnIndex += 1; showCustomName(); });
 }
 
 // ---------------------------------------------------------------------------
@@ -1273,6 +1393,7 @@ function showLabelForm(scope) {
 
 function wireOverlays() {
   wireNewCode();
+  wireCustomName();
   $('scopeJob').addEventListener('click', () => showLabelForm('job'));
   $('scopeItem').addEventListener('click', () => showLabelForm('item'));
   $('scopeCode').addEventListener('click', () => showLabelForm('code'));

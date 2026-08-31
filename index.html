@@ -261,6 +261,50 @@
   </div>
 </div>
 
+<!-- ============ NAME A CUSTOM JOB ============
+     A custom one-off has no model code, so its name comes out of free text and
+     the two columns that could supply it disagree — Description holds the boat
+     on some rows and "5% drawing fee" on others. The board used to fall back to
+     the customer name silently. Now it shows both columns and asks. -->
+<div class="overlay" id="customNameOverlay">
+  <div class="box wide">
+    <h3>Name this custom job<span id="cnProgress" class="progress"></span></h3>
+    <div class="lede" id="cnLede"></div>
+
+    <div class="derived" id="cnDerived"></div>
+
+    <div class="choices">
+      <button class="scope-opt" data-mode="description" id="cnDescOpt">
+        <b>Use the Description — <span id="cnDescRaw"></span></b>
+        <span>Prints as <em id="cnDescPreview"></em>.</span>
+      </button>
+
+      <button class="scope-opt" data-mode="customer" id="cnCustOpt">
+        <b>Use the Customer Name — <span id="cnCustRaw"></span></b>
+        <span>Prints as <em id="cnCustPreview"></em>. This is what the board
+              shows if nobody answers.</span>
+      </button>
+
+      <div class="scope-opt as-form">
+        <b>Type what the floor should read</b>
+        <span>Neither column says it — a boat, a hull, a job name.</span>
+        <div class="inline">
+          <input type="text" id="cnCustom" autocomplete="off" spellcheck="false">
+          <button class="mini" data-mode="custom">Use this</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="ghost" id="cnSkip">Decide later</button>
+      <span class="hint" style="flex:1">
+        Saved against the production number, so it survives the next upload.
+        Skipping prints the customer name and asks again on the next import.
+      </span>
+    </div>
+  </div>
+</div>
+
 <!-- ============ COMPLETE PAST DUE ============
      A sweep rather than one job at a time: the backlog of never-closed orders
      arrives all at once, and clearing it row by row is the reason it does not

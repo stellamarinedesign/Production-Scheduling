@@ -40,6 +40,13 @@ body {
 .brand-head { font-family: "Friz Quadrata Pro", "Friz Quadrata", Georgia, serif; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
 
+/* `hidden` has to actually hide. The UA rule `[hidden]{display:none}` loses to
+   any author `display` declaration, so `.scope-opt{display:block}` quietly
+   defeated `el.hidden = true` — the Riviera option on the new-code dialog stayed
+   on screen even with no Riviera model to offer, and the Description option on
+   the custom-name dialog would have done the same on a blank cell. */
+[hidden] { display: none !important; }
+
 /* ---------- header ---------- */
 header {
   border-bottom: 3px solid var(--red-bright);

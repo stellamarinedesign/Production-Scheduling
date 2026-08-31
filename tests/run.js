@@ -6,7 +6,8 @@
 // all 44 exclusion reasons exactly.
 
 import { xlsxAdapter, validateColumns } from '../js/adapters/index.js';
-import { buildBoard, toDateOnly, toAU, toISO, addWeeks, jobTitle } from '../js/transform.js';
+import { buildBoard, toDateOnly, toAU, toISO, addWeeks, jobTitle,
+         customNameOptions, CUSTOM_PREFIX, isEmptyCustomName } from '../js/transform.js';
 import { classify, CATEGORY_ORDER } from '../js/rules.js';
 import { resolveDisplays, aliasGroups, stellaCode, labelFor, detectNewCodes,
          existingBoats, acceptNewCode, applyTemplate, boatRows } from '../js/vessel-codes.js';
@@ -385,6 +386,73 @@ export async function run() {
       overrides: { [qtyJobs[0].prod_no]: { labelOverride: 'Bespoke' } } });
     return jobTitle(b.jobs.find((j) => j.prod_no === qtyJobs[0].prod_no));
   })(), `Bespoke x${qtyJobs[0].qty}`);
+
+  // ---- naming a custom one-off --------------------------------------------
+  // Two columns, neither reliably right, so the transform reads both and says
+  // when it is guessing rather than picking quietly.
+  const opts = (o) => customNameOptions({ inventoryId: 'SLCUSTOMSINGLE(12)', ...o });
+
+  eq('a standard item has no custom naming to do',
+    customNameOptions({ inventoryId: 'SBLRIV56', descField: 'x', customer: 'y' }), null);
+
+  const vesselRow = opts({ descField: 'Riviera 48', customer: 'Rory Corbett' });
+  eq('a vessel in the Description settles it', vesselRow.ambiguous, false);
+  eq('...and is what the board takes', vesselRow.chosen.label, 'Custom Lifter - Riviera 48');
+  eq('trailing words after the vessel are dropped',
+    opts({ descField: 'Alaska 47 square transom', customer: 'Leigh Smith Yachts' }).chosen.label,
+    'Custom Lifter - Alaska 47');
+
+  const feeRow = opts({ descField: '5% drawing fee', customer: 'Galaxy Charters' });
+  check('text the vessel rule cannot read is ambiguous, not silently dropped', feeRow.ambiguous);
+  eq('...the board still prints what it always did', feeRow.chosen.label, 'Custom Lifter - GALAXY');
+  eq('...and both columns are offered verbatim',
+    [feeRow.description.raw, feeRow.customer.raw], ['5% drawing fee', 'Galaxy Charters']);
+  eq('...each with the label it would produce',
+    [feeRow.description.label, feeRow.customer.label],
+    ['Custom Lifter - 5% drawing fee', 'Custom Lifter - GALAXY']);
+
+  // An empty column is not an option — the dialog hides it rather than offering
+  // a choice that prints "Custom Lifter - ".
+  eq('a blank Description offers no label', opts({ descField: '', customer: 'Galaxy Charters' }).description.label, null);
+  eq('...and is still ambiguous', opts({ descField: '', customer: 'Galaxy Charters' }).ambiguous, true);
+
+  // On the real export: three custom rows, one of which the board is guessing at.
+  eq('the export raises exactly one ambiguous custom name',
+    board.warnings.customNames.map((j) => j.prod_no), ['P01137']);
+  eq('...and it is the drawing-fee row', board.warnings.customNames[0].name_options.description.raw, '5% drawing fee');
+  eq('the two custom rows with a readable vessel are not raised',
+    board.jobs.filter((j) => j.name_options && !j.name_options.ambiguous).map((j) => j.label).sort(),
+    ['Custom Lifter - Alaska 47', 'Custom Lifter - Riviera 48']);
+
+  // Answering writes an ordinary job label override. It must clear the warning
+  // even when the answer is the reading the board would have chosen anyway —
+  // otherwise "use the customer name" is asked again on every single import.
+  const answered = (label) => buildBoard(src.rows, { codeMap, horizonWeeks: 12, asOf,
+    overrides: { P01137: { labelOverride: label } } });
+  eq('answering clears the question', answered('Custom Lifter - GALAXY').warnings.customNames, []);
+  eq('...including when the answer matches the guess exactly',
+    answered('Custom Lifter - GALAXY').jobs.find((j) => j.prod_no === 'P01137').label,
+    'Custom Lifter - GALAXY');
+  eq('a typed answer prints as typed',
+    answered('Custom Lifter - Galaxy 62 hull 4').jobs.find((j) => j.prod_no === 'P01137').label,
+    'Custom Lifter - Galaxy 62 hull 4');
+
+  // Nothing more specific may be second-guessed: a pinned item label decides
+  // before the custom branch is ever reached, so there is nothing to ask about.
+  eq('an item override leaves nothing ambiguous',
+    buildBoard(src.rows, { codeMap, horizonWeeks: 12, asOf,
+      itemOverrides: { 'SLCUSTOMDOUBLE(24)': { label: 'Galaxy one-off' } } }).warnings.customNames, []);
+
+  eq('the prefix is what marks a job as a one-off', CUSTOM_PREFIX, 'Custom Lifter - ');
+
+  // The dialog prefills the field with the prefix, and `trim()` takes the
+  // trailing space off it — so an untouched field arrives as "Custom Lifter -"
+  // and a compare against CUSTOM_PREFIX alone saved that as a real name.
+  check('an untouched prefilled field is empty', isEmptyCustomName('Custom Lifter -'));
+  check('...with its trailing space too', isEmptyCustomName(CUSTOM_PREFIX));
+  check('...as is whitespace', isEmptyCustomName('   '));
+  check('...and nothing at all', isEmptyCustomName(''));
+  check('a real name is not empty', !isEmptyCustomName('Custom Lifter - Galaxy 62'));
 
   // ---- custom lifters -----------------------------------------------------
   const customs = board.jobs.filter((j) => /CUSTOM/i.test(j.inventory_id));
