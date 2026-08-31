@@ -18,6 +18,13 @@ const el = (tag, cls, text) => {
   return n;
 };
 
+// The export we last put in front of the other managers. Keyed on the
+// adapter's retrievedAt, so a reload does not keep appending records to an
+// append-only collection.
+const PUBLISHED_KEY = 'stella.board.publishedAt';
+const publishedAt = () => { try { return localStorage.getItem(PUBLISHED_KEY) ?? ''; } catch { return ''; } };
+const markPublished = (at) => { try { localStorage.setItem(PUBLISHED_KEY, at ?? ''); } catch {} };
+
 const state = {
   rows: null,
   source: null,
@@ -136,12 +143,37 @@ async function loadLastBoard() {
     Store.cacheRows(pick.rows, pick.source);
   }
 
-  if (!pick) return;
+  if (!pick) {
+    // Nothing local, and nothing usable published. Say which, because "drop the
+    // export here" is wrong advice if a colleague already uploaded it.
+    if (published && !publishedRows?.length) {
+      $('dropZone').querySelector('strong').textContent =
+        'A board was published, but without its source data';
+      $('dropZone').querySelector('.hint').innerHTML =
+        `<b>${published.sourceLabel ?? 'An export'}</b> was published`
+        + `${published.uploadedBy ? ` by ${published.uploadedBy}` : ''}, but before the app `
+        + `stored the raw rows alongside it. Whoever has the file need only open `
+        + `their board once and it will be shared automatically — or drop it here.`;
+    }
+    return;
+  }
+
   state.rows = pick.rows;
   state.source = pick.source;
   rebuild();
   // A code added since the last load still needs answering.
   if (Auth.isManager) queueNewCodes();
+
+  // SELF-HEAL. Records written before the raw rows were stored carry a board
+  // but nothing another manager can rebuild from, which is exactly how the
+  // second account landed on an empty drop zone. If this manager holds the data
+  // and what is published cannot supply it, publish theirs — once per export,
+  // so a reload does not keep appending to an append-only collection.
+  const needsRows = Auth.isManager && Store.mode === 'firestore'
+    && pick.rows.length
+    && !publishedRows?.length
+    && publishedAt() !== pick.source.retrievedAt;
+  if (needsRows) await publish(pick.rows, 'shared with the other managers');
 }
 
 async function startFloor() {
@@ -232,25 +264,46 @@ function wireUpload() {
 }
 
 async function load(file) {
+  let src;
   try {
     toast(`Reading ${file.name}…`);
-    const src = await xlsxAdapter.fetch({ file });
+    src = await xlsxAdapter.fetch({ file });
+  } catch (e) {
+    toast(`Could not read that file — ${e.message}`, 6000);
+    console.error(e);
+    return;
+  }
 
-    state.rows = src.rows;
-    state.source = {
-      sourceId: src.sourceId,
-      sourceLabel: src.sourceLabel,
-      retrievedAt: src.retrievedAt,
-      warnings: src.warnings,
-    };
-    Store.cacheRows(src.rows, state.source);
+  state.rows = src.rows;
+  state.source = {
+    sourceId: src.sourceId,
+    sourceLabel: src.sourceLabel,
+    retrievedAt: src.retrievedAt,
+    warnings: src.warnings,
+  };
+  Store.cacheRows(src.rows, state.source);
+  rebuild();
+  toast(`${src.rows.length} rows in — ${state.board.meta.job_count} on the board.`);
+  queueNewCodes();
 
-    rebuild();
+  // Publishing is a SEPARATE failure from parsing. Both used to sit in one try,
+  // so a save that was refused reported "could not read that file" — which
+  // points at the spreadsheet and hides the fact that the board never reached
+  // anybody else.
+  await publish(src.rows, 'shared with the other managers');
+}
 
+/**
+ * Put the current export where every manager and the floor can reach it.
+ *
+ * `imports` is append-only, so this adds a record rather than editing one.
+ */
+async function publish(rows, what) {
+  try {
     await Store.recordImport({
-      retrievedAt: src.retrievedAt,
-      sourceId: src.sourceId,
-      sourceLabel: src.sourceLabel,
+      retrievedAt: state.source.retrievedAt,
+      sourceId: state.source.sourceId,
+      sourceLabel: state.source.sourceLabel,
       horizonWeeks: state.fit?.weeks ?? state.settings.horizonWeeks,
       maxStock: state.settings.maxStock ?? null,
       // The full job list, not a summary: floor devices render from this and
@@ -262,16 +315,19 @@ async function load(file) {
       // rather than being asked to upload the same file again. The jobs array
       // is a rendering of one horizon; the rows are what the transform needs to
       // re-render at another.
-      rowsJson: packRows(src.rows),
+      rowsJson: packRows(rows),
     });
-
-    toast(`${src.rows.length} rows in — ${state.board.meta.job_count} on the board.`);
-    queueNewCodes();
+    markPublished(state.source.retrievedAt);
+    if (what) toast(`Board ${what}.`);
+    return true;
   } catch (e) {
-    toast(`Could not read that file — ${e.message}`, 6000);
-    console.error(e);
+    console.error('[publish]', e);
+    toast(`Board is on this device, but could not be shared — ${e.message}. `
+      + `Others will not see it.`, 8000);
+    return false;
   }
 }
+
 
 // ---------------------------------------------------------------------------
 // controls
