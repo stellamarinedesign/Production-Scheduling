@@ -145,6 +145,24 @@ export const Store = {
     await setDoc(doc(this._db, 'vesselCodes', code), patch, { merge: true });
   },
 
+  /**
+   * Remove a vessel code entirely.
+   *
+   * Only used to undo a code accepted moments ago, when somebody cancels a
+   * resolve run partway through. Anything longer-lived is edited on the vessel
+   * codes page, never deleted from under a board that is already using it.
+   */
+  async deleteCode(code) {
+    if (this.mode === 'local') {
+      const all = lsGet('vesselCodes', {});
+      delete all[code];
+      lsSet('vesselCodes', all);
+      return;
+    }
+    const { doc, deleteDoc } = this._fs;
+    await deleteDoc(doc(this._db, 'vesselCodes', code));
+  },
+
   /** Merge newly-derived codes in without ever overwriting a `display`. */
   async mergeCodes(map, addedCodes) {
     if (!addedCodes.length) return;

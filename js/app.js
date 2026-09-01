@@ -723,7 +723,7 @@ function renderWarnings() {
           r.append(el('span', 'id', n.code),
             el('span', null, `${n.count} job(s) · ${n.items.join(', ')}`));
           const a = el('button', 'mini', 'Decide now');
-          a.addEventListener('click', () => { ncQueue = w.newCodes; ncIndex = w.newCodes.indexOf(n); showNewCode(); });
+          a.addEventListener('click', () => startCodeRun([n]));
           r.append(a);
           b.append(r);
         }
@@ -748,7 +748,7 @@ function renderWarnings() {
             el('span', 'why', j.name_options.description.raw || 'no description'));
           const a = el('button', 'mini', 'Decide now');
           a.addEventListener('click', () => {
-            cnQueue = w.customNames; cnIndex = w.customNames.indexOf(j); showCustomName();
+            startNameRun([j]);
           });
           r.append(a);
           b.append(r);
@@ -1326,6 +1326,10 @@ function renderFitStatus() {
 
 let ncQueue = [];
 let ncIndex = 0;
+// What this run has changed, newest last, so Cancel can put it all back.
+// Answering one item from its own row is a run of one; "Resolve all" is a run
+// of many. Same machinery either way.
+let ncUndo = [];
 
 /**
  * Everything an import needs answered, in order. Vessel codes first: accepting
@@ -1335,19 +1339,50 @@ let ncIndex = 0;
 function queueImportQuestions() {
   if (!Auth.isManager) return;
   const codes = state.board?.warnings?.newCodes ?? [];
-  if (codes.length) { ncQueue = codes; ncIndex = 0; showNewCode(); return; }
+  if (codes.length) { startCodeRun(codes); return; }
   queueCustomNames();
+}
+
+/** Begin a resolve run over `items` — one of them, or all of them. */
+function startCodeRun(items) {
+  ncQueue = items;
+  ncIndex = 0;
+  ncUndo = [];
+  showNewCode();
+}
+
+function endCodeRun({ chain = true } = {}) {
+  ncQueue = [];
+  ncUndo = [];
+  $('newCodeOverlay').classList.remove('show');
+  rebuild();                   // a new code can rename jobs, so ask from the rebuilt board
+  flushDeferredRebuild();
+  if (chain) queueCustomNames();
+}
+
+/** Put back every code accepted during this run, newest first. */
+async function cancelCodeRun() {
+  const undone = ncUndo.length;
+  for (const { code, before } of [...ncUndo].reverse()) {
+    if (before) { state.codeMap[code] = before; await Store.saveCode(code, before); }
+    else { delete state.codeMap[code]; await Store.deleteCode(code); }
+  }
+  endCodeRun({ chain: false });
+  toast(undone ? `Undone — ${undone} code${undone > 1 ? 's' : ''} put back.` : 'Nothing to undo.');
 }
 
 function showNewCode() {
   const item = ncQueue[ncIndex];
-  if (!item) {
-    $('newCodeOverlay').classList.remove('show');
-    rebuild();                 // a new code can rename jobs, so ask from the rebuilt board
-    flushDeferredRebuild();
-    queueCustomNames();
-    return;
-  }
+  if (!item) { endCodeRun(); return; }
+
+  // Only meaningful mid-run. Resolving a single row has nothing to skip and
+  // nothing to abandon — Decide later already closes it.
+  const more = ncQueue.length > 1;
+  $('ncSkipRest').hidden = !more;
+  $('ncCancelRun').hidden = !more;
+  $('ncSkipRest').textContent = `Skip the remaining ${ncQueue.length - ncIndex - 1}`;
+  $('ncCancelRun').textContent = ncUndo.length
+    ? `Cancel & undo ${ncUndo.length}` : 'Cancel';
 
   $('ncProgress').textContent = ncQueue.length > 1 ? `${ncIndex + 1} of ${ncQueue.length}` : '';
   $('ncLede').textContent =
@@ -1407,6 +1442,7 @@ async function chooseNewCode(mode) {
   }
 
   const entry = acceptNewCode(item.code, choice, item);
+  ncUndo.push({ code: item.code, before: state.codeMap[item.code] ?? null });
   state.codeMap[item.code] = entry;
   await Store.saveCode(item.code, entry);
   // Restage per answer, not only when the queue empties: the import review is
@@ -1429,6 +1465,8 @@ function wireNewCode() {
   }
   $('ncCustom').addEventListener('keydown', (e) => { if (e.key === 'Enter') chooseNewCode('custom'); });
   $('ncSkip').addEventListener('click', () => { ncIndex += 1; showNewCode(); });
+  $('ncSkipRest').addEventListener('click', () => endCodeRun({ chain: false }));
+  $('ncCancelRun').addEventListener('click', cancelCodeRun);
 }
 
 // ---------------------------------------------------------------------------
@@ -1564,6 +1602,10 @@ const IMPORT_DETAIL = {
 };
 let importOpenDetail = null;
 const importOpenConcerns = new Set();
+// Groups inside an opened count. Shut by default on the excluded list, which
+// runs to four figures — scrolling past 730 completed rows to reach the next
+// heading is not a sanity check, it is an obstacle.
+const importShutGroups = new Set();
 
 /**
  * Rebuild the staged board in place.
@@ -1672,17 +1714,29 @@ function concernBlock(c) {
   const open = importOpenConcerns.has(c.id) || c.rows.length <= 3;
   const wrap = el('div', `flag flag-${c.level}${open ? ' is-open' : ''}`);
 
+  const bar = el('div', 'flag-bar');
+
   const head = el('button', 'flag-head');
   head.setAttribute('aria-expanded', String(open));
   head.append(el('span', 'flag-caret', open ? '\u25be' : '\u25b8'));
+  // The count leads. On the right it was the last thing read on a line whose
+  // whole point is "how many of these are there".
+  head.append(el('span', 'flag-n', `${c.rows.length}\u00d7`));
   head.append(el('b', null, c.title));
-  head.append(el('span', 'flag-n', String(c.rows.length)));
   head.addEventListener('click', () => {
     if (importOpenConcerns.has(c.id)) importOpenConcerns.delete(c.id);
     else importOpenConcerns.add(c.id);
     renderImport();
   });
-  wrap.append(head);
+  bar.append(head);
+
+  // One button for the whole list, where a row's own button does only that row.
+  if (c.resolveAll && c.rows.length > 1) {
+    const all = el('button', 'mini', `Resolve all ${c.rows.length}`);
+    all.addEventListener('click', c.resolveAll);
+    bar.append(all);
+  }
+  wrap.append(bar);
 
   if (c.note) wrap.append(el('div', 'flag-note', c.note));
   if (!open) return wrap;
@@ -1740,11 +1794,11 @@ function importConcerns(b, src) {
         key: n.code,
         main: `${n.count} ${many(n.count, 'job', 'jobs')}`,
         detail: n.items.join(', '),
-        action: {
-          label: 'Resolve',
-          run: () => { ncQueue = nc; ncIndex = nc.indexOf(n); showNewCode(); },
-        },
+        // One row, one code. Marching through the whole queue from a single
+        // row's button was the wrong promise for a button that names one thing.
+        action: { label: 'Resolve', run: () => startCodeRun([n]) },
       })),
+      resolveAll: () => startCodeRun(nc),
     });
   }
 
@@ -1758,11 +1812,9 @@ function importConcerns(b, src) {
         key: j.prod_no,
         main: jobTitle(j),
         detail: j.name_options?.description.raw || 'no description',
-        action: {
-          label: 'Name it',
-          run: () => { cnQueue = cn; cnIndex = cn.indexOf(j); showCustomName(); },
-        },
+        action: { label: 'Resolve', run: () => startNameRun([j]) },
       })),
+      resolveAll: () => startNameRun(cn),
     });
   }
 
@@ -1821,22 +1873,34 @@ function importConcerns(b, src) {
     });
   }
 
-  const off = b.warnings.offPaper ?? [];
-  if (off.length) {
-    out.push({
-      id: 'offpaper', level: 'info',
-      title: `Will not print`,
-      note: 'Watermakers have no column on the sheet; the rest are past the horizon '
-        + 'or beyond the stock cap. All are on the board and the Gantt.',
-      rows: off.map((j) => ({
-        key: j.prod_no,
-        main: jobTitle(j),
-        detail: j.beyond_horizon ? `past the horizon \u00b7 due ${j.due_display}`
-          : j.over_stock_cap ? 'beyond the stock cap' : j.category,
-      })),
-    });
-  }
+  // "Will not print" is deliberately NOT here. A watermaker has no column on
+  // the sheet and a job past the horizon is not yet due — both by construction,
+  // neither a thing to decide. The count strip already says how many print, and
+  // the production detail marks each one.
   return out;
+}
+
+/**
+ * One collapsible group inside an opened count. Shut state is per session, not
+ * saved: which part of a one-off import listing you were reading says nothing
+ * worth remembering.
+ */
+function appendGroup(wrap, key, title, n, body, { shutByDefault = false } = {}) {
+  const shut = importShutGroups.has(key)
+    || (shutByDefault && !importShutGroups.has(`open:${key}`));
+
+  const head = el('button', `detail-group${shut ? ' is-shut' : ''}`);
+  head.setAttribute('aria-expanded', String(!shut));
+  head.append(el('span', 'dg-caret', shut ? '\u25b8' : '\u25be'));
+  head.append(el('span', 'dg-name', title));
+  head.append(el('span', 'dg-n', String(n)));
+  head.addEventListener('click', () => {
+    if (shut) { importShutGroups.delete(key); importShutGroups.add(`open:${key}`); }
+    else { importShutGroups.add(key); importShutGroups.delete(`open:${key}`); }
+    renderImport();
+  });
+  wrap.append(head);
+  if (!shut) wrap.append(body);
 }
 
 /** The full contents of one count, so "69 production orders" can be checked. */
@@ -1856,7 +1920,6 @@ function importDetail(b, key) {
       byReason.get(e.reason).push(e);
     }
     for (const [reason, rows] of [...byReason].sort((a, b2) => b2[1].length - a[1].length)) {
-      wrap.append(el('div', 'detail-group', `${reason} \u2014 ${rows.length}`));
       const t = el('div', 'flag-rows');
       for (const e of rows) {
         const row = el('div', 'flag-row');
@@ -1866,7 +1929,7 @@ function importDetail(b, key) {
         row.append(el('span', 'fr-act', ''));
         t.append(row);
       }
-      wrap.append(t);
+      appendGroup(wrap, `excl:${reason}`, reason, rows.length, t, { shutByDefault: true });
     }
     return wrap;
   }
@@ -1886,7 +1949,6 @@ function importDetail(b, key) {
 
   for (const [cat, rows] of byCat) {
     if (!rows.length) continue;
-    wrap.append(el('div', 'detail-group', `${cat} \u2014 ${rows.length}`));
     const t = el('div', 'flag-rows');
     for (const j of rows) {
       const row = el('div', `flag-row${isPrintable(j) || key !== 'production' ? '' : ' is-offpaper'}`);
@@ -1898,7 +1960,7 @@ function importDetail(b, key) {
       row.append(el('span', 'fr-act', key === 'production' && !isPrintable(j) ? 'no print' : ''));
       t.append(row);
     }
-    wrap.append(t);
+    appendGroup(wrap, `${key}:${cat}`, cat, rows.length, t);
   }
   return wrap;
 }
@@ -1916,20 +1978,49 @@ function importDetail(b, key) {
 
 let cnQueue = [];
 let cnIndex = 0;
+let cnUndo = [];
 
 function queueCustomNames() {
   if (!Auth.isManager) return;
   const pending = state.board?.warnings?.customNames ?? [];
   if (!pending.length) return;
-  cnQueue = pending;
+  startNameRun(pending);
+}
+
+function startNameRun(items) {
+  cnQueue = items;
   cnIndex = 0;
+  cnUndo = [];
   showCustomName();
+}
+
+function endNameRun() {
+  cnQueue = [];
+  cnUndo = [];
+  $('customNameOverlay').classList.remove('show');
+  flushDeferredRebuild();
+}
+
+/** Put back every name set during this run. */
+async function cancelNameRun() {
+  const undone = cnUndo.length;
+  for (const { prodNo, before } of [...cnUndo].reverse()) {
+    await setOverride(prodNo, { labelOverride: before ?? null });
+  }
+  endNameRun();
+  toast(undone ? `Undone — ${undone} name${undone > 1 ? 's' : ''} put back.` : 'Nothing to undo.');
 }
 
 function showCustomName() {
   const job = cnQueue[cnIndex];
-  if (!job) { $('customNameOverlay').classList.remove('show'); flushDeferredRebuild(); return; }
+  if (!job) { endNameRun(); return; }
   const o = job.name_options;
+
+  const more = cnQueue.length > 1;
+  $('cnSkipRest').hidden = !more;
+  $('cnCancelRun').hidden = !more;
+  $('cnSkipRest').textContent = `Skip the remaining ${cnQueue.length - cnIndex - 1}`;
+  $('cnCancelRun').textContent = cnUndo.length ? `Cancel & undo ${cnUndo.length}` : 'Cancel';
 
   $('cnProgress').textContent = cnQueue.length > 1 ? `${cnIndex + 1} of ${cnQueue.length}` : '';
   $('cnLede').textContent =
@@ -1973,6 +2064,7 @@ async function chooseCustomName(mode) {
       : $('cnCustom').value.trim();
   if (isEmptyCustomName(label)) { toast('Type a name, or choose a column.'); return; }
 
+  cnUndo.push({ prodNo: job.prod_no, before: state.overrides[job.prod_no]?.labelOverride ?? null });
   await setOverride(job.prod_no, { labelOverride: label });
   toast(`${job.prod_no} will read "${label}"`);
 
@@ -1986,6 +2078,8 @@ function wireCustomName() {
   }
   $('cnCustom').addEventListener('keydown', (e) => { if (e.key === 'Enter') chooseCustomName('custom'); });
   $('cnSkip').addEventListener('click', () => { cnIndex += 1; showCustomName(); });
+  $('cnSkipRest').addEventListener('click', endNameRun);
+  $('cnCancelRun').addEventListener('click', cancelNameRun);
 }
 
 // ---------------------------------------------------------------------------

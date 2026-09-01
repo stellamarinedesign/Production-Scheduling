@@ -184,8 +184,11 @@ Normalising happens in the transform, once, downstream.
   records keyed on a code or a production number rather than to the export, so
   they can be answered before the import is applied and are still right
   afterwards. Each answer restages, so the list shortens as it is worked
-  through. Every count opens too: "69 production orders" is a number you should
-  be able to check.
+  through. A row's own button resolves that row and stops; **Resolve all** walks
+  the list, and mid-run offers **Skip the rest** (keep what is answered) and
+  **Cancel & undo** (put back everything that run changed). Every count opens
+  too: "69 production orders" is a number you should be able to check, and its
+  groups collapse — the excluded list runs to four figures and starts shut.
 - **Print column placement is computed, not pinned.** `balanceColumns` tries all
   16 splits of the four narrow categories and takes the shortest page. With 19
   cylinder lifters against 5 rotary, a fixed two-and-two layout wastes half a
