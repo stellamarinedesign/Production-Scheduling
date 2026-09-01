@@ -12,7 +12,7 @@ import {
   CATEGORY_ORDER, BOARD_STATUSES, INTERNAL_CUSTOMER, HULL_RE,
   LANE, laneFor, tmCategory, internalCategory,
   TM_CATEGORY_ORDER, INTERNAL_CATEGORY_ORDER, PRINT_CATEGORIES,
-  VESSEL_IN_DESC_RE, CUSTOMER_SUFFIX_RE, LABEL_OVERRIDES, COMPONENT_TYPE,
+  VESSEL_IN_DESC_RE, CUSTOMER_SUFFIX_RE, CUSTOM_TEXT_RE, LABEL_OVERRIDES, COMPONENT_TYPE,
   EXCLUSION_ORDER, classify,
 } from './rules.js';
 import { resolveDisplays, labelFor, detectNewCodes, applyTemplate } from './vessel-codes.js';
@@ -148,6 +148,17 @@ export function extractHull(...fields) {
 export const CUSTOM_PREFIX = 'Custom Lifter - ';
 
 /**
+ * A standard product modified for one order.
+ *
+ * Not the same as a custom lifter, which has its own item code and is named by
+ * `customNameOptions`. This is a one-off built on a standard code, where only
+ * the free text knows — see CUSTOM_TEXT_RE for why it is a keyword and not a
+ * cleverer comparison.
+ */
+export const isCustomBuild = ({ productionDescription, descField }) =>
+  CUSTOM_TEXT_RE.test(text(productionDescription)) || CUSTOM_TEXT_RE.test(text(descField));
+
+/**
  * True when a typed custom name amounts to nothing. The dialog prefills the
  * field with the prefix so the convention stays visible, and `trim()` takes the
  * trailing space off it — so "nothing typed" has two spellings, and comparing
@@ -248,28 +259,32 @@ export function shortLabel({
   // customer's name in one of them.
   //
   // For a davit that difference matters, because the configuration IS the
-  // product: manual against hydraulic luff, slew and extension. The item
-  // description always carries it; the production description often does not.
+  // product: hydraulic against manual on the luff, slew and extension. The item
+  // description always carries all three; the production description often
+  // gives one word for the lot. (Manual and pneumatic-assist are the same thing
+  // on these davits — a description saying "full manual" for a pneumatic luff
+  // assist is loose wording, not a different product.)
   //
-  // What is lost: an order-specific note in the production description. On the
-  // open davit rows the only thing it adds is the word "stock", which `is_stock`
-  // already knows and `jobTitle` re-adds. Historically there is one real case —
-  // a 650kg derated to 500kg with an extended boom — and that is a job label
-  // override, not a rule.
+  // The exception is a one-off. Where the free text says "custom" the
+  // production order is describing a DEVIATION from the standard product, and
+  // the item description can only describe the standard product — so the order
+  // wins, and `is_custom` marks it.
   //
   // The reference implementation triggered this branch on `SDC* OR is_stock`.
   // Stock-ness has nothing to do with how a davit is identified, and that
   // clause would strip a future stock cylinder lifter of its vessel code and
   // print raw ERP text instead. Narrowed to SDC*.
   if (inv.toUpperCase().startsWith('SDC')) {
-    const item = text(itemDescription).replace(/^Stella\s+Davit\s*[-\u2013]?\s*/i, '').trim();
-    if (item) return item;
-    // No item description at all: fall back to the production order's, cleaned
-    // the way it always was.
-    return desc
-      .replace(/^Stella\s+Davit\s*/i, '')
+    const order = desc
+      .replace(/^Stella\s+Davit\s*[-\u2013]?\s*/i, '')
       .replace(/\s*[-\u2013]?\s*Used by\s+[A-Z0-9]+\s*\/\s*[A-Z0-9]+\s*$/i, '')
+      // "650kg - Derated to..." reads better as "650kg Derated to..." once the
+      // product name in front of the dash is gone.
+      .replace(/^(\d+\s*kg)\s*[-\u2013]\s*/i, '$1 ')
       .trim();
+    if (isCustomBuild({ productionDescription, descField })) return order || text(itemDescription);
+    const item = text(itemDescription).replace(/^Stella\s+Davit\s*[-\u2013]?\s*/i, '').trim();
+    return item || order;
   }
 
   return labelFor(inv, resolved, codeMap) || desc;
@@ -324,6 +339,7 @@ export function fromSnapshot(prodNo, ov) {
     age_display: snap.age_display ?? '',
     customer: snap.customer ?? '',
     is_stock: Boolean(snap.is_stock),
+    is_custom: Boolean(snap.is_custom),
     status: snap.status ?? '',
     hidden: false,
     completed: true,
@@ -336,6 +352,7 @@ export function fromSnapshot(prodNo, ov) {
 /** What is kept about a job when it is completed, so History can outlive the export. */
 export const snapshotOf = (j) => ({
   lane: j.lane ?? 'production',
+  is_custom: Boolean(j.is_custom),
   category: j.category,
   label: j.label,
   inventory_id: j.inventory_id,
@@ -439,6 +456,8 @@ function sideJob(r, lane, { overrides, asOf }) {
     status,
     erp_status: erpStatus,
     status_manual: status !== erpStatus,
+    is_custom: isCustomBuild({
+      productionDescription: r['Production Description'], descField: r['Description'] }),
     type: text(r['Type']),
     qty: Number(r['Qty. to Produce']) || 1,
     notes: textOrNull(r['Internal Notes']),
@@ -607,6 +626,10 @@ export function buildBoard(rows, opts = {}) {
       status,
       erp_status: status0,
       status_manual: status !== status0,
+      // A one-off on a standard code. Custom LIFTERS carry it in the item code
+      // and are already named for it; this is the other kind.
+      is_custom: !/CUSTOM/i.test(text(inv))
+        && isCustomBuild({ productionDescription: r['Production Description'], descField: r['Description'] }),
       type,
       is_component: type === COMPONENT_TYPE,
       qty: Number(r['Qty. to Produce']) || 1,
@@ -793,6 +816,9 @@ export function buildBoard(rows, opts = {}) {
 export const jobTitle = (j) => {
   let out = j?.label ?? '';
   if (Number(j?.qty) > 1) out += ` x${j.qty}`;
+  // Only when the label does not already say it — "300Kg Custom Folding Davit
+  // (Custom)" helps nobody.
+  if (j?.is_custom && !CUSTOM_TEXT_RE.test(out)) out += ' (Custom)';
   // Derived from `is_stock`, never stored — same reason as the quantity. The
   // label editor prefills from `label`, so a suffix kept there would be saved
   // into the override and appended again on the next render.

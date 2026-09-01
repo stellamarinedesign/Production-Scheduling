@@ -253,13 +253,24 @@ Normalising happens in the transform, once, downstream.
   carries two different Item Descriptions. `Production Description` is free text
   typed per order, and 104 of those 203 codes have more than one; SDC250SSMLMSME
   alone has seven, down to "250kg SS Davit", and one SDC550SSHLHSHE row has a
-  customer's name in it. For a davit the configuration IS the product, and the
-  hand-typed descriptions were getting it wrong: "450Kg Davit Single Stage Full
-  manual" is a pneumatic luff assist, and "350kg Full Manual davit" has a
-  pneumatic extension assist. What is lost is an order-specific note — on the
-  open rows the only thing that was, was the word "stock", which `is_stock`
-  already knows. A genuine one-off (a 650kg derated to 500kg with an extended
-  boom) is a job label override, not a rule.
+  customer's name in it. For a davit the configuration IS the product —
+  hydraulic against manual on the luff, slew and extension — and the item
+  description carries all three where a production order often gives one word
+  for the lot. (Manual and pneumatic assist are the same thing on these davits,
+  so "full manual" for a pneumatic luff assist is loose wording, not a different
+  product.)
+- **A one-off on a standard code is marked, and named by the order.** A custom
+  *lifter* has its own item code. The other kind is a standard product modified
+  for one order, where the code says nothing and only the free text knows. Six
+  rows in the 1216-row 01/09 export say "custom" without a custom code, and all
+  six are genuine — a derated 650kg davit, a custom folding davit, a custom
+  filter bracket, custom-length hoses, a custom single-arm lifter, a bespoke
+  Prestige 420. No false positives, so `CUSTOM_TEXT_RE` is a keyword and not a
+  cleverer comparison: comparing the production description against the item
+  description flags nine davit rows of which only two are real, the rest being
+  customer names and shipping notes. For a davit the production order is the one
+  that knows what is *different*, so a custom one is named from it rather than
+  from the standard product's description.
 - **The quantity and the stock marker are display suffixes, not part of the
   label.** `x5` is appended
   at render time from `Qty. to Produce`, and only when it is not 1 — 85 of the 92

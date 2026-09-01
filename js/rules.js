@@ -171,6 +171,23 @@ export const REQUIRED_COLUMNS = [
 // 'Used by 78SY/002' out of any free-text field.
 export const HULL_RE = /used\s*by\s*([A-Z0-9]+\s*\/\s*[A-Z0-9]+)/i;
 
+// A one-off built on a STANDARD item code.
+//
+// A custom lifter has its own code (SLCUSTOM*, SRLCUSTOM*) and is handled by
+// that. This is the other kind: a standard product modified for one order, so
+// the code says nothing and only the free text does. Across the whole 01/09
+// export — 1216 rows — six say "custom" without a custom code, and all six are
+// genuinely one-offs: a derated 650kg davit with an extended boom, a custom
+// folding davit, a custom seawater filter bracket, custom-length hoses, a
+// custom single-arm lifter, a bespoke Prestige 420 build. No false positives.
+//
+// Deliberately a keyword and not a similarity test. Comparing the production
+// description against the item description flags nine davit rows and only two
+// are real — the rest are customer names ("Lawson marine"), shipping notes
+// ("International Export through Freight Forwarding facility") and hull refs.
+// A person writing "custom" means it; a wording difference means nothing.
+export const CUSTOM_TEXT_RE = /\bcustom\b/i;
+
 // A vessel name in the free-text Description field looks like "Riviera 48" or
 // "Alaska 47 square transom": a word followed by a number. "5% drawing fee"
 // starts with a digit so it does not match and correctly falls through to the

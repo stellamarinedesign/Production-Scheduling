@@ -9,7 +9,7 @@ import { xlsxAdapter, validateColumns } from '../js/adapters/index.js';
 import { buildBoard, toDateOnly, toAU, toISO, addWeeks, jobTitle,
          customNameOptions, CUSTOM_PREFIX, isEmptyCustomName,
          printJobs, isPrintable, daysBetween, ageLabel,
-         effectiveStatus, snapshotOf, fromSnapshot, shortLabel } from '../js/transform.js';
+         effectiveStatus, snapshotOf, fromSnapshot, shortLabel, isCustomBuild } from '../js/transform.js';
 import { classify, CATEGORY_ORDER, PRINT_CATEGORIES, WATERMAKER_CATEGORIES, LABEL_OVERRIDES,
          laneFor, LANE, tmCategory, internalCategory,
          isWaterUnit, WATERMAKER_UNIT_RE } from '../js/rules.js';
@@ -778,15 +778,16 @@ export async function run() {
     davits.every((j) => !/^Stella\s+Davit/i.test(j.label)),
     davits.map((j) => j.label).join(' | '));
 
-  // The configuration IS the product for a davit, and this is what the
-  // hand-typed descriptions were getting wrong: "450Kg Davit Single Stage Full
-  // manual" is a pneumatic luff assist, and "350kg Full Manual davit" has a
-  // pneumatic extension assist. Neither is full manual.
+  // The configuration IS the product for a davit: hydraulic against manual on
+  // the luff, slew and extension. The item description carries all three where
+  // the production order gave one word for the lot. (Manual and pneumatic
+  // assist are the same thing on these davits, so "full manual" for a pneumatic
+  // luff assist was loose wording rather than a different product.)
   const davitLabel = (inv) => davits.find((j) => j.inventory_id === inv)?.label;
   eq('a davit says how it luffs, slews and extends',
     davitLabel('SDC450SSMLMSME'),
     '450kg - Single Stage (Pneumatic Luff Assist / Manual Slew / Manual Extension)');
-  eq('...even where the production order called it full manual',
+  eq('...where the production order said only "Full manual"',
     davitLabel('SDC350SSMLMSME'),
     '350kg - Single Stage (Manual Luff / Manual Slew / Pneumatic Extension Assist)');
   eq('a folding davit stays short', davitLabel('SDC200FOLD'), '200kg - Folding');
@@ -830,6 +831,63 @@ export async function run() {
       itemDescription: 'Stella Boarding Ladder something else', resolved, codeMap,
     }),
     'Boarding Ladder 56SY');
+
+  // ---- a one-off on a standard code ---------------------------------------
+  //
+  // A custom LIFTER has its own item code. This is the other kind: a standard
+  // product modified for one order, where the code says nothing and only the
+  // free text knows. Six rows in the 1216-row 01/09 export say "custom" without
+  // a custom code, and all six are genuinely one-offs - no false positives.
+  check('the production description can say it',
+    isCustomBuild({ productionDescription: '300Kg Custom Folding Davit', descField: '' }), '');
+  check('so can the Description column',
+    isCustomBuild({ productionDescription: 'Stella Davit 650kg', descField: '650kg davit derated to 500kg (custom)' }), '');
+  check('a standard build says neither',
+    !isCustomBuild({ productionDescription: '250Kg Single Stage Davit', descField: 'Used by 58SM/043' }), '');
+  // Whole word only: "customer" is not "custom".
+  check('a customer is not a custom build',
+    !isCustomBuild({ productionDescription: 'Customer supplied davit', descField: '' }), '');
+
+  // For a davit the production order is the one that knows what is DIFFERENT;
+  // the item description can only describe the standard product.
+  eq('a custom davit is named by the order, not the product',
+    shortLabel({
+      inventoryId: 'SDC650SSHLHSHE',
+      productionDescription: 'Stella Davit 650kg - Derated to 500KG with extened boom and 20omm plinth',
+      itemDescription: 'Stella Davit 650kg - Single Stage (Hydraulic Luff / Hydraulic Slew / Hydraulic Extension)',
+      descField: '650kg davit derated to 500kg (custom)',
+      resolved, codeMap,
+    }),
+    '650kg Derated to 500KG with extened boom and 20omm plinth');
+  eq('a standard davit is still named by the product',
+    shortLabel({
+      inventoryId: 'SDC650SSHLHSHE',
+      productionDescription: '650kg davit',
+      itemDescription: 'Stella Davit 650kg - Single Stage (Hydraulic Luff / Hydraulic Slew / Hydraulic Extension)',
+      descField: 'Used by 58SM/043', resolved, codeMap,
+    }),
+    '650kg - Single Stage (Hydraulic Luff / Hydraulic Slew / Hydraulic Extension)');
+
+  eq('the title says it is custom',
+    jobTitle({ label: '650kg Derated to 500KG', is_custom: true }),
+    '650kg Derated to 500KG (Custom)');
+  // Never twice.
+  eq('...unless the label already does',
+    jobTitle({ label: '300Kg Custom Folding Davit', is_custom: true }),
+    '300Kg Custom Folding Davit');
+  eq('custom before stock', jobTitle({ label: 'A', qty: 2, is_custom: true, is_stock: true }),
+    'A x2 (Custom) (Stock)');
+
+  // A custom LIFTER already says so in its own name and must not be doubled up.
+  check('a custom lifter is not marked twice',
+    printed.filter((j) => /CUSTOM/i.test(j.inventory_id))
+      .every((j) => j.is_custom === false && !/\(Custom\)/.test(jobTitle(j))),
+    printed.filter((j) => /CUSTOM/i.test(j.inventory_id)).map((j) => jobTitle(j)).join(' | '));
+
+  // Marking is display only - like the quantity and the stock marker, it is
+  // never written into the stored label.
+  check('the marker is not baked into any label',
+    printed.every((j) => !/\(Custom\)$/.test(j.label)), '');
 
   // ---- the stock marker ---------------------------------------------------
   //
