@@ -10,7 +10,8 @@ import { buildBoard, toDateOnly, toAU, toISO, addWeeks, jobTitle,
          customNameOptions, CUSTOM_PREFIX, isEmptyCustomName,
          printJobs, isPrintable, daysBetween, ageLabel } from '../js/transform.js';
 import { classify, CATEGORY_ORDER, PRINT_CATEGORIES, WATERMAKER_CATEGORIES,
-         laneFor, LANE, tmCategory, internalCategory } from '../js/rules.js';
+         laneFor, LANE, tmCategory, internalCategory,
+         isWaterUnit, WATERMAKER_UNIT_RE } from '../js/rules.js';
 import { resolveDisplays, aliasGroups, stellaCode, labelFor, detectNewCodes,
          existingBoats, acceptNewCode, applyTemplate, boatRows } from '../js/vessel-codes.js';
 import { renderPrint, measure, fitToPage, balanceColumns } from '../js/print.js';
@@ -546,6 +547,13 @@ export async function run() {
   // PAIR of numbers for exactly this reason.
   eq('a trailing voltage alone is not a watermaker',
     classify('STAUTO24').category, 'Watermaker accessories');
+  // Softeners have no flow-rate/voltage pair to read, so the prefix carries it:
+  // SS is a product line and SS17500 is a finished unit.
+  eq('a softener is a finished unit', classify('SS17500').category, 'Watermakers');
+  check('...on the prefix, since there is no pair in the code',
+    isWaterUnit('SS17500') && !WATERMAKER_UNIT_RE.test('SS17500'), '');
+  check('...and the pair still decides everything else',
+    isWaterUnit('STG4/240/230') && !isWaterUnit('STKITJUMBO'), '');
   // ORDERING TRAP, same family as the COMMISSION one: STL, STC and both
   // COMMISSION spellings all begin with ST and must still win.
   eq('launchers, chocks and commissioning are not water',

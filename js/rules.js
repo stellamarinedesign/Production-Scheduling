@@ -35,6 +35,21 @@ const WATER = '@water';
 // this anchors on the LPH/volts PAIR rather than one trailing number.
 export const WATERMAKER_UNIT_RE = /\/\d+\/\d+\s*$/;
 
+// Softeners are a product line, not a parts family: SS is the whole prefix and
+// SS17500, the Stellasoftener, is the only code either export has ever carried.
+// So SS is a finished unit on the prefix alone - there is no flow-rate/voltage
+// pair in the code to read, and no SS accessory to confuse it with.
+//
+// If softener spares ever arrive under this prefix they will read as units
+// until somebody adds a rule, which is the same bargain every prefix here makes.
+export const SOFTENER_PREFIX = 'SS';
+
+/** Finished unit, as against a kit, filter, upgrade or spare. */
+export const isWaterUnit = (inventoryId) => {
+  const inv = String(inventoryId ?? '').trim().toUpperCase();
+  return WATERMAKER_UNIT_RE.test(inv) || inv.startsWith(SOFTENER_PREFIX);
+};
+
 export const CATEGORY_RULES = [
   // prefix,             category,                     excludeReason
   ['SLRIVCOMMISSION',    null,                         'on-site commissioning, not workshop fab'],
@@ -65,7 +80,7 @@ export const CATEGORY_RULES = [
   ['STF',                WATER,                        null],
   ['STMEDIAFILTER',      WATER,                        null],
   ['ST',                 WATER,                        null],
-  ['SS',                 WATER,                        null],
+  ['SS',                 WATER,                        null],   // softeners - always a unit
 ];
 
 // Board display order — matches the current Word document.
@@ -182,7 +197,7 @@ export function classify(inventoryId) {
     // The prefix says "water product"; the suffix says which kind.
     if (category === WATER) {
       return {
-        category: WATERMAKER_UNIT_RE.test(inv) ? WATER_CATEGORY.unit : WATER_CATEGORY.accessory,
+        category: isWaterUnit(inv) ? WATER_CATEGORY.unit : WATER_CATEGORY.accessory,
         excludeReason: null,
       };
     }

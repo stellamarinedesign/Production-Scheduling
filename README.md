@@ -158,6 +158,9 @@ Normalising happens in the transform, once, downstream.
   of numbers because `STAUTO24` ends in a voltage and is a flush accessory. The
   same ordering trap applies as everywhere else in that list: `STL`, `STC` and
   both `COMMISSION` spellings begin with `ST` and are matched above it.
+  Softeners are the exception that proves the shape of the rule: `SS` is a whole
+  product line with no flow-rate/voltage pair in the code, so the prefix alone
+  makes it a finished unit.
 - **An import is staged, not applied.** Dropping a file parses it, builds the
   board it would produce against the current overrides and codes, and describes
   the result — counts per lane, what will not print, every unknown code, every
