@@ -41,8 +41,12 @@
   <h1 class="brand-head">Production Board</h1>
   <span class="sub">Stella Marine</span>
   <span class="spacer"></span>
+  <!-- Import is a page, not a tab: it is a thing you go to, do, and leave, and
+       it has nothing to say about the work once it is done. It has no URL of
+       its own because there is nothing to link to or come back to. -->
   <nav>
-    <a href="./" aria-current="page">Board</a>
+    <button class="navlink manager-only" id="importNav">Import</button>
+    <button class="navlink" id="boardNav" aria-current="page">Board</button>
     <a href="vessel-codes" class="manager-only">Vessel codes</a>
   </nav>
   <span class="who" id="whoami"></span>
@@ -63,26 +67,8 @@
   </div>
 
 
-  <!-- ============ BOARD ============ -->
-  <div id="boardWrap" hidden>
-
-
-    <div id="warnings"></div>
-
-    <!-- Print sits alone on the right. This is a scheduling board that can be
-         printed, not a print tool — so the paper settings live behind that tab
-         and are out of the way of everything else. -->
-    <div class="tabs">
-      <button class="tab" id="tabImportBtn">Import</button>
-      <button class="tab" id="tabEditBtn" aria-current="page">Current orders</button>
-      <button class="tab" id="tabGanttBtn">Gantt</button>
-      <button class="tab" id="tabInternalBtn">Internal Factory Jobs</button>
-      <button class="tab" id="tabTmBtn">Time &amp; Materials Jobs</button>
-      <span class="tab-spacer"></span>
-      <button class="tab" id="tabPrintBtn">Print</button>
-    </div>
-
-    <section id="tabImport" class="offstage">
+  <!-- ============ IMPORT ============ -->
+    <section id="importPage" hidden>
     <div id="dropZone">
       <strong>Drop the ERP export here</strong>
       <div class="hint">
@@ -93,6 +79,25 @@
     </div>
       <div id="importHost"></div>
     </section>
+
+
+  <!-- ============ BOARD ============ -->
+  <div id="boardWrap" hidden>
+
+
+    <div id="warnings"></div>
+
+    <!-- Print sits alone on the right. This is a scheduling board that can be
+         printed, not a print tool — so the paper settings live behind that tab
+         and are out of the way of everything else. -->
+    <div class="tabs">
+      <button class="tab" id="tabEditBtn" aria-current="page">Current orders</button>
+      <button class="tab" id="tabGanttBtn">Gantt</button>
+      <button class="tab" id="tabInternalBtn">Internal Factory Jobs</button>
+      <button class="tab" id="tabTmBtn">Time &amp; Materials Jobs</button>
+      <span class="tab-spacer"></span>
+      <button class="tab" id="tabPrintBtn">Print</button>
+    </div>
 
     <section id="tabEdit">
       <div class="view-bar">

@@ -255,6 +255,29 @@ export function shortLabel({
 }
 
 // ---------------------------------------------------------------------------
+// Status
+//
+// The ERP owns the status and is usually right, but it lags: a job put on hold
+// on the floor this morning still reads In Process in tonight's export, and a
+// Planned order the workshop has already started reads Planned for weeks. So a
+// manager can set one by hand.
+//
+// A MANUAL STATUS EXPIRES WHEN THE ERP MOVES. The override records which ERP
+// value it was correcting; the moment the export disagrees with that value, the
+// correction is about a fact that no longer holds and is dropped. Without this,
+// marking a job In Process would permanently mask it being put On Hold later,
+// for a different reason, by somebody else — the board would look right and be
+// silently stale, which is the failure this whole app exists to avoid.
+// ---------------------------------------------------------------------------
+
+export function effectiveStatus(erpStatus, ov) {
+  const set = ov?.status;
+  if (!set || !BOARD_STATUSES.has(set)) return erpStatus;
+  if (ov.statusFrom !== erpStatus) return erpStatus;   // the ERP has moved on
+  return set;
+}
+
+// ---------------------------------------------------------------------------
 // What reaches the paper
 //
 // Three separate reasons a real job does not print, all of them page-fitting
@@ -313,7 +336,8 @@ function sideJob(r, lane, { overrides, asOf }) {
   const prodNo = text(r['Production Nbr.']);
   const inv = text(r['Inventory ID']);
   const ov = overrides[prodNo] ?? {};
-  const status = text(r['Status']);
+  const erpStatus = text(r['Status']);
+  const status = effectiveStatus(erpStatus, ov);
   const customer = text(r['Customer Name']);
   const startDate = toDateOnly(r['Start Date']);
   const endDate = toDateOnly(r['End Date']);
@@ -341,6 +365,8 @@ function sideJob(r, lane, { overrides, asOf }) {
     sales_order: textOrNull(r['Order Nbr.']),
     customer_po: textOrNull(r['Customer Order Nbr.']),
     status,
+    erp_status: erpStatus,
+    status_manual: status !== erpStatus,
     type: text(r['Type']),
     qty: Number(r['Qty. to Produce']) || 1,
     notes: textOrNull(r['Internal Notes']),
@@ -429,6 +455,10 @@ export function buildBoard(rows, opts = {}) {
     // product. See rules.js `laneFor`.
     const lane = laneFor(r);
 
+    // WHETHER A ROW APPEARS AT ALL is the ERP's call, always. A manual status
+    // corrects what a job is doing, not whether it exists — letting an override
+    // pull a Completed or Canceled row back onto the board would make the
+    // board disagree with the ERP about the order book itself.
     const status0 = text(r['Status']);
     if (!BOARD_STATUSES.has(status0)) { drop(`status '${status0}' not shown on board`, 'category'); continue; }
 
@@ -449,7 +479,7 @@ export function buildBoard(rows, opts = {}) {
     // record so the manager view can flag a component part, not used to drop it.
     const type = text(r['Type']);
 
-    const status = status0;
+    const status = effectiveStatus(status0, overrides[prodNo]);
 
     const endDate = toDateOnly(r['End Date']);
     if (!endDate) { drop('no End Date', 'category'); continue; }
@@ -502,6 +532,8 @@ export function buildBoard(rows, opts = {}) {
       end_date: toISO(endDate),                // real date even for stock — Gantt needs it
       start_date: toISO(startDate),
       status,
+      erp_status: status0,
+      status_manual: status !== status0,
       type,
       is_component: type === COMPONENT_TYPE,
       qty: Number(r['Qty. to Produce']) || 1,

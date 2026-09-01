@@ -186,6 +186,20 @@ Normalising happens in the transform, once, downstream.
   the production number, so it never returns. Reversible from History.
 - **Completion is not hiding.** Hidden means "not on this print"; completed
   means "finished". They are separate fields with separate consequences.
+- **A status can be set by hand, and the correction expires.** The ERP owns the
+  status and lags — a job put on hold on the floor this morning still reads
+  In Process in tonight's export. An override records which ERP value it was
+  correcting, and drops itself the moment the export disagrees with that value.
+  Without that, marking a job In Process would permanently mask it being put
+  On Hold later, for a different reason, by somebody else. Whether a row appears
+  at all stays the ERP's call: an override cannot pull a Completed or Canceled
+  row back onto the board.
+- **`OVERRIDE_FIELDS` is the list that keeps an override alive.** A record with
+  nothing meaningful left is deleted rather than kept as a husk, and that check
+  has to know every field. It was written inline as
+  `!hidden && !labelOverride && !completed`, so the first field added after it —
+  `status` — was written and deleted by the next line and never survived a
+  reload. One named list, both backends.
 - **History is per lane and is not a tab.** Finished production work, finished
   T&M and finished internal builds are three different questions and one merged
   list answered none of them. It is a button beside each lane's own controls,

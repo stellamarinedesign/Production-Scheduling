@@ -55,6 +55,24 @@ export function packRows(rows) {
 
 export const unpackRows = (json) => (json ? JSON.parse(json) : null);
 
+// Every field a job override can carry, and therefore every field that keeps
+// the record alive.
+//
+// An override with nothing meaningful left is deleted rather than kept as an
+// empty husk. That check used to be written inline as `!hidden && !labelOverride
+// && !completed`, which meant the first field added after it — `status` — was
+// written and then immediately deleted by the very next line. The record simply
+// never survived the round trip.
+//
+// One list, named, used by both backends. Add a field here when you add a
+// field, and nothing silently disappears.
+export const OVERRIDE_FIELDS = ['hidden', 'labelOverride', 'completed', 'status', 'progress'];
+
+export const isEmptyOverride = (o) => !OVERRIDE_FIELDS.some((f) => {
+  const v = o?.[f];
+  return v !== undefined && v !== null && v !== false && v !== '';
+});
+
 export const Store = {
   mode: 'local',          // 'firestore' | 'local'
   reason: '',             // why local, when local
@@ -166,17 +184,14 @@ export const Store = {
     if (this.mode === 'local') {
       const all = lsGet('jobOverrides', {});
       all[prodNo] = { ...(all[prodNo] ?? {}), ...stamped };
-      // Drop the record entirely once nothing meaningful is left on it.
-      const o = all[prodNo];
-      if (!o.hidden && !o.labelOverride && !o.completed) delete all[prodNo];
+      if (isEmptyOverride(all[prodNo])) delete all[prodNo];
       lsSet('jobOverrides', all);
       return;
     }
     const { doc, setDoc, deleteDoc, getDoc } = this._fs;
     const ref = doc(this._db, 'jobOverrides', prodNo);
     await setDoc(ref, stamped, { merge: true });
-    const after = (await getDoc(ref)).data() ?? {};
-    if (!after.hidden && !after.labelOverride && !after.completed) await deleteDoc(ref);
+    if (isEmptyOverride((await getDoc(ref)).data() ?? {})) await deleteDoc(ref);
   },
 
   // ---- per-item overrides -------------------------------------------------

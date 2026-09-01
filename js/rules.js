@@ -119,6 +119,15 @@ export const PRINT_CATEGORIES = [...PRINT_LAYOUT.narrow, ...PRINT_LAYOUT.full];
 // excluded by the ERP saved filter, but re-check in case that filter is edited.
 export const BOARD_STATUSES = new Set(['Planned', 'Released', 'In Process', 'On Hold']);
 
+// What a manager may set a job to by hand, in the order the work runs.
+//
+// The same four the ERP uses, deliberately: the point of a manual status is to
+// correct one the ERP has not caught up with - a job put on hold on the floor
+// this morning, a planned order the workshop has actually started - not to
+// invent a vocabulary the ERP cannot express. Inventing one would also break
+// the round trip, because the override is dropped as soon as the ERP moves.
+export const SETTABLE_STATUSES = ['Planned', 'Released', 'In Process', 'On Hold'];
+
 // `Type` is NOT a filter.
 //
 // It used to be: only `Finished Good` reached the board. That was wrong.

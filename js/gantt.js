@@ -226,7 +226,12 @@ const el = (tag, cls, text) => {
  * @param {(job)=>void} opts.onBarClick called when a bar is clicked
  */
 export function renderGantt(host, jobs, opts = {}) {
-  const { mode = 'rows', pxPerDay = null, onBarClick = null } = opts;
+  // `isCollapsed` / `onToggleCategory` keep the persistence in app.js, where the
+  // rest of the collapsed state already lives. This module still only draws.
+  const {
+    mode = 'rows', pxPerDay = null, onBarClick = null,
+    isCollapsed = () => false, onToggleCategory = null,
+  } = opts;
   host.textContent = '';
   // A scrolling chart has no reason to narrow its window.
   const g = ganttLayout(jobs, { ...opts, scaleFromAll: opts.scaleFromAll ?? Boolean(pxPerDay) });
@@ -299,13 +304,28 @@ export function renderGantt(host, jobs, opts = {}) {
   };
 
   for (const group of g.groups) {
-    const banner = el('div', 'g-row g-banner');
-    banner.append(el('div', 'g-label', group.category));
+    const shut = isCollapsed(group.category);
+    const banner = el('div', `g-row g-banner${shut ? ' is-collapsed' : ''}`);
+
+    // The whole banner is the hit target, not a caret: it spans the chart and
+    // there is nothing else on that line to click by accident.
+    const label = el(onToggleCategory ? 'button' : 'div', 'g-label');
+    if (onToggleCategory) {
+      label.setAttribute('aria-expanded', String(!shut));
+      label.title = shut ? `Show ${group.category}` : `Hide ${group.category}`;
+      label.addEventListener('click', () => onToggleCategory(group.category));
+      label.append(el('span', 'g-caret', shut ? '\u25b8' : '\u25be'));
+    }
+    label.append(el('span', 'g-band-name', group.category));
+    banner.append(label);
+
     const bscale = el('div', 'g-scale');
     gridlines(bscale);
     bscale.append(el('span', 'g-banner-n', `${group.rows.length}`));
     banner.append(bscale);
     chart.append(banner);
+
+    if (shut) continue;
 
     const makeBar = (r, { showLabel }) => {
       const bar = el('div', `g-bar${r.overdue ? ' is-overdue' : ''}${r.is_stock ? ' is-stock' : ''}`

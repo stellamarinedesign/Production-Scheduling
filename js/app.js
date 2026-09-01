@@ -3,7 +3,8 @@
 import { xlsxAdapter } from './adapters/index.js';
 import { buildBoard, byCategory, today, toAU, toDateOnly, jobTitle, CUSTOM_PREFIX, isEmptyCustomName } from './transform.js';
 import { CATEGORY_ORDER, PRINT_LAYOUT, EXCLUSION_ORDER, EXCLUSION_GROUP_LABEL,
-         TM_CATEGORY_ORDER, INTERNAL_CATEGORY_ORDER, LANE_LABEL, WATERMAKER_CATEGORIES } from './rules.js';
+         TM_CATEGORY_ORDER, INTERNAL_CATEGORY_ORDER, LANE_LABEL, WATERMAKER_CATEGORIES,
+         SETTABLE_STATUSES } from './rules.js';
 import { stellaCode, labelFor, existingBoats, acceptNewCode, applyTemplate } from './vessel-codes.js';
 import { Auth, ROLE, friendlyAuthError } from './auth.js';
 import { Store, packRows, unpackRows } from './store.js';
@@ -118,9 +119,7 @@ async function start(st) {
   // reach the Import tab, and the Import tab is where you go when there is
   // nothing loaded. It used to be hidden behind the drop zone, which meant the
   // only way to see the app was to already have data in it.
-  $('boardWrap').hidden = false;
-  if (!state.rows) showTab('import');
-  renderImport();
+  showImportPage(!state.rows);
 
   startLiveSync();
 }
@@ -416,8 +415,7 @@ async function load(file) {
     return;
   }
 
-  showTab('import');
-  renderImport();
+  showImportPage(true);
   toast(`${src.rows.length} rows read — review and apply.`);
 }
 
@@ -436,7 +434,7 @@ async function commitImport() {
   staged = null;
   Store.cacheRows(src.rows, state.source);
   rebuild();
-  renderImport();
+  showImportPage(false);
   showTab('edit');
   toast(`${src.rows.length} rows in — ${state.board.meta.job_count} production orders.`);
   queueImportQuestions();
@@ -512,6 +510,8 @@ function wireControls() {
     const cap = t[0].toUpperCase() + t.slice(1);
     $(`tab${cap}Btn`).addEventListener('click', () => showTab(t));
   }
+  $('importNav').addEventListener('click', () => showImportPage(true));
+  $('boardNav').addEventListener('click', () => showImportPage(false));
   for (const b of document.querySelectorAll('[id^=history][data-lane]')) {
     b.addEventListener('click', () => toggleHistory(b.dataset.lane));
   }
@@ -554,7 +554,7 @@ function setAutoFit(on, { save = true, render = true } = {}) {
   if (save && render) rebuild();
 }
 
-const TABS = ['import', 'edit', 'gantt', 'internal', 'tm', 'print'];
+const TABS = ['edit', 'gantt', 'internal', 'tm', 'print'];
 
 function showTab(which) {
   state.tab = which;
@@ -567,7 +567,22 @@ function showTab(which) {
   // measures itself to fit the page. Neither can do that while off-canvas, so
   // both are drawn on arrival rather than on rebuild.
   if (which === 'gantt') renderGanttView();
-  if (which === 'import') renderImport();
+}
+
+/**
+ * Import is a page, not a tab: the whole board goes away while you are in it.
+ * Reviewing an import against half a screen of the board it is about to replace
+ * was the wrong shape - the board on show is the OLD one, and reading the two
+ * together invites exactly the confusion the review exists to prevent.
+ */
+function showImportPage(on) {
+  state.importPage = on;
+  $('importPage').hidden = !on;
+  $('boardWrap').hidden = on || !state.rows;
+  $('provenance').hidden = on || !state.source;
+  $('importNav').setAttribute('aria-current', on ? 'page' : 'false');
+  $('boardNav').setAttribute('aria-current', on ? 'false' : 'page');
+  if (on) renderImport();
 }
 
 // ---------------------------------------------------------------------------
@@ -587,8 +602,10 @@ function rebuild() {
   const build = (weeks) => buildBoard(state.rows, { ...opts, horizonWeeks: weeks });
 
   // Reveal BEFORE measuring: a [hidden] ancestor gives the print host no
-  // layout, and an unmeasured board would claim to fit at any horizon.
-  $('boardWrap').hidden = false;
+  // layout, and an unmeasured board would claim to fit at any horizon. Not
+  // while the import page is up, though - a live edit from another manager
+  // must not shove the board back on screen mid-review.
+  $('boardWrap').hidden = Boolean(state.importPage);
   $('provenance').hidden = false;
 
   const host = $('printPreview');
@@ -772,7 +789,8 @@ function renderWarnings() {
         b.append(el('div', null, 'Confirm these before the floor starts them, or hide them.'));
         for (const j of w.onHold) {
           const r = el('div', 'xrow');
-          r.append(el('span', 'id', j.prod_no), el('span', null, jobTitle(j)), el('span', 'why', `due ${j.due_display}`));
+          r.append(el('span', 'id', j.prod_no), el('span', null, jobTitle(j)),
+            el('span', 'why', j.status_manual ? 'put on hold here' : `due ${j.due_display}`));
           b.append(r);
         }
       },
@@ -923,6 +941,47 @@ function categoryBlock(cat, jobs, { full = false } = {}) {
   return block;
 }
 
+/**
+ * The status control that sits before Done.
+ *
+ * A select rather than a dialog: this is the one edit on a row that has a
+ * closed set of answers and no consequences to explain, so making somebody
+ * confirm it would be ceremony. Setting it back to what the ERP says clears the
+ * override rather than pinning the same value, so the job goes back to
+ * following the export.
+ */
+function statusControl(j) {
+  const wrap = el('span', `st${j.status_manual ? ' is-manual' : ''}`);
+  const sel = document.createElement('select');
+  sel.className = 'st-select';
+  for (const opt of SETTABLE_STATUSES) {
+    const o = document.createElement('option');
+    o.value = opt;
+    o.textContent = opt;
+    o.selected = opt === j.status;
+    sel.append(o);
+  }
+  sel.title = j.status_manual
+    ? `Set by hand. The ERP says ${j.erp_status} \u2014 this reverts on its own if `
+      + 'the ERP changes to anything else.'
+    : `From the ERP. Change it here if the floor has moved on.`;
+  sel.addEventListener('change', () => setStatus(j, sel.value));
+  wrap.append(sel);
+  return wrap;
+}
+
+async function setStatus(j, value) {
+  if (value === j.erp_status) {
+    await setOverride(j.prod_no, { status: null, statusFrom: null });
+    toast(`${j.prod_no} follows the ERP again \u2014 ${value}.`);
+    return;
+  }
+  // `statusFrom` is what makes this expire: it records the ERP value being
+  // corrected, so the override drops itself once the export disagrees.
+  await setOverride(j.prod_no, { status: value, statusFrom: j.erp_status });
+  toast(`${j.prod_no} set to ${value}.`);
+}
+
 function jobRow(j, { full = false } = {}) {
   const row = el('div', `job${j.on_hold ? ' on-hold' : ''}${j.hidden ? ' is-hidden' : ''}`
     + `${full ? ' is-full' : ''}`);
@@ -943,7 +1002,11 @@ function jobRow(j, { full = false } = {}) {
   // Status only in the full-width block. Left out of the markup rather than
   // hidden: a hidden grid item is removed from flow and everything after it
   // shifts a column left.
-  if (full) row.append(el('span', 'status', j.status));
+  if (full) {
+    const st = el('span', `status${j.status_manual ? ' is-manual' : ''}`, j.status);
+    if (j.status_manual) st.title = `Set by hand \u2014 the ERP says ${j.erp_status}`;
+    row.append(st);
+  }
 
   const acts = el('span', 'acts');
   const edit = el('button', 'mini', 'Label');
@@ -953,6 +1016,8 @@ function jobRow(j, { full = false } = {}) {
   const hide = el('button', `mini${j.hidden ? ' on' : ''}`, j.hidden ? 'Show' : 'Hide');
   hide.addEventListener('click', () => (j.hidden ? unhide(j) : openHideDialog(j)));
   acts.append(hide);
+
+  acts.append(statusControl(j));
 
   const done = el('button', 'mini', 'Done');
   done.title = 'Mark completed — off the board for good, reversible from History';
@@ -984,11 +1049,21 @@ function renderGanttView() {
       }).jobs.filter((j) => !j.hidden)
     : state.board.jobs.filter((j) => !j.hidden);
 
+  // Collapsed bands persist, in the same localStorage set as the orders view
+  // and History. Keyed per view so shutting Davits on the chart does not shut
+  // it on the orders list — the two are read for different reasons.
   const g = renderGantt($('gantt'), jobs, {
     asOf: today(),
     mode: packed ? 'packed' : 'rows',
     pxPerDay: all ? 8 : null,
     onBarClick: Auth.isManager ? (r) => openCompleteDialog([r]) : null,
+    isCollapsed: (cat) => collapsed.has(`gantt:${cat}`),
+    onToggleCategory: (cat) => {
+      const key = `gantt:${cat}`;
+      if (collapsed.has(key)) collapsed.delete(key); else collapsed.add(key);
+      saveCollapsed(collapsed);
+      renderGanttView();
+    },
   });
 
   $('ganttHint').textContent = all
@@ -1451,7 +1526,7 @@ function laneRow(j, lane) {
   const done = el('button', 'mini', 'Done');
   done.title = 'Mark completed \u2014 reversible from History';
   done.addEventListener('click', () => openCompleteDialog([j]));
-  acts.append(lbl, hide, done);
+  acts.append(lbl, hide, statusControl(j), done);
   row.append(acts);
   return row;
 }
@@ -1917,6 +1992,7 @@ async function unhide(job) {
 async function setOverride(prodNo, patch) {
   const next = { ...(state.overrides[prodNo] ?? {}), ...patch };
   if (patch.labelOverride === null) delete next.labelOverride;
+  if (patch.status === null) { delete next.status; delete next.statusFrom; }
   if (next.hidden === false) { delete next.hidden; delete next.hiddenReason; }
   if (Object.keys(next).length) state.overrides[prodNo] = next;
   else delete state.overrides[prodNo];

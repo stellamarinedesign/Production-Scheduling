@@ -66,6 +66,10 @@ header nav a {
 }
 header nav a:hover { border-color: var(--red-bright); color: var(--white); }
 header nav a[aria-current="page"] { background: var(--red-deep); border-color: var(--red-bright); color: var(--white); }
+/* Import and Board switch a display rather than a document, so they are buttons
+   - but they are the same control as the Vessel codes link and must look it. */
+header nav .navlink { font: inherit; cursor: pointer; }
+header nav .navlink[aria-current="page"] { background: var(--red-deep); border-color: var(--red-bright); color: var(--white); }
 
 /* Wide: the orders view is two columns of six, and a landscape iPad is
    1024–1366 CSS px, so there is no reason to letterbox it at 1280. */
@@ -194,8 +198,14 @@ button.mini.on { background: var(--red-deep); border-color: var(--red-bright); }
   /* The actions column is a FIXED width, not `auto`. With `auto` it sized to
      content — 100px of buttons on a job row, 0px on the empty header cell — so
      the flexible vessel column absorbed the difference and the Due and Status
-     headers sat 100px right of the data they labelled. */
-  grid-template-columns: 76px 78px minmax(200px, 1.8fr) 96px 92px 104px;
+     headers sat 100px right of the data they labelled.
+
+     FIVE tracks here and six on .is-full. It used to declare six either way,
+     which left a spare track on a narrow row and quietly put the actions in the
+     92px Status track — invisible while that held three buttons, and an overlap
+     the moment the status control made it four. A row's tracks must match the
+     cells it actually renders. */
+  grid-template-columns: 76px 74px minmax(150px, 1.7fr) 92px 252px;
   gap: 12px; align-items: center;
   padding: 9px 10px; border-bottom: 1px solid var(--line);
   font-size: 14px;
@@ -445,6 +455,15 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 .tab:hover { color: var(--white); }
 .tab[aria-current="page"] { color: var(--white); border-bottom-color: var(--red-bright); }
 
+/* Print is a destination, not a view of the work, and sitting alone on the
+   right it read as an afterthought. Given the weight it had as a button. */
+#tabPrintBtn {
+  background: var(--red-deep); border: 1px solid var(--red-bright);
+  border-radius: 8px; color: var(--white); margin: 2px 0 6px; padding: 8px 18px;
+}
+#tabPrintBtn:hover { background: var(--red-bright); }
+#tabPrintBtn[aria-current="page"] { background: var(--red-bright); border-bottom-color: var(--red-bright); }
+
 /* Print sits alone on the right. It is the one tab that is a destination
    rather than a view of the work, and the gap says so without a divider. */
 .tab-spacer { flex: 1 1 auto; }
@@ -493,6 +512,28 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
   font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
   color: var(--text-dim); margin-bottom: 12px;
 }
+
+/* Gantt bands shut like every other category block on the site. */
+.g-banner .g-label {
+  display: flex; align-items: center; gap: 7px; width: 100%;
+  background: none; border: none; color: inherit; font: inherit;
+  text-align: left; cursor: pointer; padding: 0;
+}
+.g-banner .g-label:hover .g-band-name { color: var(--white); }
+.g-caret { color: var(--text-dim); font-size: 10px; }
+.g-banner.is-collapsed .g-band-name { color: var(--text-dim); }
+
+/* Manual status. The row's own status text goes red-adjacent when a person set
+   it, so a board full of ERP statuses shows the hand-edited ones at a glance. */
+.status.is-manual { color: var(--red-bright); }
+.st-select {
+  background: var(--black-night); color: var(--text-dim);
+  border: 1px solid var(--line); border-radius: 6px;
+  font-family: inherit; font-size: 10.5px; padding: 3px 2px; cursor: pointer;
+  width: 84px;
+}
+.st-select:hover { border-color: var(--red-bright); color: var(--white); }
+.st.is-manual .st-select { color: var(--red-bright); border-color: var(--red-deep); }
 
 /* ---------- import review ---------- */
 .import-current { color: var(--text-dim); font-size: 13px; margin-top: 16px; }
@@ -768,12 +809,24 @@ button.linkish:disabled { opacity: .5; cursor: default; }
    which is why the buttons sat left of where they belonged and the due date
    appeared to run through them. */
 .board-col .job {
-  grid-template-columns: 66px 62px minmax(90px, 1fr) 82px 132px;
+  grid-template-columns: 66px 62px minmax(90px, 1fr) 82px 220px;
   gap: 10px; font-size: 13px; padding: 7px 8px;
 }
 .board-col .job .acts { gap: 5px; }
 .board-col .job .acts .mini { padding: 4px 7px; font-size: 11px; }
-.job.is-full { grid-template-columns: 76px 78px minmax(200px, 1.8fr) 96px 92px 148px; }
+/* The status control has to fit a two-up column alongside three buttons, so it
+   is tighter here than in the full-width blocks. */
+.board-col .job .st-select { width: 76px; font-size: 10px; }
+.job.is-full { grid-template-columns: 76px 74px minmax(200px, 1.8fr) 96px 88px 252px; }
+
+/* Below roughly a laptop the two-column board is already one column, and the
+   actions have room to sit under the row rather than fight it for width. */
+@media (max-width: 1240px) {
+  .job, .job.is-full, .board-col .job {
+    grid-template-columns: 66px 60px minmax(90px, 1.4fr) 80px 200px;
+  }
+  .job.is-full .status { display: none; }
+}
 
 /* ---------- history ---------- */
 .hist { font-size: 13.5px; }

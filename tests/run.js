@@ -8,7 +8,8 @@
 import { xlsxAdapter, validateColumns } from '../js/adapters/index.js';
 import { buildBoard, toDateOnly, toAU, toISO, addWeeks, jobTitle,
          customNameOptions, CUSTOM_PREFIX, isEmptyCustomName,
-         printJobs, isPrintable, daysBetween, ageLabel } from '../js/transform.js';
+         printJobs, isPrintable, daysBetween, ageLabel,
+         effectiveStatus } from '../js/transform.js';
 import { classify, CATEGORY_ORDER, PRINT_CATEGORIES, WATERMAKER_CATEGORIES,
          laneFor, LANE, tmCategory, internalCategory,
          isWaterUnit, WATERMAKER_UNIT_RE } from '../js/rules.js';
@@ -17,7 +18,7 @@ import { resolveDisplays, aliasGroups, stellaCode, labelFor, detectNewCodes,
 import { renderPrint, measure, fitToPage, balanceColumns } from '../js/print.js';
 import { ganttLayout, packLanes, renderGantt as renderGanttChart } from '../js/gantt.js';
 import { fitCodesSheet, measureSheet, renderCodesSheet, CONTENT_H, TYPE_STEPS } from '../js/codes-print.js';
-import { packRows, unpackRows } from '../js/store.js';
+import { packRows, unpackRows, isEmptyOverride, OVERRIDE_FIELDS } from '../js/store.js';
 
 const results = [];
 const check = (name, pass, detail = '') => results.push({ name, pass, detail });
@@ -530,6 +531,56 @@ export async function run() {
   eq('...then in months', ageLabel(90), '3 months');
   eq('...then in years', ageLabel(400), '1.1 years');
   eq('one day is not "1 days"', ageLabel(1), '1 day');
+
+  // ---- status, set by hand ------------------------------------------------
+  //
+  // The ERP owns the status and lags. A manager can correct it, and the
+  // correction EXPIRES the moment the ERP moves: it was a statement about one
+  // specific ERP value, and once that value changes it is a claim about a fact
+  // that no longer holds.
+  eq('no override follows the ERP', effectiveStatus('Planned', {}), 'Planned');
+  eq('an override holds while the ERP says what it said',
+    effectiveStatus('In Process', { status: 'On Hold', statusFrom: 'In Process' }), 'On Hold');
+  eq('...and is dropped the moment the ERP moves',
+    effectiveStatus('Released', { status: 'On Hold', statusFrom: 'In Process' }), 'Released');
+  // The trap this guards: marking a job In Process would otherwise permanently
+  // mask the ERP putting it On Hold later, for a different reason.
+  eq('...including when the ERP itself goes On Hold',
+    effectiveStatus('On Hold', { status: 'In Process', statusFrom: 'Released' }), 'On Hold');
+  eq('a status outside the board set is ignored',
+    effectiveStatus('Planned', { status: 'Completed', statusFrom: 'Planned' }), 'Planned');
+
+  const heldByHand = buildBoard(src.rows, {
+    codeMap, horizonWeeks: 12, asOf,
+    overrides: { P01093: { status: 'On Hold', statusFrom: 'In Process' } },
+  });
+  const byHand = heldByHand.jobs.find((j) => j.prod_no === 'P01093');
+  check('a hand-set status reaches the job, flagged as manual',
+    byHand.status === 'On Hold' && byHand.status_manual === true
+    && byHand.erp_status === 'In Process' && byHand.on_hold === true, byHand.status);
+  eq('...and it warns like any other On Hold job',
+    heldByHand.warnings.onHold.filter((j) => j.prod_no === 'P01093').length, 1);
+
+  // WHETHER A ROW EXISTS stays the ERP's call. An override must never drag a
+  // Completed or Canceled row back onto the board.
+  const closedRow = buildBoard(
+    src.rows.map((r) => (r['Production Nbr.'] === 'P01093' ? { ...r, Status: 'Completed' } : r)),
+    { codeMap, horizonWeeks: 12, asOf,
+      overrides: { P01093: { status: 'In Process', statusFrom: 'Completed' } } },
+  );
+  eq('an override cannot resurrect a row the ERP closed',
+    closedRow.jobs.filter((j) => j.prod_no === 'P01093'), []);
+
+  // An override record with nothing meaningful left is deleted. That check has
+  // to know every field, or the first field added after it is written and then
+  // immediately thrown away - which is exactly what happened to `status`.
+  check('every override field keeps its record alive',
+    OVERRIDE_FIELDS.every((f) => !isEmptyOverride({ [f]: f === 'progress' ? 0.5 : 'x' })),
+    OVERRIDE_FIELDS.filter((f) => isEmptyOverride({ [f]: 'x' })).join(','));
+  check('an empty record is empty', isEmptyOverride({}) && isEmptyOverride({ updatedAt: 'now' }), '');
+  check('a cleared field does not keep it alive',
+    isEmptyOverride({ hidden: false, labelOverride: '', status: null }), '');
+  check('status is one of the fields', OVERRIDE_FIELDS.includes('status'), '');
 
   // ---- watermakers --------------------------------------------------------
   //
