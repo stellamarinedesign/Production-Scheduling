@@ -188,10 +188,12 @@ export const LABEL_OVERRIDES = {
   // label is built. Kept because BOARD_SPEC lists it and the SDC0 rule could
   // change; harmless while dead.
   SDC0287: 'Davit Rope Kit',
-  // ERP description is `550SSHLHSHE Davit (stock)` — a part code where a
-  // description belongs. Overridden here rather than papered over; fix at
-  // source when someone gets to it.
-  SDC550SSHLHSHE: '550kg Full Hydraulic Davit',
+  // SDC550SSHLHSHE was here, because its PRODUCTION description was
+  // `550SSHLHSHE Davit (stock)` — a part code where a description belongs. Its
+  // ITEM description is `Stella Davit 550kg - Single Stage (Hydraulic Luff /
+  // Hydraulic Slew / Hydraulic Extension)`, which is the fix that entry was
+  // waiting for, so the davit rule now handles it like every other davit and
+  // says more than the hand-written label did.
 };
 
 /**

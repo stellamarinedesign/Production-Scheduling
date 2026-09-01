@@ -216,8 +216,8 @@ export function customNameOptions({ inventoryId, productionDescription, customer
  * Inventory ID, so it survives every future production order for that product.
  */
 export function shortLabel({
-  inventoryId, productionDescription, customer, descField, resolved, codeMap,
-  itemOverride = null,
+  inventoryId, productionDescription, itemDescription, customer, descField,
+  resolved, codeMap, itemOverride = null,
 }) {
   const inv = text(inventoryId);
   const desc = text(productionDescription);
@@ -236,18 +236,39 @@ export function shortLabel({
   const custom = customNameOptions({ inventoryId, productionDescription, customer, descField });
   if (custom) return custom.chosen.label;
 
-  // Davits are labelled by capacity + configuration, not by vessel.
+  // Davits are labelled by capacity + configuration, not by vessel, and that
+  // description comes from `Item Description` rather than the production order.
+  //
+  // ITEM DESCRIPTION IS THE PRODUCT'S OWN NAME. Across the whole 01/09 export —
+  // 1216 rows, 203 item codes, completed and closed included — not one code has
+  // two different Item Descriptions. `Production Description` is free text typed
+  // per order and 104 of those 203 codes have more than one: SDC250SSMLMSME
+  // alone has seven, from "250Kg Single Stage Davit (Manual Luff/ Manual Slew/
+  // Manual Extension)" down to "250kg SS Davit", and SDC550SSHLHSHE has a
+  // customer's name in one of them.
+  //
+  // For a davit that difference matters, because the configuration IS the
+  // product: manual against hydraulic luff, slew and extension. The item
+  // description always carries it; the production description often does not.
+  //
+  // What is lost: an order-specific note in the production description. On the
+  // open davit rows the only thing it adds is the word "stock", which `is_stock`
+  // already knows and `jobTitle` re-adds. Historically there is one real case —
+  // a 650kg derated to 500kg with an extended boom — and that is a job label
+  // override, not a rule.
   //
   // The reference implementation triggered this branch on `SDC* OR is_stock`.
   // Stock-ness has nothing to do with how a davit is identified, and that
   // clause would strip a future stock cylinder lifter of its vessel code and
-  // print raw ERP text instead. Narrowed to SDC*, which reproduces the
-  // reference output exactly on real data — every stock row in the 21/08
-  // export is either SDC* or caught by LABEL_OVERRIDES first.
+  // print raw ERP text instead. Narrowed to SDC*.
   if (inv.toUpperCase().startsWith('SDC')) {
+    const item = text(itemDescription).replace(/^Stella\s+Davit\s*[-\u2013]?\s*/i, '').trim();
+    if (item) return item;
+    // No item description at all: fall back to the production order's, cleaned
+    // the way it always was.
     return desc
       .replace(/^Stella\s+Davit\s*/i, '')
-      .replace(/\s*[-–]?\s*Used by\s+[A-Z0-9]+\s*\/\s*[A-Z0-9]+\s*$/i, '')
+      .replace(/\s*[-\u2013]?\s*Used by\s+[A-Z0-9]+\s*\/\s*[A-Z0-9]+\s*$/i, '')
       .trim();
   }
 
@@ -543,6 +564,7 @@ export function buildBoard(rows, opts = {}) {
     const label = shortLabel({
       inventoryId: inv,
       productionDescription: r['Production Description'],
+      itemDescription: r['Item Description'],
       customer,
       descField: r['Description'],
       resolved,
@@ -759,7 +781,7 @@ export function buildBoard(rows, opts = {}) {
 }
 
 /**
- * What a job is called wherever it is shown — label plus quantity.
+ * What a job is called wherever it is shown — label, quantity, stock marker.
  *
  * A DISPLAY concern, deliberately not baked into `label`. The label editor
  * prefills from `label`, so a suffix stored there would be saved back into the
@@ -768,7 +790,19 @@ export function buildBoard(rows, opts = {}) {
  * Only ever shown when there is more than one to build. "x1" on 85 of 92 rows
  * would be noise that buries the three that matter.
  */
-export const jobTitle = (j) => (Number(j?.qty) > 1 ? `${j.label} x${j.qty}` : j?.label ?? '');
+export const jobTitle = (j) => {
+  let out = j?.label ?? '';
+  if (Number(j?.qty) > 1) out += ` x${j.qty}`;
+  // Derived from `is_stock`, never stored — same reason as the quantity. The
+  // label editor prefills from `label`, so a suffix kept there would be saved
+  // into the override and appended again on the next render.
+  //
+  // It used to arrive by accident: some production descriptions ended "(STOCK)"
+  // and some did not, so half the stock builds said so and half did not. Now
+  // every one does, and none of them says it twice.
+  if (j?.is_stock) out += ' (Stock)';
+  return out;
+};
 
 /** Jobs grouped by category in board order, hidden ones dropped. */
 export function byCategory(jobs, { includeHidden = false } = {}) {

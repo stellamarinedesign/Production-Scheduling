@@ -247,12 +247,29 @@ Normalising happens in the transform, once, downstream.
   record carries the raw rows as well as the rendered board, so the second
   manager continues from the same export rather than being asked to upload it
   again. Local cache wins only when it is genuinely newer.
-- **The quantity is a display suffix, not part of the label.** `x5` is appended
+- **A davit is named from `Item Description`, not the production order.**
+  `Item Description` is the product's own name: across the whole 01/09 export —
+  1216 rows, 203 item codes, completed and closed included — not one code
+  carries two different Item Descriptions. `Production Description` is free text
+  typed per order, and 104 of those 203 codes have more than one; SDC250SSMLMSME
+  alone has seven, down to "250kg SS Davit", and one SDC550SSHLHSHE row has a
+  customer's name in it. For a davit the configuration IS the product, and the
+  hand-typed descriptions were getting it wrong: "450Kg Davit Single Stage Full
+  manual" is a pneumatic luff assist, and "350kg Full Manual davit" has a
+  pneumatic extension assist. What is lost is an order-specific note — on the
+  open rows the only thing that was, was the word "stock", which `is_stock`
+  already knows. A genuine one-off (a 650kg derated to 500kg with an extended
+  boom) is a job label override, not a rule.
+- **The quantity and the stock marker are display suffixes, not part of the
+  label.** `x5` is appended
   at render time from `Qty. to Produce`, and only when it is not 1 — 85 of the 92
   rows are single builds and an `x1` on every line would bury the three that are
   not. It is deliberately kept out of `label`: the label editor prefills from
   `label`, so a suffix stored there would be saved into the override and
-  suffixed again on the next render.
+  suffixed again on the next render. `(Stock)` is the same: it used to arrive by
+  accident, because some production descriptions ended "(STOCK)" and some did
+  not, so half the stock builds said so. It is derived from `is_stock` now, so
+  every one does and none says it twice.
 - Nothing is ever dropped silently. Every excluded row carries a reason.
 
 Full background: `handoff/STELLA_PRODUCTION_BOARD_CONTEXT.md`.

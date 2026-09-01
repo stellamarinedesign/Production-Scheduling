@@ -9,8 +9,8 @@ import { xlsxAdapter, validateColumns } from '../js/adapters/index.js';
 import { buildBoard, toDateOnly, toAU, toISO, addWeeks, jobTitle,
          customNameOptions, CUSTOM_PREFIX, isEmptyCustomName,
          printJobs, isPrintable, daysBetween, ageLabel,
-         effectiveStatus, snapshotOf, fromSnapshot } from '../js/transform.js';
-import { classify, CATEGORY_ORDER, PRINT_CATEGORIES, WATERMAKER_CATEGORIES,
+         effectiveStatus, snapshotOf, fromSnapshot, shortLabel } from '../js/transform.js';
+import { classify, CATEGORY_ORDER, PRINT_CATEGORIES, WATERMAKER_CATEGORIES, LABEL_OVERRIDES,
          laneFor, LANE, tmCategory, internalCategory,
          isWaterUnit, WATERMAKER_UNIT_RE } from '../js/rules.js';
 import { resolveDisplays, aliasGroups, stellaCode, labelFor, detectNewCodes,
@@ -225,6 +225,15 @@ export async function run() {
         }
         continue;
       }
+      // Davits are named from Item Description now, not the production order.
+      // The reference took the latter, which was hand-typed per order and in
+      // three cases actively wrong about the configuration.
+      if (f === 'label' && /^SDC/i.test(exp.inventory_id)) {
+        if (!got.label || /^Stella Davit/i.test(got.label)) {
+          diffs.push(`${exp.prod_no}.label: expected the item description, got ${JSON.stringify(got.label)}`);
+        }
+        continue;
+      }
       if (exp[f] === 'nan') {
         if (got[f] !== null) diffs.push(`row ${i} ${exp.prod_no}.${f}: expected null (fixture has the str(NaN) bug), got ${JSON.stringify(got[f])}`);
         continue;
@@ -422,7 +431,7 @@ export async function run() {
     qtyJobs.map((j) => `${j.inventory_id}:${j.qty}`).sort(),
     ['SHCELECPLINTHRIV43SY:5', 'STCFXCHOCK:2', 'SWD4PDRIV62SY:5']);
   eq('...and each shows it', qtyJobs.map((j) => jobTitle(j)).sort(),
-    ['Fixed Tender Chocks x2', 'Helm Seat Box SY20 x5', 'Watertight Door 62SY x5']);
+    ['Fixed Tender Chocks x2 (Stock)', 'Helm Seat Box SY20 x5', 'Watertight Door 62SY x5']);
 
   // The suffix must NOT live in `label`. The editor prefills from `label`, so a
   // suffix stored there would be saved into the override and suffixed again on
@@ -756,6 +765,90 @@ export async function run() {
   check('...as is whitespace', isEmptyCustomName('   '));
   check('...and nothing at all', isEmptyCustomName(''));
   check('a real name is not empty', !isEmptyCustomName('Custom Lifter - Galaxy 62'));
+
+  // ---- davits are named by the product, not the order ---------------------
+  //
+  // `Item Description` is the product's own name: across the whole 01/09 export
+  // - 1216 rows, 203 item codes, completed and closed included - not one code
+  // carries two different Item Descriptions. `Production Description` is typed
+  // per order, and 104 of those 203 codes have more than one.
+  const davits = printed.filter((j) => j.category === 'Davits');
+  check('every davit is labelled', davits.length > 0 && davits.every((j) => j.label), '');
+  check('...and none of them keeps the ERP prefix',
+    davits.every((j) => !/^Stella\s+Davit/i.test(j.label)),
+    davits.map((j) => j.label).join(' | '));
+
+  // The configuration IS the product for a davit, and this is what the
+  // hand-typed descriptions were getting wrong: "450Kg Davit Single Stage Full
+  // manual" is a pneumatic luff assist, and "350kg Full Manual davit" has a
+  // pneumatic extension assist. Neither is full manual.
+  const davitLabel = (inv) => davits.find((j) => j.inventory_id === inv)?.label;
+  eq('a davit says how it luffs, slews and extends',
+    davitLabel('SDC450SSMLMSME'),
+    '450kg - Single Stage (Pneumatic Luff Assist / Manual Slew / Manual Extension)');
+  eq('...even where the production order called it full manual',
+    davitLabel('SDC350SSMLMSME'),
+    '350kg - Single Stage (Manual Luff / Manual Slew / Pneumatic Extension Assist)');
+  eq('a folding davit stays short', davitLabel('SDC200FOLD'), '200kg - Folding');
+
+  eq('the item description drives it, whatever the order says',
+    shortLabel({
+      inventoryId: 'SDC550SSHLHSHE',
+      productionDescription: '550kg full hyd Lawson marine',
+      itemDescription: 'Stella Davit 550kg - Single Stage (Hydraulic Luff / Hydraulic Slew / Hydraulic Extension)',
+      resolved, codeMap,
+    }),
+    '550kg - Single Stage (Hydraulic Luff / Hydraulic Slew / Hydraulic Extension)');
+  // That code used to need a LABEL_OVERRIDES entry, because its production
+  // description was `550SSHLHSHE Davit (stock)` - a part code where a
+  // description belongs. The item description is the fix that entry was waiting
+  // for, so the entry is gone and the davit reads like every other davit.
+  check('and no davit needs a hand-written label any more',
+    !Object.keys(LABEL_OVERRIDES).some((k) => /^SDC[1-9]/.test(k)
+      || (k.startsWith('SDC') && !k.startsWith('SDC0'))),
+    Object.keys(LABEL_OVERRIDES).join(', '));
+  // A hand-written label still wins where one exists: narrowest scope first.
+  eq('LABEL_OVERRIDES still beats the davit rule',
+    shortLabel({
+      inventoryId: 'STCFXCHOCK', productionDescription: 'x',
+      itemDescription: 'Stella Davit something', resolved, codeMap,
+    }),
+    'Fixed Tender Chocks');
+  // Never crash on a blank one - fall back to the production order, cleaned the
+  // way it always was.
+  eq('a davit with no item description falls back',
+    shortLabel({
+      inventoryId: 'SDC200FOLD', productionDescription: 'Stella Davit 200Kg Folding - Used by 58SM/043',
+      itemDescription: '', resolved, codeMap,
+    }),
+    '200Kg Folding');
+  // Only davits. Everything else keeps its vessel code, which is far better
+  // than any description.
+  eq('a lifter is untouched by this',
+    shortLabel({
+      inventoryId: 'SBLRIV56', productionDescription: 'x',
+      itemDescription: 'Stella Boarding Ladder something else', resolved, codeMap,
+    }),
+    'Boarding Ladder 56SY');
+
+  // ---- the stock marker ---------------------------------------------------
+  //
+  // It used to arrive by accident: some production descriptions ended "(STOCK)"
+  // and some did not, so half the stock builds said so. Derived from is_stock
+  // now, so every one does - and, like the quantity, never stored in `label`.
+  eq('a stock build says so', jobTitle({ label: '200kg - Folding', is_stock: true }),
+    '200kg - Folding (Stock)');
+  eq('a customer order does not', jobTitle({ label: 'SY22 Launcher', is_stock: false }),
+    'SY22 Launcher');
+  eq('quantity first, then stock',
+    jobTitle({ label: 'Fixed Tender Chocks', qty: 2, is_stock: true }),
+    'Fixed Tender Chocks x2 (Stock)');
+  check('the marker is not baked into any stored label',
+    printed.every((j) => !/\(Stock\)$/i.test(j.label)),
+    printed.filter((j) => /\(Stock\)$/i.test(j.label)).map((j) => j.label).join(' | '));
+  check('every stock build on the board is marked',
+    printed.filter((j) => j.is_stock).every((j) => jobTitle(j).endsWith('(Stock)')), '');
+  eq('...all seven of them', printed.filter((j) => j.is_stock).length, 7);
 
   // ---- custom lifters -----------------------------------------------------
   const customs = board.jobs.filter((j) => /CUSTOM/i.test(j.inventory_id));
