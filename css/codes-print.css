@@ -55,14 +55,15 @@
 /* The display code is the answer the sheet exists to give, so it carries the
    weight — the same reasoning as the first column on the codes page. */
 #codesSheet .cs-disp { font-weight: 700; font-size: 1.08em; }
-#codesSheet .cs-erp { font-variant-numeric: tabular-nums; }
 #codesSheet .cs-riv, #codesSheet .cs-hull, #codesSheet .cs-prod { color: #4A4A4A; }
 
-#codesSheet col.c-disp { width: 15%; }
-#codesSheet col.c-riv  { width: 15%; }
-#codesSheet col.c-erp  { width: 22%; }
-#codesSheet col.c-hull { width: 14%; }
-#codesSheet col.c-prod { width: 34%; }
+/* Four columns since the ERP codes came off: the sheet is for the floor, and
+   the floor reads the display code, not what the ERP calls it. The 22% that
+   column held goes to Products, which was the column running out of room. */
+#codesSheet col.c-disp { width: 17%; }
+#codesSheet col.c-riv  { width: 17%; }
+#codesSheet col.c-hull { width: 16%; }
+#codesSheet col.c-prod { width: 50%; }
 
 /* Browsers drop background colours when printing unless asked not to; without
    this the banners print white on white and the sheet loses its structure. */

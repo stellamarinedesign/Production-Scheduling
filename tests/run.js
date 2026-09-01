@@ -9,7 +9,7 @@ import { xlsxAdapter, validateColumns } from '../js/adapters/index.js';
 import { buildBoard, toDateOnly, toAU, toISO, addWeeks, jobTitle,
          customNameOptions, CUSTOM_PREFIX, isEmptyCustomName,
          printJobs, isPrintable, daysBetween, ageLabel,
-         effectiveStatus } from '../js/transform.js';
+         effectiveStatus, snapshotOf, fromSnapshot } from '../js/transform.js';
 import { classify, CATEGORY_ORDER, PRINT_CATEGORIES, WATERMAKER_CATEGORIES,
          laneFor, LANE, tmCategory, internalCategory,
          isWaterUnit, WATERMAKER_UNIT_RE } from '../js/rules.js';
@@ -581,6 +581,67 @@ export async function run() {
   check('a cleared field does not keep it alive',
     isEmptyOverride({ hidden: false, labelOverride: '', status: null }), '');
   check('status is one of the fields', OVERRIDE_FIELDS.includes('status'), '');
+
+  // ---- an import supplements, it does not replace --------------------------
+  //
+  // History used to be assembled only from rows in the CURRENT export, which
+  // made it lossy in the exact case it exists for: mark a job done, the ERP
+  // closes it a fortnight later, the row stops being exported, and the completed
+  // job vanishes from the one view whose job is to remember it.
+  const doneJob = board.jobs[0];
+  const snap = snapshotOf(doneJob);
+  const asDone = {
+    [doneJob.prod_no]: {
+      completed: true, completedAt: '2026-08-25T01:00:00.000Z',
+      completedBy: 'pete@example.com', snapshot: snap,
+    },
+  };
+
+  // Still in the export: the live row is used, as before.
+  const present = buildBoard(src.rows, { codeMap, horizonWeeks: 12, asOf, overrides: asDone });
+  eq('a completed job in the export is in History once',
+    present.completed.filter((j) => j.prod_no === doneJob.prod_no).length, 1);
+  check('...built from the live row, not the snapshot',
+    present.completed.find((j) => j.prod_no === doneJob.prod_no).from_snapshot === undefined, '');
+  eq('...and off the board', present.jobs.filter((j) => j.prod_no === doneJob.prod_no), []);
+
+  // Gone from the export entirely - the ERP closed it, or it simply is not in
+  // the next file.
+  const gone = buildBoard(
+    src.rows.filter((r) => r['Production Nbr.'] !== doneJob.prod_no),
+    { codeMap, horizonWeeks: 12, asOf, overrides: asDone },
+  );
+  const kept2 = gone.completed.find((j) => j.prod_no === doneJob.prod_no);
+  check('a completed job absent from the export is STILL in History', Boolean(kept2),
+    `${gone.completed.length} completed rows`);
+  check('...rebuilt from its snapshot, and saying so', kept2?.from_snapshot === true, '');
+  eq('...with the name it had when it was finished', kept2?.label, doneJob.label);
+  eq('...its category, so History still groups it', kept2?.category, doneJob.category);
+  eq('...and who finished it, when', [kept2?.completed_by, kept2?.completed_at],
+    ['pete@example.com', '2026-08-25T01:00:00.000Z']);
+  eq('it is not counted as work', gone.jobs.filter((j) => j.prod_no === doneJob.prod_no), []);
+
+  // The ERP marking it Completed is the same case: the status gate drops the
+  // row before anything else looks at it.
+  const erpClosed = buildBoard(
+    src.rows.map((r) => (r['Production Nbr.'] === doneJob.prod_no
+      ? { ...r, Status: 'Completed' } : r)),
+    { codeMap, horizonWeeks: 12, asOf, overrides: asDone },
+  );
+  eq('the ERP closing a job does not erase our record of it',
+    erpClosed.completed.filter((j) => j.prod_no === doneJob.prod_no).length, 1);
+
+  // A snapshot that was never written still yields a usable row rather than
+  // throwing - old records predate the field.
+  const bare = fromSnapshot('P00001', { completed: true });
+  check('a record with no snapshot degrades to the production number',
+    bare.label === 'P00001' && bare.completed === true && bare.lane === 'production', '');
+
+  eq('an uncompleted override brings nothing back',
+    buildBoard(src.rows.filter((r) => r['Production Nbr.'] !== doneJob.prod_no),
+      { codeMap, horizonWeeks: 12, asOf,
+        overrides: { [doneJob.prod_no]: { hidden: true } } })
+      .completed.filter((j) => j.prod_no === doneJob.prod_no), []);
 
   // ---- watermakers --------------------------------------------------------
   //
@@ -1179,14 +1240,20 @@ export async function run() {
       ['CYLINDER LIFTERS', 'ROTARY LIFTERS']);
     eq('the display leads each row',
       sh.querySelector('tbody tr:not(.cs-banner) td').textContent, sheetRows[0].display);
-    eq('...with the Riviera model beside it, then the ERP codes',
+    eq('...with the Riviera model beside it',
       [...[...sh.querySelectorAll('tbody tr:not(.cs-banner)')]
         .find((tr) => tr.children[0].textContent === 'SY20').children]
-        .slice(0, 3).map((c) => c.textContent),
-      ['SY20', '43SY', '43SY  ·  SY20']);
+        .slice(0, 2).map((c) => c.textContent),
+      ['SY20', '43SY']);
+    // The ERP codes came off the sheet: it is pinned up for the floor, and the
+    // floor reads the display code. What the ERP calls a boat is a manager's
+    // problem and lives on the vessel codes page.
     eq('the header order matches',
       [...sh.querySelectorAll('thead th')].map((h) => h.textContent),
-      ['Reads as', 'Riviera', 'ERP codes', 'Hull', 'Products']);
+      ['Reads as', 'Riviera', 'Hull', 'Products']);
+    eq('no row carries an ERP code column',
+      [...sh.querySelectorAll('tbody tr:not(.cs-banner)')]
+        .map((tr) => tr.children.length).filter((n) => n !== 4), []);
     check('the run date is on the sheet',
       sh.querySelector('.cs-range').textContent.includes(toAU(asOf)), '');
 

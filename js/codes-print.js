@@ -2,7 +2,7 @@
 //
 // Same visual language as the production board: red category banners, zebra
 // rows, a title and an "as of" line. Landscape because the useful thing here is
-// the width — a boat's display code, the ERP codes that resolve to it, what
+// the width — a boat's display code, what
 // Riviera call it and which hulls it has been fitted to, all readable on one
 // line at arm's length.
 //
@@ -59,13 +59,13 @@ export function renderCodesSheet(host, rows, { mode = 'boats', asOf = todayDate(
 
   const table = el('table', 'cs-table');
   const colgroup = el('colgroup');
-  for (const c of ['c-disp', 'c-riv', 'c-erp', 'c-hull', 'c-prod']) colgroup.append(el('col', c));
+  for (const c of ['c-disp', 'c-riv', 'c-hull', 'c-prod']) colgroup.append(el('col', c));
   table.append(colgroup);
 
   const thead = el('thead');
   const hr = el('tr');
   hr.append(el('th', null, 'Reads as'), el('th', null, 'Riviera'),
-    el('th', null, 'ERP codes'), el('th', null, 'Hull'), el('th', null, 'Products'));
+    el('th', null, 'Hull'), el('th', null, 'Products'));
   thead.append(hr);
   table.append(thead);
 
@@ -87,7 +87,6 @@ export function renderCodesSheet(host, rows, { mode = 'boats', asOf = todayDate(
     // Riviera's own model sits next to what we print, because that is the pair
     // read together when a Riviera document and a Stella one disagree.
     tr.append(el('td', 'cs-riv', r.riviera.join(', ') || '—'));
-    tr.append(el('td', 'cs-erp', r.codes.join('  ·  ')));
     tr.append(el('td', 'cs-hull', r.hulls.join(', ') || '—'));
     tr.append(el('td', 'cs-prod', mode === 'products'
       ? r.items.map((x) => x.item).join('  ·  ')

@@ -1,7 +1,8 @@
 // app.js — the manager view. Upload, review, edit, print.
 
 import { xlsxAdapter } from './adapters/index.js';
-import { buildBoard, byCategory, today, toAU, toDateOnly, jobTitle, CUSTOM_PREFIX, isEmptyCustomName } from './transform.js';
+import { buildBoard, byCategory, today, toAU, toDateOnly, jobTitle, CUSTOM_PREFIX,
+         isEmptyCustomName, snapshotOf, isPrintable } from './transform.js';
 import { CATEGORY_ORDER, PRINT_LAYOUT, EXCLUSION_ORDER, EXCLUSION_GROUP_LABEL,
          TM_CATEGORY_ORDER, INTERNAL_CATEGORY_ORDER, LANE_LABEL, WATERMAKER_CATEGORIES,
          SETTABLE_STATUSES } from './rules.js';
@@ -590,6 +591,10 @@ function showImportPage(on) {
 // ---------------------------------------------------------------------------
 
 function rebuild() {
+  // A vessel code resolved or a job named from the import review changes what
+  // that import would produce, so the staged board is rebuilt from the same
+  // rows. Ahead of the early return: staging works with no board loaded at all.
+  restage();
   if (!state.rows) return;
 
   const opts = {
@@ -1258,7 +1263,11 @@ async function confirmComplete() {
   if (!picked.length) return;
   $('completeConfirm').disabled = true;
   try {
-    await Store.setCompleted(picked, true, Auth.user?.email);
+    // The snapshot travels with the completion so History can render this job
+    // long after the ERP stops exporting it.
+    const snaps = Object.fromEntries(
+      completing.filter((e) => e.ticked).map((e) => [e.job.prod_no, snapshotOf(e.job)]));
+    await Store.setCompleted(picked, true, Auth.user?.email, snaps);
     state.overrides = await Store.loadOverrides();
     $('completeOverlay').classList.remove('show');
     rebuild();
@@ -1400,6 +1409,10 @@ async function chooseNewCode(mode) {
   const entry = acceptNewCode(item.code, choice, item);
   state.codeMap[item.code] = entry;
   await Store.saveCode(item.code, entry);
+  // Restage per answer, not only when the queue empties: the import review is
+  // sitting behind this dialog and a resolved code should leave its list as
+  // soon as it is resolved.
+  restage();
 
   const shown = mode === 'existing'
     ? `${item.code} joined ${$('ncExisting').selectedOptions[0].textContent.trim()}`
@@ -1543,10 +1556,41 @@ function laneRow(j, lane) {
 
 let staged = null;      // { src, board } - parsed, not committed
 
+const IMPORT_DETAIL = {
+  production: { label: 'production orders', lane: 'production' },
+  internal:   { label: 'internal factory jobs', lane: 'internal' },
+  tm:         { label: 'time & materials jobs', lane: 'tm' },
+  excluded:   { label: 'rows excluded', lane: null },
+};
+let importOpenDetail = null;
+const importOpenConcerns = new Set();
+
+/**
+ * Rebuild the staged board in place.
+ *
+ * Resolving a vessel code or naming a custom job while staged changes what the
+ * import WOULD produce, so the review has to be rebuilt from the same rows
+ * before it is read again. Called from `rebuild`, so every existing edit path
+ * feeds it without having to know the import page exists.
+ */
+function restage() {
+  if (!staged) return;
+  staged.board = buildBoard(staged.src.rows, {
+    codeMap: state.codeMap,
+    asOf: today(),
+    overrides: state.overrides,
+    itemOverrides: state.itemOverrides,
+    maxStock: state.settings.maxStock,
+    horizonWeeks: state.settings.horizonWeeks,
+  });
+  if (state.importPage) renderImport();
+}
+
 function renderImport() {
   const host = $('importHost');
   host.textContent = '';
   $('dropZone').hidden = Boolean(staged);
+
   if (!staged) {
     if (state.source) {
       host.append(el('div', 'import-current',
@@ -1565,32 +1609,46 @@ function renderImport() {
     `${staged.src.sourceLabel} \u2014 ${staged.src.rows.length} rows from the `
     + `"${staged.src.sheetName}" sheet. Nothing changes until you apply it.`));
 
+  // What an import does and does not touch. Worth saying on the page rather
+  // than only in the README: the word "import" reads like "replace".
+  box.append(el('div', 'import-scope',
+    'An import replaces the ERP rows only. Everything decided here \u2014 labels, '
+    + 'vessel codes, hidden jobs, hand-set statuses and completed work \u2014 is '
+    + 'keyed on the production number and survives it. Completed jobs stay in '
+    + 'History even once the ERP stops exporting them.'));
+
+  // --- counts, each one openable ---
   const grid = el('div', 'import-stats');
-  const stat = (n, label, note) => {
-    const c = el('div', 'stat');
-    c.append(el('b', null, String(n)), el('span', null, label));
+  const stat = (key, n, note) => {
+    const c = el('button', `stat${importOpenDetail === key ? ' is-open' : ''}`);
+    c.append(el('b', null, String(n)), el('span', null, IMPORT_DETAIL[key].label));
     if (note) c.append(el('em', null, note));
+    c.append(el('span', 'stat-more', importOpenDetail === key ? 'Hide' : 'Show all'));
+    c.addEventListener('click', () => {
+      importOpenDetail = importOpenDetail === key ? null : key;
+      renderImport();
+    });
     grid.append(c);
   };
-  stat(b.meta.job_count, 'production orders', `${b.meta.print_count} on the printed sheet`);
-  stat(b.meta.internal_count, 'internal factory jobs');
-  stat(b.meta.tm_count, 'time & materials jobs');
-  stat(b.excluded.length, 'rows excluded', 'by status or category');
+  stat('production', b.meta.job_count, `${b.meta.print_count} on the printed sheet`);
+  stat('internal', b.meta.internal_count);
+  stat('tm', b.meta.tm_count);
+  stat('excluded', b.excluded.length, 'by status or category');
   box.append(grid);
 
-  const q = importQuestions(b, staged.src);
-  if (q.length) {
+  if (importOpenDetail) box.append(importDetail(b, importOpenDetail));
+
+  // --- concerns, itemised ---
+  const concerns = importConcerns(b, staged.src);
+  const total = concerns.reduce((n, c) => n + c.rows.length, 0);
+  if (total) {
     const list = el('div', 'import-flags');
-    list.append(el('h3', null, `${q.length} thing${q.length > 1 ? 's' : ''} to look at`));
-    for (const item of q) {
-      const r = el('div', `flag flag-${item.level}`);
-      r.append(el('b', null, item.title));
-      r.append(el('span', null, item.detail));
-      list.append(r);
-    }
+    list.append(el('h3', null, `Items of concern (${total})`));
+    for (const c of concerns) list.append(concernBlock(c));
     box.append(list);
   } else {
-    box.append(el('div', 'import-clean', 'Nothing ambiguous \u2014 every row classified cleanly.'));
+    box.append(el('div', 'import-clean',
+      'Nothing outstanding \u2014 every row classified cleanly.'));
   }
 
   const acts = el('div', 'import-actions');
@@ -1598,85 +1656,251 @@ function renderImport() {
   apply.addEventListener('click', commitImport);
   const cancel = el('button', 'ghost', 'Cancel');
   cancel.addEventListener('click', () => {
-    staged = null; renderImport(); toast('Import cancelled - nothing changed.');
+    staged = null; renderImport(); toast('Import cancelled \u2014 nothing changed.');
   });
   acts.append(apply, cancel);
+  if (total) {
+    acts.append(el('span', 'hint',
+      'You can apply with these outstanding \u2014 they will still be waiting on the board.'));
+  }
   box.append(acts);
   host.append(box);
 }
 
+/** One collapsible concern: a heading, and every item under it with its fix. */
+function concernBlock(c) {
+  const open = importOpenConcerns.has(c.id) || c.rows.length <= 3;
+  const wrap = el('div', `flag flag-${c.level}${open ? ' is-open' : ''}`);
+
+  const head = el('button', 'flag-head');
+  head.setAttribute('aria-expanded', String(open));
+  head.append(el('span', 'flag-caret', open ? '\u25be' : '\u25b8'));
+  head.append(el('b', null, c.title));
+  head.append(el('span', 'flag-n', String(c.rows.length)));
+  head.addEventListener('click', () => {
+    if (importOpenConcerns.has(c.id)) importOpenConcerns.delete(c.id);
+    else importOpenConcerns.add(c.id);
+    renderImport();
+  });
+  wrap.append(head);
+
+  if (c.note) wrap.append(el('div', 'flag-note', c.note));
+  if (!open) return wrap;
+
+  const table = el('div', 'flag-rows');
+  for (const r of c.rows) {
+    const row = el('div', 'flag-row');
+    row.append(el('span', 'fr-key', r.key));
+    row.append(el('span', 'fr-main', r.main));
+    row.append(el('span', 'fr-detail', r.detail ?? ''));
+    const act = el('span', 'fr-act');
+    if (r.control) act.append(r.control());
+    else if (r.action) {
+      const btn = el('button', 'mini', r.action.label);
+      btn.addEventListener('click', r.action.run);
+      act.append(btn);
+    }
+    row.append(act);
+    table.append(row);
+  }
+  wrap.append(table);
+  return wrap;
+}
+
 /**
- * What the import cannot answer on its own. Ordered worst first: a broken
- * export makes the whole board wrong, an unknown vessel code makes some rows
- * wrong, and the rest are judgement calls a person may want to make.
+ * Everything the import cannot settle on its own, one row per thing, each with
+ * the control that settles it.
+ *
+ * These all write to records keyed on a vessel code or a production number, not
+ * to the export, so they can be answered BEFORE the import is applied and are
+ * still right afterwards. That is the whole reason the review can be useful
+ * rather than merely informative.
  */
-function importQuestions(b, src) {
+function importConcerns(b, src) {
   const out = [];
   const many = (n, one, more) => (n === 1 ? one : more);
 
-  for (const w of src.warnings ?? []) {
-    if (w.startsWith('Note:')) continue;
-    out.push({ level: 'bad', title: 'Export problem', detail: w });
+  const problems = (src.warnings ?? []).filter((w) => !w.startsWith('Note:'));
+  if (problems.length) {
+    out.push({
+      id: 'export', level: 'bad',
+      title: `Export ${many(problems.length, 'problem', 'problems')}`,
+      note: 'The board will be incomplete or wrong until the ERP inquiry is fixed.',
+      rows: problems.map((w, i) => ({ key: `#${i + 1}`, main: w })),
+    });
   }
 
   const nc = b.warnings.newCodes ?? [];
   if (nc.length) {
     out.push({
-      level: 'bad',
-      title: `${nc.length} unknown vessel ${many(nc.length, 'code', 'codes')}`,
-      detail: `${nc.map((n) => n.code).join(', ')} \u2014 you will be asked what the floor should read.`,
+      id: 'codes', level: 'bad',
+      title: `Unknown vessel ${many(nc.length, 'code', 'codes')}`,
+      note: 'These print their raw ERP description until somebody says what the floor should read.',
+      rows: nc.map((n) => ({
+        key: n.code,
+        main: `${n.count} ${many(n.count, 'job', 'jobs')}`,
+        detail: n.items.join(', '),
+        action: {
+          label: 'Resolve',
+          run: () => { ncQueue = nc; ncIndex = nc.indexOf(n); showNewCode(); },
+        },
+      })),
     });
   }
 
   const cn = b.warnings.customNames ?? [];
   if (cn.length) {
     out.push({
-      level: 'warn',
-      title: `${cn.length} custom ${many(cn.length, 'job', 'jobs')} with no clear name`,
-      detail: `${cn.map((j) => j.prod_no).join(', ')} \u2014 neither column reads as a boat.`,
+      id: 'custom', level: 'warn',
+      title: `Custom ${many(cn.length, 'job', 'jobs')} with no clear name`,
+      note: 'Neither the Description nor the Customer column reads as a boat.',
+      rows: cn.map((j) => ({
+        key: j.prod_no,
+        main: jobTitle(j),
+        detail: j.name_options?.description.raw || 'no description',
+        action: {
+          label: 'Name it',
+          run: () => { cnQueue = cn; cnIndex = cn.indexOf(j); showCustomName(); },
+        },
+      })),
     });
   }
 
   const un = b.warnings.unmapped ?? [];
   if (un.length) {
+    // The only concern here with no in-app fix: a category rule is code.
+    const byCode = new Map();
+    for (const e of un) {
+      if (!byCode.has(e.inventory_id)) byCode.set(e.inventory_id, []);
+      byCode.get(e.inventory_id).push(e);
+    }
     out.push({
-      level: 'bad',
-      title: `${un.length} unmapped item ${many(un.length, 'code', 'codes')}`,
-      detail: `${[...new Set(un.map((e) => e.inventory_id))].join(', ')} \u2014 off the board until a rule exists.`,
-    });
-  }
-
-  // A stock build booked as a component part reads as production work, because
-  // the lane rule keys on Type and the ERP says Finished Good on the ones that
-  // matter. SDC0287, the davit rope kit, is the standing example: really an
-  // internal build, filed as a product. The rule cannot tell; a person can.
-  const oddStock = (b.jobs ?? []).filter((j) => j.is_stock && j.is_component);
-  if (oddStock.length) {
-    out.push({
-      level: 'warn',
-      title: `${oddStock.length} stock ${many(oddStock.length, 'build', 'builds')} booked as a component part`,
-      detail: `${oddStock.map((j) => j.prod_no).join(', ')} \u2014 on the production board; check whether it is really internal work.`,
+      id: 'unmapped', level: 'bad',
+      title: `Unmapped item ${many(byCode.size, 'code', 'codes')}`,
+      note: 'Off the board entirely until a prefix rule exists in js/rules.js. '
+        + 'This one needs a developer, not a decision.',
+      rows: [...byCode].map(([code, rows]) => ({
+        key: code,
+        main: `${rows.length} ${many(rows.length, 'row', 'rows')}`,
+        detail: rows[0].description,
+      })),
     });
   }
 
   const held = b.warnings.onHold ?? [];
   if (held.length) {
     out.push({
-      level: 'warn',
-      title: `${held.length} ${many(held.length, 'job', 'jobs')} on hold`,
-      detail: `${held.map((j) => j.prod_no).join(', ')} \u2014 showing on the board; confirm or hide.`,
+      id: 'hold', level: 'warn',
+      title: `On hold, but showing on the board`,
+      note: 'Confirm these before the floor starts them, or set them straight here.',
+      rows: held.map((j) => ({
+        key: j.prod_no,
+        main: jobTitle(j),
+        detail: j.status_manual ? 'put on hold here' : `ERP says On Hold \u00b7 due ${j.due_display}`,
+        control: () => statusControl(j),
+      })),
+    });
+  }
+
+  // A stock build booked as a component part reads as production, because the
+  // lane rule keys on Type. SDC0287, the davit rope kit, is the standing
+  // example. The rule cannot tell; a person can.
+  const oddStock = (b.jobs ?? []).filter((j) => j.is_stock && j.is_component);
+  if (oddStock.length) {
+    out.push({
+      id: 'oddstock', level: 'warn',
+      title: `Stock ${many(oddStock.length, 'build', 'builds')} booked as a component part`,
+      note: 'On the production board because the ERP calls them Finished Good. '
+        + 'Check whether they are really internal work \u2014 hide one here if it should not be on the board.',
+      rows: oddStock.map((j) => ({
+        key: j.prod_no,
+        main: jobTitle(j),
+        detail: j.inventory_id,
+        action: { label: j.hidden ? 'Unhide' : 'Hide', run: () => (j.hidden ? unhide(j) : openHideDialog(j)) },
+      })),
     });
   }
 
   const off = b.warnings.offPaper ?? [];
   if (off.length) {
     out.push({
-      level: 'info',
-      title: `${off.length} board ${many(off.length, 'job', 'jobs')} will not print`,
-      detail: 'Watermakers, work past the horizon, or stock beyond the cap. All still on the board and the Gantt.',
+      id: 'offpaper', level: 'info',
+      title: `Will not print`,
+      note: 'Watermakers have no column on the sheet; the rest are past the horizon '
+        + 'or beyond the stock cap. All are on the board and the Gantt.',
+      rows: off.map((j) => ({
+        key: j.prod_no,
+        main: jobTitle(j),
+        detail: j.beyond_horizon ? `past the horizon \u00b7 due ${j.due_display}`
+          : j.over_stock_cap ? 'beyond the stock cap' : j.category,
+      })),
     });
   }
   return out;
+}
+
+/** The full contents of one count, so "69 production orders" can be checked. */
+function importDetail(b, key) {
+  const wrap = el('div', 'import-detail');
+  const cfg = IMPORT_DETAIL[key];
+
+  if (key === 'excluded') {
+    wrap.append(el('h3', null, `Every excluded row (${b.excluded.length})`));
+    wrap.append(el('div', 'flag-note',
+      'Not on any tab. A sanity check on what the rules are throwing away.'));
+    const table = el('div', 'flag-rows');
+    // Grouped by reason so like sits with like, commonest first.
+    const byReason = new Map();
+    for (const e of b.excluded) {
+      if (!byReason.has(e.reason)) byReason.set(e.reason, []);
+      byReason.get(e.reason).push(e);
+    }
+    for (const [reason, rows] of [...byReason].sort((a, b2) => b2[1].length - a[1].length)) {
+      wrap.append(el('div', 'detail-group', `${reason} \u2014 ${rows.length}`));
+      const t = el('div', 'flag-rows');
+      for (const e of rows) {
+        const row = el('div', 'flag-row');
+        row.append(el('span', 'fr-key', e.prod_no));
+        row.append(el('span', 'fr-main', e.inventory_id));
+        row.append(el('span', 'fr-detail', e.description || e.item_description || ''));
+        row.append(el('span', 'fr-act', ''));
+        t.append(row);
+      }
+      wrap.append(t);
+    }
+    return wrap;
+  }
+
+  const jobs = key === 'production'
+    ? (b.jobs ?? []).filter((j) => !j.completed)
+    : (b[cfg.lane] ?? []).filter((j) => !j.completed);
+  wrap.append(el('h3', null, `Every ${cfg.label.replace(/s$/, '')} (${jobs.length})`));
+
+  const order = key === 'production' ? CATEGORY_ORDER
+    : key === 'tm' ? TM_CATEGORY_ORDER : INTERNAL_CATEGORY_ORDER;
+  const byCat = new Map(order.map((c) => [c, []]));
+  for (const j of jobs) {
+    if (!byCat.has(j.category)) byCat.set(j.category, []);
+    byCat.get(j.category).push(j);
+  }
+
+  for (const [cat, rows] of byCat) {
+    if (!rows.length) continue;
+    wrap.append(el('div', 'detail-group', `${cat} \u2014 ${rows.length}`));
+    const t = el('div', 'flag-rows');
+    for (const j of rows) {
+      const row = el('div', `flag-row${isPrintable(j) || key !== 'production' ? '' : ' is-offpaper'}`);
+      row.append(el('span', 'fr-key', j.prod_no));
+      row.append(el('span', 'fr-main', jobTitle(j)));
+      row.append(el('span', 'fr-detail', key === 'production'
+        ? j.due_display
+        : `${j.customer_display ?? ''}${j.age_display ? ` \u00b7 open ${j.age_display}` : ''}`));
+      row.append(el('span', 'fr-act', key === 'production' && !isPrintable(j) ? 'no print' : ''));
+      t.append(row);
+    }
+    wrap.append(t);
+  }
+  return wrap;
 }
 
 // ---------------------------------------------------------------------------

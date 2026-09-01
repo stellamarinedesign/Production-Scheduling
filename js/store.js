@@ -172,11 +172,29 @@ export const Store = {
    * that has to survive the next upload — and because reusing the collection
    * means no Firestore rules change, which is the step most easily forgotten.
    */
-  async setCompleted(prodNos, done, who) {
-    const patch = done
-      ? { completed: true, completedAt: new Date().toISOString(), completedBy: who ?? null }
-      : { completed: false, completedAt: null, completedBy: null };
-    for (const prodNo of prodNos) await this.setOverride(prodNo, patch);
+  /**
+   * Mark jobs complete.
+   *
+   * `snapshots` is what keeps History honest. History used to be built only
+   * from rows in the CURRENT export, so the moment the ERP finally closed a job
+   * we had already marked done, it fell out of the export and vanished from the
+   * record — the one view whose whole job is to remember. A completed job now
+   * carries enough of itself to be rendered without the export it came from.
+   *
+   * @param {Object<string,Object>} snapshots  prodNo -> the job as it was
+   */
+  async setCompleted(prodNos, done, who, snapshots = {}) {
+    for (const prodNo of prodNos) {
+      const patch = done
+        ? {
+          completed: true,
+          completedAt: new Date().toISOString(),
+          completedBy: who ?? null,
+          snapshot: snapshots[prodNo] ?? null,
+        }
+        : { completed: false, completedAt: null, completedBy: null, snapshot: null };
+      await this.setOverride(prodNo, patch);
+    }
   },
 
   async setOverride(prodNo, patch) {

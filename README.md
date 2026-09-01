@@ -24,8 +24,11 @@ This is a board for looking at what the workshop has committed to. Printing is
 one thing it does, not what it is for, so the paper settings stay behind that
 one tab and nothing else is trimmed to fit a page.
 
-The vessel codes page prints its own **landscape A4 cheat sheet** — display code
-against ERP codes, Riviera model and hull — for pinning up next to the board.
+The vessel codes page prints its own **landscape A4 cheat sheet** — display
+code, Riviera model, hull and products — for pinning up next to the board. The
+ERP codes are deliberately not on it: the sheet is for the floor, and the floor
+reads the display code. What the ERP calls a boat is a manager's problem and
+stays on the vessel codes page.
 
 Everything is parsed in the browser. The spreadsheet is never uploaded anywhere.
 
@@ -161,12 +164,28 @@ Normalising happens in the transform, once, downstream.
   Softeners are the exception that proves the shape of the rule: `SS` is a whole
   product line with no flow-rate/voltage pair in the code, so the prefix alone
   makes it a finished unit.
+- **An import supplements the record; it does not replace it.** Only the ERP
+  rows are replaced. Labels, vessel codes, hidden jobs, hand-set statuses and
+  completed work are keyed on the production number and survive. History used to
+  be assembled only from rows in the current export, which made it lossy in the
+  exact case it exists for — mark a job done, the ERP closes it a fortnight
+  later, the row stops being exported, and the completed job vanished from the
+  one view whose job is to remember it. A completed job now carries a snapshot
+  of itself, so History outlives the export it came from.
 - **An import is staged, not applied.** Dropping a file parses it, builds the
   board it would produce against the current overrides and codes, and describes
   the result — counts per lane, what will not print, every unknown code, every
   custom job it cannot name, anything booked oddly. Nothing reaches the other
   managers until Apply. It used to change the board under whoever else was
   looking at it.
+- **The review is where things get fixed, not just listed.** Every concern is
+  itemised, and the ones with an answer carry the control that gives it — resolve
+  a vessel code, name a custom job, set a status, hide a row. They all write to
+  records keyed on a code or a production number rather than to the export, so
+  they can be answered before the import is applied and are still right
+  afterwards. Each answer restages, so the list shortens as it is worked
+  through. Every count opens too: "69 production orders" is a number you should
+  be able to check.
 - **Print column placement is computed, not pinned.** `balanceColumns` tries all
   16 splits of the four narrow categories and takes the shortest page. With 19
   cylinder lifters against 5 rotary, a fixed two-and-two layout wastes half a

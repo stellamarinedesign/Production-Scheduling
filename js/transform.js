@@ -278,6 +278,57 @@ export function effectiveStatus(erpStatus, ov) {
 }
 
 // ---------------------------------------------------------------------------
+// A completed job the export no longer carries
+//
+// Rebuilt from the snapshot written when it was marked done. Everything the
+// History view reads is on the record; everything else is null rather than
+// guessed, and `from_snapshot` says plainly that this row is a memory rather
+// than a live one, so nothing downstream treats it as current work.
+// ---------------------------------------------------------------------------
+
+export function fromSnapshot(prodNo, ov) {
+  const snap = ov.snapshot ?? {};
+  return {
+    prod_no: prodNo,
+    from_snapshot: true,
+    lane: snap.lane ?? 'production',
+    category: snap.category ?? 'Uncategorised',
+    label: snap.label ?? prodNo,
+    base_label: snap.label ?? prodNo,
+    inventory_id: snap.inventory_id ?? '',
+    description: snap.description ?? '',
+    qty: Number(snap.qty) || 1,
+    due_display: snap.due_display ?? '',
+    opened_display: snap.opened_display ?? '',
+    age_display: snap.age_display ?? '',
+    customer: snap.customer ?? '',
+    is_stock: Boolean(snap.is_stock),
+    status: snap.status ?? '',
+    hidden: false,
+    completed: true,
+    completed_at: ov.completedAt ?? null,
+    completed_by: ov.completedBy ?? null,
+    progress: 1,
+  };
+}
+
+/** What is kept about a job when it is completed, so History can outlive the export. */
+export const snapshotOf = (j) => ({
+  lane: j.lane ?? 'production',
+  category: j.category,
+  label: j.label,
+  inventory_id: j.inventory_id,
+  description: j.description ?? '',
+  qty: j.qty ?? 1,
+  due_display: j.due_display ?? '',
+  opened_display: j.opened_display ?? '',
+  age_display: j.age_display ?? '',
+  customer: j.customer ?? '',
+  is_stock: Boolean(j.is_stock),
+  status: j.status ?? '',
+});
+
+// ---------------------------------------------------------------------------
 // What reaches the paper
 //
 // Three separate reasons a real job does not print, all of them page-fitting
@@ -632,6 +683,29 @@ export function buildBoard(rows, opts = {}) {
   };
   sortSide(tmJobs, TM_CATEGORY_ORDER);
   sortSide(internalJobs, INTERNAL_CATEGORY_ORDER);
+
+  // AN IMPORT SUPPLEMENTS THE RECORD, IT DOES NOT REPLACE IT.
+  //
+  // History used to be assembled only from rows in the current export, which
+  // made it quietly lossy in the exact case it exists for: mark a job done, the
+  // ERP closes it a fortnight later, the row stops being exported, and the
+  // completed job disappears from the one view whose job is to remember it.
+  // Same for a row that simply is not in the next export.
+  //
+  // So anything marked completed that this export does not carry is rebuilt
+  // from the snapshot taken when it was completed.
+  //
+  // `seen` is what the export actually PRODUCED, not every production number it
+  // mentioned. The difference is the whole case: when the ERP finally marks a
+  // job Completed the row is still in the file, but the status gate drops it,
+  // so treating "mentioned" as "carried" would skip the restore and lose the
+  // record at exactly the moment it is needed.
+  const seen = new Set([...kept, ...tmJobs, ...internalJobs, ...completed]
+    .map((j) => j.prod_no));
+  for (const [prodNo, ov] of Object.entries(overrides)) {
+    if (!ov?.completed || seen.has(prodNo)) continue;
+    completed.push(fromSnapshot(prodNo, ov));
+  }
 
   const visible = kept.filter((j) => !j.hidden && !j.completed);
   const onPaper = visible.filter(isPrintable);
