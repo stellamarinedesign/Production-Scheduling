@@ -10,6 +10,8 @@ import { REQUIRED_COLUMNS } from '../rules.js';
 // change how dates and blank cells arrive.
 const SHEETJS_URL = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs';
 
+export const SHEET_PREFERENCE = ['ALL RECORDS', 'Data'];
+
 let _xlsx = null;
 async function sheetjs() {
   if (!_xlsx) _xlsx = await import(/* @vite-ignore */ SHEETJS_URL);
@@ -26,7 +28,7 @@ async function sheetjs() {
  * @returns {string[]} warnings, empty when the sheet is complete
  */
 export function validateColumns(rows) {
-  if (!rows.length) return ['The Data sheet has no rows.'];
+  if (!rows.length) return ['That sheet has no rows.'];
   const present = new Set(Object.keys(rows[0]));
   const missing = REQUIRED_COLUMNS.filter((c) => !present.has(c));
   const warnings = [];
@@ -43,7 +45,8 @@ export function validateColumns(rows) {
   if (present.has('Order Type_1')) {
     warnings.push(
       'Note: the export has two "Order Type" columns; the second is read as ' +
-      '"Order Type_1". Neither is used by the board.',
+      '"Order Type_1". The board uses the first — it is what separates T&M ' +
+      'from production and internal work.',
     );
   }
   return warnings;
@@ -69,13 +72,22 @@ export const xlsxAdapter = {
       throw new Error(`Could not read that file as a spreadsheet — ${e.message}`);
     }
 
-    const sheet = wb.Sheets['Data'];
-    if (!sheet) {
+    // Which sheet holds the rows, in order of preference.
+    //
+    // 'ALL RECORDS' is the whole order book — production, T&M and internal in
+    // one table — and is what the export is moving to. The office currently
+    // also ships REGULAR / TM / INTERNAL sheets split by hand; those are a
+    // subset of ALL RECORDS, and the board derives the same split itself from
+    // `Order Type` and `Order Nbr.` (see rules.js `laneFor`), so it reads the
+    // whole table and never the pre-sorted sheets. 'Data' is the older export.
+    const name = SHEET_PREFERENCE.find((n) => wb.Sheets[n]);
+    if (!name) {
       throw new Error(
-        `No 'Data' sheet — is this the right export? ` +
-        `Found: ${wb.SheetNames.join(', ') || 'nothing'}`,
+        `No ${SHEET_PREFERENCE.map((n) => `'${n}'`).join(' or ')} sheet — is this the ` +
+        `right export? Found: ${wb.SheetNames.join(', ') || 'nothing'}`,
       );
     }
+    const sheet = wb.Sheets[name];
 
     // defval: null so a blank cell arrives as a key with a null value rather
     // than vanishing from the row object entirely.
@@ -85,6 +97,7 @@ export const xlsxAdapter = {
       rows,
       sourceId: 'xlsx',
       sourceLabel: file.name,
+      sheetName: name,
       // From the adapter, never parsed out of the filename — the export is
       // named ..._YYYYMMDD.xlsx and the temptation is real. That date is when
       // someone ran the export, not when these rows reached the board, and a

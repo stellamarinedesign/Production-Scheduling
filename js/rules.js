@@ -20,6 +20,21 @@
 // the T — so the 21/08 export carried 15 rows of STLRIVCOMMISSION straight
 // through. Never rely on the ERP-side filter; this list is the real one.
 // ---------------------------------------------------------------------------
+// Marker category, never displayed. Water products are one prefix family but two
+// different things to a manager, and the difference is not in the prefix — it is
+// in the suffix. `classify` refines this into the two real categories below.
+const WATER = '@water';
+
+// A finished watermaker's item code ends in flow rate over voltage:
+// STAQSAB/240/230, STAQFAB/240/230, STAQFAR/240/230, STG4/240/230,
+// STG4LA/160/230. Everything else in the family — STMEDIAFILTER, STKITJUMBO,
+// STFKITAQ, STMU, STPH, ST DUPLEX UPGRADE X3, STG3COMFILTUPGRADE — is a kit,
+// filter, upgrade or spare that ships against the same order.
+//
+// STAUTO24 ends in a voltage but is a flush accessory, not a unit, which is why
+// this anchors on the LPH/volts PAIR rather than one trailing number.
+export const WATERMAKER_UNIT_RE = /\/\d+\/\d+\s*$/;
+
 export const CATEGORY_RULES = [
   // prefix,             category,                     excludeReason
   ['SLRIVCOMMISSION',    null,                         'on-site commissioning, not workshop fab'],
@@ -38,11 +53,19 @@ export const CATEGORY_RULES = [
   ['SGD',                'Launchers, Doors & Chocks',  null],
   ['SWD',                'Launchers, Doors & Chocks',  null],
   ['STC',                'Launchers, Doors & Chocks',  null],
-  ['STKIT',              null,                         'spares/kit'],
-  ['STF',                null,                         'spares/kit'],
-  ['STMEDIAFILTER',      null,                         'water treatment'],
-  ['ST',                 null,                         'water treatment'],
-  ['SS',                 null,                         'water treatment'],
+  // Water treatment. These used to be excluded outright. They now reach the
+  // board under WATER, which `classify` splits into finished units and
+  // accessories. They are still kept off the printed sheet by PRINT_LAYOUT,
+  // which lists what prints rather than what exists.
+  //
+  // Ordering matters as much here as anywhere: STL (launchers), STC (chocks)
+  // and both COMMISSION spellings all begin with ST and are all matched above.
+  // Anything reaching these rules is genuinely a water product.
+  ['STKIT',              WATER,                        null],
+  ['STF',                WATER,                        null],
+  ['STMEDIAFILTER',      WATER,                        null],
+  ['ST',                 WATER,                        null],
+  ['SS',                 WATER,                        null],
 ];
 
 // Board display order — matches the current Word document.
@@ -52,7 +75,13 @@ export const CATEGORY_ORDER = [
   'Ladders and Chairs',
   'Rotary Lifters',
   'Davits',
+  // Water treatment, at the bottom of the board and off the printed sheet.
+  'Watermakers',
+  'Watermaker accessories',
 ];
+
+export const WATER_CATEGORY = { unit: 'Watermakers', accessory: 'Watermaker accessories' };
+export const WATERMAKER_CATEGORIES = [WATER_CATEGORY.unit, WATER_CATEGORY.accessory];
 
 // Print layout. Davits runs full-width underneath because its descriptions are
 // long; the other four share a two-column grid.
@@ -60,10 +89,16 @@ export const CATEGORY_ORDER = [
 // Which of the four sits in which column is NOT fixed — print.js balances them
 // by row count so the page comes out as short as possible. With 19 cylinder
 // lifters against 5 rotary, a pinned layout wastes most of one column.
+// It is also what decides that watermakers do not print: it lists what goes on
+// the sheet rather than what exists, so a category added to the board stays off
+// the paper until somebody puts it here deliberately.
 export const PRINT_LAYOUT = {
   narrow: ['Cylinder lifters', 'Ladders and Chairs', 'Launchers, Doors & Chocks', 'Rotary Lifters'],
   full:   ['Davits'],
 };
+
+/** Every category that reaches the printed sheet, in board order. */
+export const PRINT_CATEGORIES = [...PRINT_LAYOUT.narrow, ...PRINT_LAYOUT.full];
 
 // Statuses that appear on the board. Completed/Canceled/Closed are already
 // excluded by the ERP saved filter, but re-check in case that filter is edited.
@@ -102,6 +137,8 @@ export const INTERNAL_CUSTOMER = 'Stella Marine Group Pty Ltd';
 // Columns the transform needs. The adapter warns by name on any that are
 // missing rather than yielding a board that looks correct and is wrong.
 export const REQUIRED_COLUMNS = [
+  // 'Order Type' is load-bearing: it is what separates T&M from everything else.
+  'Order Type',
   'Production Nbr.', 'Inventory ID', 'Production Description', 'Item Description',
   'Status', 'End Date', 'Start Date', 'Customer Name', 'Customer Order Nbr.',
   'Order Nbr.', 'Type', 'Qty. to Produce', 'Description', 'Internal Notes',
@@ -141,7 +178,85 @@ export const LABEL_OVERRIDES = {
 export function classify(inventoryId) {
   const inv = String(inventoryId ?? '').trim().toUpperCase();
   for (const [prefix, category, reason] of CATEGORY_RULES) {
-    if (inv.startsWith(prefix)) return { category, excludeReason: reason };
+    if (!inv.startsWith(prefix)) continue;
+    // The prefix says "water product"; the suffix says which kind.
+    if (category === WATER) {
+      return {
+        category: WATERMAKER_UNIT_RE.test(inv) ? WATER_CATEGORY.unit : WATER_CATEGORY.accessory,
+        excludeReason: null,
+      };
+    }
+    return { category, excludeReason: reason };
   }
   return { category: null, excludeReason: `unmapped inventory prefix (${inv.slice(0, 20)})` };
+}
+
+// ---------------------------------------------------------------------------
+// LANES
+//
+// The ERP export holds three different kinds of work that the office sorts by
+// hand into three sheets. Two fields reproduce that split exactly — 120 of 120
+// rows in the 01/09 export, no misclassifications:
+//
+//   Order Type == 'TM'                                 Time & Materials
+//   no Order Nbr. AND Type == 'Component Part'         internal factory job
+//   otherwise                                          production order
+//
+// `Order Nbr.` blank and `Order Type_1` blank agree on every row, so either
+// works; the sales order is the one that means something — internal work has no
+// customer behind it. `Type` is what separates an internal sub-assembly (bronze
+// glands, bearing tubes, Aquarius panels — all Component Part) from a stock
+// build of a sellable product (davits, chocks — all Finished Good), which is
+// production work that happens to have no buyer yet.
+//
+// This is a rule about how an order was RAISED, not about what it is for, so it
+// cannot fix a miskeyed row: SDC0287, the davit rope kit, is booked Finished
+// Good and therefore reads as production. The import review flags it rather
+// than the rule bending around it.
+// ---------------------------------------------------------------------------
+export const LANE = { production: 'production', tm: 'tm', internal: 'internal' };
+
+export const LANE_LABEL = {
+  production: 'Production orders',
+  tm: 'Time & Materials Jobs',
+  internal: 'Internal Factory Jobs',
+};
+
+export function laneFor(row) {
+  const val = (k) => String(row?.[k] ?? '').trim();
+  if (val('Order Type').toUpperCase() === 'TM') return LANE.tm;
+  if (!val('Order Nbr.') && val('Type') === COMPONENT_TYPE) return LANE.internal;
+  return LANE.production;
+}
+
+// Categories for the two new lanes. Neither can use CATEGORY_RULES: every T&M
+// row in the export is booked to STELLA-REPAIR-T&M or STELLA-REPAIR-T&M 2, so
+// the item code carries nothing at all.
+//
+// T&M splits on whether there is a sales order behind it — chargeable customer
+// work against the workshop's own jobs, maintenance and warranty. That is the
+// only distinction the data actually supports; `Project` agrees with it on
+// every row (PR#### where there is an order, 'X' where there is not).
+export const TM_CATEGORY = { customer: 'Customer work', internal: 'Workshop & internal' };
+export const TM_CATEGORY_ORDER = [TM_CATEGORY.customer, TM_CATEGORY.internal];
+
+export const tmCategory = (row) =>
+  String(row?.['Order Nbr.'] ?? '').trim() ? TM_CATEGORY.customer : TM_CATEGORY.internal;
+
+// Internal jobs are sub-assemblies, so the item code IS informative — it is the
+// part number of the thing being made. Product line by prefix.
+export const INTERNAL_CATEGORY_RULES = [
+  ['SDC', 'Davit parts'],
+  ['SL',  'Cylinder lifter parts'],
+  ['ST',  'Watermaker parts'],
+  ['SS',  'Watermaker parts'],
+];
+export const INTERNAL_CATEGORY_ORDER = ['Cylinder lifter parts', 'Watermaker parts', 'Davit parts', 'Other parts'];
+
+export function internalCategory(inventoryId) {
+  const inv = String(inventoryId ?? '').trim().toUpperCase();
+  for (const [prefix, category] of INTERNAL_CATEGORY_RULES) {
+    if (inv.startsWith(prefix)) return category;
+  }
+  return 'Other parts';
 }

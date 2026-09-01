@@ -5,7 +5,7 @@
 // Davits runs full-width underneath because its descriptions are long.
 
 import { PRINT_LAYOUT, CATEGORY_ORDER } from './rules.js';
-import { byCategory, toAU, toDateOnly, jobTitle } from './transform.js';
+import { byCategory, toAU, toDateOnly, jobTitle, printJobs } from './transform.js';
 
 // A4 at 96dpi, less the margins in the @page rule.
 const PAGE_H = 1123;
@@ -101,7 +101,10 @@ export function renderPrint(host, board) {
   head.append(el('div', 'doc-range', `as of:  ${asOf}`));
   host.append(head);
 
-  const groups = byCategory(board.jobs);
+  // What reaches the paper is a narrower question than what is on the board:
+  // watermakers have no column, the horizon trims by due date and the stock cap
+  // trims by count. All three are page-fitting decisions — see transform.js.
+  const groups = byCategory(printJobs(board));
 
   // Which category sits in which column is decided by row count, not pinned.
   const counts = Object.fromEntries(
@@ -128,7 +131,7 @@ export function renderPrint(host, board) {
     }
   }
 
-  const held = board.jobs.filter((j) => j.on_hold && !j.hidden).length;
+  const held = printJobs(board).filter((j) => j.on_hold).length;
   if (held) {
     host.append(el('div', 'hold-note',
       `${held} job(s) marked ON HOLD — confirm before starting.`));

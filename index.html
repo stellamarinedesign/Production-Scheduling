@@ -62,19 +62,86 @@
     <span id="provStore" title="Where manager edits are saved"></span>
   </div>
 
-  <!-- ============ UPLOAD ============ -->
-  <div id="dropZone">
-    <strong>Drop the ERP export here</strong>
-    <div class="hint">
-      <code>Production Order Maintenance YYYYMMDD.xlsx</code> — or click to choose a file.<br>
-      Everything is parsed in this browser; the spreadsheet is not uploaded anywhere.
-    </div>
-    <input type="file" id="fileInput" accept=".xlsx,.xls" hidden>
-  </div>
 
   <!-- ============ BOARD ============ -->
   <div id="boardWrap" hidden>
 
+
+    <div id="warnings"></div>
+
+    <!-- Print sits alone on the right. This is a scheduling board that can be
+         printed, not a print tool — so the paper settings live behind that tab
+         and are out of the way of everything else. -->
+    <div class="tabs">
+      <button class="tab" id="tabImportBtn">Import</button>
+      <button class="tab" id="tabEditBtn" aria-current="page">Current orders</button>
+      <button class="tab" id="tabGanttBtn">Gantt</button>
+      <button class="tab" id="tabInternalBtn">Internal Factory Jobs</button>
+      <button class="tab" id="tabTmBtn">Time &amp; Materials Jobs</button>
+      <span class="tab-spacer"></span>
+      <button class="tab" id="tabPrintBtn">Print</button>
+    </div>
+
+    <section id="tabImport" class="offstage">
+    <div id="dropZone">
+      <strong>Drop the ERP export here</strong>
+      <div class="hint">
+        <code>Production Order Maintenance YYYYMMDD.xlsx</code> — or click to choose a file.<br>
+        Everything is parsed in this browser; the spreadsheet is not uploaded anywhere.
+      </div>
+      <input type="file" id="fileInput" accept=".xlsx,.xls" hidden>
+    </div>
+      <div id="importHost"></div>
+    </section>
+
+    <section id="tabEdit">
+      <div class="view-bar">
+        <button class="mini" id="completePastDue">Complete past due…</button>
+        <button class="mini" id="collapseAll">Collapse all</button>
+        <span class="spacer"></span>
+        <span class="hint" id="boardCount"></span>
+        <button class="mini quiet" id="historyEdit" data-lane="production">History</button>
+      </div>
+      <div id="board"></div>
+      <div id="historyProduction" class="history-panel" hidden></div>
+    </section>
+
+    <!-- ============ INTERNAL FACTORY JOBS ============
+         Sub-assemblies built for stock: no customer, no sales order, no
+         schedule worth the name. Sorted oldest first, because the only real
+         question about one of these is how long it has been sitting. -->
+    <section id="tabInternal" class="offstage">
+      <div class="view-bar">
+        <span class="hint" id="internalCount"></span>
+        <span class="spacer"></span>
+        <button class="mini quiet" id="historyInternal" data-lane="internal">History</button>
+      </div>
+      <div id="internalList"></div>
+      <div id="historyInternalPanel" class="history-panel" hidden></div>
+    </section>
+
+    <!-- ============ TIME & MATERIALS ============ -->
+    <section id="tabTm" class="offstage">
+      <div class="view-bar">
+        <span class="hint" id="tmCount"></span>
+        <span class="spacer"></span>
+        <button class="mini quiet" id="historyTm" data-lane="tm">History</button>
+      </div>
+      <div id="tmList"></div>
+      <div id="historyTmPanel" class="history-panel" hidden></div>
+    </section>
+
+    <section id="tabGantt" class="offstage">
+      <div class="view-bar">
+        <button class="mini" id="ganttPacked" aria-pressed="false">Stack into lanes</button>
+        <button class="mini" id="ganttAll" aria-pressed="false">Show everything</button>
+        <span class="spacer"></span>
+        <span class="hint" id="ganttHint">Click a bar to mark it complete.</span>
+      </div>
+      <div id="gantt"></div>
+    </section>
+
+    <section id="tabPrint" class="offstage">
     <div class="controls">
       <div class="ctrl">
         <label for="horizon">Horizon</label>
@@ -100,48 +167,8 @@
       </div>
 
       <span class="spacer"></span>
-      <button class="ghost" id="changeFile">New export…</button>
       <button class="primary" id="printBtn">Print board</button>
     </div>
-
-    <div id="warnings"></div>
-
-    <div class="tabs">
-      <button class="tab" id="tabEditBtn" aria-current="page">Current orders</button>
-      <button class="tab" id="tabGanttBtn">Gantt</button>
-      <button class="tab" id="tabHistoryBtn">History</button>
-      <button class="tab" id="tabPrintBtn">Print preview</button>
-    </div>
-
-    <section id="tabEdit">
-      <div class="view-bar">
-        <button class="mini" id="completePastDue">Complete past due…</button>
-        <button class="mini" id="collapseAll">Collapse all</button>
-        <span class="spacer"></span>
-        <span class="hint" id="boardCount"></span>
-      </div>
-      <div id="board"></div>
-    </section>
-
-    <section id="tabGantt" class="offstage">
-      <div class="view-bar">
-        <button class="mini" id="ganttPacked" aria-pressed="false">Stack into lanes</button>
-        <button class="mini" id="ganttAll" aria-pressed="false">Show everything</button>
-        <span class="spacer"></span>
-        <span class="hint" id="ganttHint">Click a bar to mark it complete.</span>
-      </div>
-      <div id="gantt"></div>
-    </section>
-
-    <section id="tabHistory" class="offstage">
-      <div class="view-bar">
-        <span class="hint">Completed work. It stays off the board and off every future
-          board, whatever the ERP keeps saying, until it is reopened here.</span>
-      </div>
-      <div id="history"></div>
-    </section>
-
-    <section id="tabPrint" class="offstage">
       <div class="fit-status" id="fitStatus"></div>
       <div id="printRoot"><div id="printPreview"></div></div>
     </section>

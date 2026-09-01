@@ -2,7 +2,8 @@
 
 import { xlsxAdapter } from './adapters/index.js';
 import { buildBoard, byCategory, today, toAU, toDateOnly, jobTitle, CUSTOM_PREFIX, isEmptyCustomName } from './transform.js';
-import { CATEGORY_ORDER, PRINT_LAYOUT, EXCLUSION_ORDER, EXCLUSION_GROUP_LABEL } from './rules.js';
+import { CATEGORY_ORDER, PRINT_LAYOUT, EXCLUSION_ORDER, EXCLUSION_GROUP_LABEL,
+         TM_CATEGORY_ORDER, INTERNAL_CATEGORY_ORDER, LANE_LABEL, WATERMAKER_CATEGORIES } from './rules.js';
 import { stellaCode, labelFor, existingBoats, acceptNewCode, applyTemplate } from './vessel-codes.js';
 import { Auth, ROLE, friendlyAuthError } from './auth.js';
 import { Store, packRows, unpackRows } from './store.js';
@@ -112,6 +113,15 @@ async function start(st) {
   wireOverlays();
 
   await loadLastBoard();
+
+  // The shell is up whether or not there is a board: the tab bar is how you
+  // reach the Import tab, and the Import tab is where you go when there is
+  // nothing loaded. It used to be hidden behind the drop zone, which meant the
+  // only way to see the app was to already have data in it.
+  $('boardWrap').hidden = false;
+  if (!state.rows) showTab('import');
+  renderImport();
+
   startLiveSync();
 }
 
@@ -301,7 +311,6 @@ async function startFloor() {
     warnings: [],
   };
   $('provenance').hidden = false;
-  $('dropZone').hidden = true;
   $('boardWrap').hidden = false;
   renderProvenance();
   renderPrint($('printPreview'), state.board);
@@ -371,7 +380,6 @@ function wireUpload() {
     if (f) load(f);
   });
 
-  $('changeFile').addEventListener('click', () => input.click());
 }
 
 async function load(file) {
@@ -385,6 +393,39 @@ async function load(file) {
     return;
   }
 
+  // STAGED, not committed. The rows are built into a board here so the review
+  // can describe the real result — counts, exclusions, every ambiguity — but
+  // state.rows is untouched and the other managers see nothing until Apply.
+  // Built against the CURRENT overrides and codes, which is what makes the
+  // review honest: it is the board you will actually get.
+  try {
+    staged = {
+      src,
+      board: buildBoard(src.rows, {
+        codeMap: state.codeMap,
+        asOf: today(),
+        overrides: state.overrides,
+        itemOverrides: state.itemOverrides,
+        maxStock: state.settings.maxStock,
+        horizonWeeks: state.settings.horizonWeeks,
+      }),
+    };
+  } catch (e) {
+    toast(`Could not build a board from that file — ${e.message}`, 6000);
+    console.error(e);
+    return;
+  }
+
+  showTab('import');
+  renderImport();
+  toast(`${src.rows.length} rows read — review and apply.`);
+}
+
+/** Commit the staged import: this is the point of no return. */
+async function commitImport() {
+  if (!staged) return;
+  const { src } = staged;
+
   state.rows = src.rows;
   state.source = {
     sourceId: src.sourceId,
@@ -392,9 +433,12 @@ async function load(file) {
     retrievedAt: src.retrievedAt,
     warnings: src.warnings,
   };
+  staged = null;
   Store.cacheRows(src.rows, state.source);
   rebuild();
-  toast(`${src.rows.length} rows in — ${state.board.meta.job_count} on the board.`);
+  renderImport();
+  showTab('edit');
+  toast(`${src.rows.length} rows in — ${state.board.meta.job_count} production orders.`);
   queueImportQuestions();
 
   // Publishing is a SEPARATE failure from parsing. Both used to sit in one try,
@@ -464,10 +508,13 @@ function wireControls() {
 
   $('autoFit').addEventListener('click', () => setAutoFit(!state.settings.autoFit));
 
-  $('tabEditBtn').addEventListener('click', () => showTab('edit'));
-  $('tabGanttBtn').addEventListener('click', () => showTab('gantt'));
-  $('tabHistoryBtn').addEventListener('click', () => showTab('history'));
-  $('tabPrintBtn').addEventListener('click', () => showTab('print'));
+  for (const t of TABS) {
+    const cap = t[0].toUpperCase() + t.slice(1);
+    $(`tab${cap}Btn`).addEventListener('click', () => showTab(t));
+  }
+  for (const b of document.querySelectorAll('[id^=history][data-lane]')) {
+    b.addEventListener('click', () => toggleHistory(b.dataset.lane));
+  }
 
   $('completePastDue').addEventListener('click', () =>
     openCompleteDialog(state.board.warnings.pastDue ?? []));
@@ -507,14 +554,20 @@ function setAutoFit(on, { save = true, render = true } = {}) {
   if (save && render) rebuild();
 }
 
-const TABS = ['edit', 'gantt', 'history', 'print'];
+const TABS = ['import', 'edit', 'gantt', 'internal', 'tm', 'print'];
 
 function showTab(which) {
+  state.tab = which;
   for (const t of TABS) {
     const cap = t[0].toUpperCase() + t.slice(1);
     $(`tab${cap}`).classList.toggle('offstage', which !== t);
     $(`tab${cap}Btn`).setAttribute('aria-current', which === t ? 'page' : 'false');
   }
+  // The Gantt measures itself to scroll to today, and the print preview
+  // measures itself to fit the page. Neither can do that while off-canvas, so
+  // both are drawn on arrival rather than on rebuild.
+  if (which === 'gantt') renderGanttView();
+  if (which === 'import') renderImport();
 }
 
 // ---------------------------------------------------------------------------
@@ -535,7 +588,6 @@ function rebuild() {
 
   // Reveal BEFORE measuring: a [hidden] ancestor gives the print host no
   // layout, and an unmeasured board would claim to fit at any horizon.
-  $('dropZone').hidden = true;
   $('boardWrap').hidden = false;
   $('provenance').hidden = false;
 
@@ -555,7 +607,9 @@ function rebuild() {
   renderBoard();
   renderFitStatus();
   renderGanttView();
-  renderHistory();
+  renderLane('internal');
+  renderLane('tm');
+  for (const lane of Object.keys(HISTORY_HOST)) renderHistory(lane);
 }
 
 function renderProvenance() {
@@ -804,9 +858,31 @@ function renderBoard() {
     if (block) { block.classList.add('is-full'); host.append(block); }
   }
 
+  // Watermakers, at the bottom and below a rule. The grid above mirrors the
+  // printed sheet, which these are deliberately not on — so they sit outside
+  // it rather than being balanced into a column that has no paper equivalent.
+  // Same rows, same actions, same completion; just no column on the print.
+  const water = WATERMAKER_CATEGORIES.filter((c) => (groups.get(c) ?? []).length);
+  if (water.length) {
+    const sec = el('div', 'board-offsheet');
+    sec.append(el('div', 'offsheet-note', 'Not on the printed sheet'));
+    for (const cat of water) {
+      const block = categoryBlock(cat, groups.get(cat) ?? [], { full: true });
+      if (block) { block.classList.add('is-full'); sec.append(block); }
+    }
+    host.append(sec);
+  }
+
   const any = CATEGORY_ORDER.some((c) => (groups.get(c) ?? []).length);
   $('emptyState').hidden = any;
   $('stockNote').textContent = `${state.board.jobs.filter((j) => j.is_stock).length} stock`;
+
+  $('tabInternalBtn').textContent = state.board.meta.internal_count
+    ? `Internal Factory Jobs (${state.board.meta.internal_count})`
+    : 'Internal Factory Jobs';
+  $('tabTmBtn').textContent = state.board.meta.tm_count
+    ? `Time & Materials Jobs (${state.board.meta.tm_count})`
+    : 'Time & Materials Jobs';
 
   const pastDue = state.board.warnings.pastDue?.length ?? 0;
   $('boardCount').textContent = `${state.board.meta.job_count} on the board`
@@ -894,6 +970,13 @@ function renderGanttView() {
   // can show the whole span rather than the printable slice. It scrolls at a
   // fixed day width instead of compressing — two years squeezed onto one screen
   // is a smear, not a chart.
+  // The chart shows every open production order, watermakers included. The
+  // horizon does not apply here any more — it trims the printed sheet, not the
+  // schedule — so "everything" now means completed work as well.
+  //
+  // T&M and internal jobs are deliberately absent. The ERP stamps their start
+  // and end to the day the order was raised and never revises it, so every bar
+  // would be a zero-width mark at an arbitrary date. Their tabs show age.
   const jobs = all
     ? buildBoard(state.rows, {
         codeMap: state.codeMap, asOf: today(), overrides: state.overrides,
@@ -909,33 +992,64 @@ function renderGanttView() {
   });
 
   $('ganttHint').textContent = all
-    ? `Every order, horizon and completion ignored \u2014 ${g.rowCount} bars, scroll sideways.`
-    : 'Click a bar to mark it complete.';
+    ? `Completed work included \u2014 ${g.rowCount} bars, scroll sideways.`
+    : 'Every open production order. Click a bar to mark it complete.';
 }
 
-function renderHistory() {
-  const host = $('history');
+// History is per lane. Completed production work, finished T&M jobs and
+// finished internal builds are three different questions, and one merged list
+// answered none of them well. It is also no longer a tab: it is a button beside
+// each lane's own controls, because it is something you go and look up rather
+// than something you keep open.
+const HISTORY_HOST = {
+  production: 'historyProduction',
+  internal: 'historyInternalPanel',
+  tm: 'historyTmPanel',
+};
+const HISTORY_BTN = { production: 'historyEdit', internal: 'historyInternal', tm: 'historyTm' };
+const HISTORY_BODY = { production: 'board', internal: 'internalList', tm: 'tmList' };
+const HISTORY_CATS = {
+  production: CATEGORY_ORDER,
+  internal: INTERNAL_CATEGORY_ORDER,
+  tm: TM_CATEGORY_ORDER,
+};
+const historyOpen = new Set();
+
+function toggleHistory(lane) {
+  if (historyOpen.has(lane)) historyOpen.delete(lane); else historyOpen.add(lane);
+  renderHistory(lane);
+}
+
+function renderHistory(lane = 'production') {
+  const host = $(HISTORY_HOST[lane]);
+  const open = historyOpen.has(lane);
+  const done = (state.board.completed ?? []).filter((j) => (j.lane ?? 'production') === lane);
+
+  const btn = $(HISTORY_BTN[lane]);
+  btn.textContent = done.length ? `History (${done.length})` : 'History';
+  btn.setAttribute('aria-pressed', String(open));
+  $(HISTORY_BODY[lane]).hidden = open;
+  host.hidden = !open;
+  if (!open) return;
+
   host.textContent = '';
-  const done = state.board.completed ?? [];
-
-  $('tabHistoryBtn').textContent = done.length ? `History (${done.length})` : 'History';
-
   if (!done.length) {
-    host.append(el('div', 'state', 'Nothing completed yet. Jobs marked done from the '
-      + 'orders view or the Gantt land here.'));
+    host.append(el('div', 'state', 'Nothing completed yet. Jobs marked done here '
+      + 'or on the Gantt land in this list.'));
     return;
   }
 
   // Grouped by board category, same order as everywhere else, so History reads
   // like the orders view rather than as one long undifferentiated list.
-  const byCat = new Map(CATEGORY_ORDER.map((c) => [c, []]));
+  const cats = HISTORY_CATS[lane];
+  const byCat = new Map(cats.map((c) => [c, []]));
   for (const j of done) byCat.get(j.category)?.push(j);
 
-  for (const cat of CATEGORY_ORDER) {
+  for (const cat of cats) {
     const rows = byCat.get(cat) ?? [];
     if (!rows.length) continue;
 
-    const key = `hist:${cat}`;
+    const key = `hist:${lane}:${cat}`;
     const shut = collapsed.has(key);
     const block = el('div', `hist-cat${shut ? ' is-collapsed' : ''}`);
 
@@ -947,15 +1061,16 @@ function renderHistory() {
     head.addEventListener('click', () => {
       if (collapsed.has(key)) collapsed.delete(key); else collapsed.add(key);
       saveCollapsed(collapsed);
-      renderHistory();
+      renderHistory(lane);
     });
     block.append(head);
 
     if (!shut) {
       const table = el('div', 'hist');
       const hdr = el('div', 'hist-row hist-head');
-      hdr.append(el('span', null, 'Prod Nbr'), el('span', null, 'Vessel'),
-        el('span', null, 'Due'), el('span', null, 'Completed'), el('span', null, ''));
+      hdr.append(el('span', null, 'Prod Nbr'), el('span', null, lane === 'production' ? 'Vessel' : 'Job'),
+        el('span', null, lane === 'production' ? 'Due' : 'Opened'),
+        el('span', null, 'Completed'), el('span', null, ''));
       table.append(hdr);
 
       // Most recently completed first within a category.
@@ -965,7 +1080,7 @@ function renderHistory() {
         const row = el('div', 'hist-row');
         row.append(el('span', 'prod', j.prod_no));
         row.append(el('span', 'label', jobTitle(j)));
-        row.append(el('span', 'due', j.due_display));
+        row.append(el('span', 'due', lane === 'production' ? j.due_display : (j.opened_display ?? '')));
         const when = j.completed_at ? new Date(j.completed_at) : null;
         const stamp = el('span', 'when', when
           ? when.toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -1004,6 +1119,14 @@ function renderHistory() {
 
 let completing = [];
 
+/**
+ * What to show where a production job shows its due date. T&M and internal jobs
+ * have no schedule in the ERP - start and end are stamped the day the order is
+ * raised - so their age is the only true thing to put in that column.
+ */
+const dueOrAge = (j) =>
+  ((j.lane ?? 'production') === 'production' ? j.due_display : (j.age_display || '—'));
+
 function openCompleteDialog(jobs) {
   // Stock is listed but starts unticked. Its ERP dates are written once and
   // never revised, so "past its end date" says nothing about whether the work
@@ -1013,8 +1136,14 @@ function openCompleteDialog(jobs) {
   // mean finished.
   completing = jobs.map((j) => ({ job: j, ticked: !j.is_stock }));
 
+  // A side-lane job has no due date worth the name - the ERP stamps start and
+  // end to the day it was raised - so say how long it has been open instead.
+  const one = jobs[0];
+  const when = one && (one.lane ?? 'production') === 'production'
+    ? `due ${one.due_display}`
+    : `open ${one?.age_display || 'since it was raised'}`;
   $('completeLede').textContent = jobs.length === 1
-    ? `${jobs[0].prod_no} — ${jobTitle(jobs[0])}, due ${jobs[0].due_display}.`
+    ? `${one.prod_no} — ${jobTitle(one)}, ${when}.`
     : `${jobs.length} jobs are past their end date and still open. Untick anything `
       + `still in the shop. Stock builds start unticked — their dates are set once `
       + `and never revised, so a passed date says nothing about them.`;
@@ -1037,7 +1166,7 @@ function renderCompleteList() {
     row.append(el('span', 'c-prod', job.prod_no));
     row.append(el('span', 'c-name', jobTitle(job)));
     row.append(el('span', 'c-cat', job.category));
-    row.append(el('span', 'c-due', job.due_display));
+    row.append(el('span', 'c-due', dueOrAge(job)));
     host.append(row);
   }
   updateCompleteCount();
@@ -1078,7 +1207,13 @@ function renderFitStatus() {
 
   box.append(el('span', null, `Covering `), el('b', null, range));
   box.append(el('span', null, `·`));
-  box.append(el('b', null, `${state.board.meta.job_count} jobs`));
+  const printed = state.board.meta.print_count;
+  const total = state.board.meta.job_count;
+  const rows = el('b', null, `${printed} of ${total} jobs`);
+  rows.title = total === printed ? ''
+    : `${total - printed} on the board but off the sheet — watermakers, `
+      + 'work past the horizon, or stock beyond the cap';
+  box.append(rows);
   box.append(el('span', null, `·`));
 
   if (!state.settings.autoFit) {
@@ -1209,6 +1344,267 @@ function wireNewCode() {
 }
 
 // ---------------------------------------------------------------------------
+// the side lanes - internal factory jobs and T&M
+//
+// Deliberately NOT the board view with a different filter. These jobs have no
+// vessel, no meaningful due date and no place on the printed sheet, so a row
+// built around "vessel / due / print" would be three empty columns and a lie.
+//
+// What they do have is an age. The ERP stamps start and end to the day the
+// order is raised and nobody revises it, so the honest question is how long a
+// job has been open - and the answer runs to nearly a year on two of them.
+// ---------------------------------------------------------------------------
+
+const LANE_VIEW = {
+  internal: {
+    list: 'internalList', count: 'internalCount', order: INTERNAL_CATEGORY_ORDER,
+    empty: 'No internal factory jobs open. Sub-assemblies built for stock appear here.',
+  },
+  tm: {
+    list: 'tmList', count: 'tmCount', order: TM_CATEGORY_ORDER,
+    empty: 'No time & materials jobs open.',
+  },
+};
+
+function renderLane(lane) {
+  const cfg = LANE_VIEW[lane];
+  const host = $(cfg.list);
+  host.textContent = '';
+  const rows = (state.board?.[lane] ?? []).filter((j) => !j.completed);
+  const shown = rows.filter((j) => !j.hidden);
+
+  $(cfg.count).textContent = shown.length
+    ? `${shown.length} open${rows.length !== shown.length ? ` \u00b7 ${rows.length - shown.length} hidden` : ''}`
+    : '';
+
+  if (!rows.length) { host.append(el('div', 'state', cfg.empty)); return; }
+
+  const byCat = new Map(cfg.order.map((c) => [c, []]));
+  for (const j of rows) {
+    if (!byCat.has(j.category)) byCat.set(j.category, []);
+    byCat.get(j.category).push(j);
+  }
+
+  for (const cat of byCat.keys()) {
+    const list = byCat.get(cat) ?? [];
+    if (!list.length) continue;
+
+    const key = `lane:${lane}:${cat}`;
+    const shut = collapsed.has(key);
+    const blk = el('div', `cat${shut ? ' is-collapsed' : ''}`);
+
+    const head = el('button', 'cat-head');
+    head.setAttribute('aria-expanded', String(!shut));
+    head.append(el('span', 'cat-caret', shut ? '\u25b8' : '\u25be'));
+    head.append(el('h2', null, cat));
+    head.append(el('span', 'n', String(list.length)));
+    head.addEventListener('click', () => {
+      if (collapsed.has(key)) collapsed.delete(key); else collapsed.add(key);
+      saveCollapsed(collapsed);
+      renderLane(lane);
+    });
+    blk.append(head);
+
+    if (!shut) {
+      const table = el('div', 'lane-table');
+      const hdr = el('div', 'lane-row lane-head');
+      hdr.append(el('span', null, 'Prod Nbr'), el('span', null, 'Job'),
+        el('span', null, lane === 'tm' ? 'For' : 'Item'),
+        el('span', null, 'Open'), el('span', null, ''));
+      table.append(hdr);
+      for (const j of list) table.append(laneRow(j, lane));
+      blk.append(table);
+    }
+    host.append(blk);
+  }
+}
+
+function laneRow(j, lane) {
+  const row = el('div', `lane-row${j.hidden ? ' is-hidden' : ''}${j.on_hold ? ' is-held' : ''}`);
+  row.append(el('span', 'prod', j.prod_no));
+
+  const name = el('span', 'label');
+  name.append(document.createTextNode(jobTitle(j)));
+  if (j.on_hold) name.append(el('span', 'flag', 'ON HOLD'));
+  if (j.label !== j.base_label) name.append(el('span', 'edited', 'EDITED'));
+  row.append(name);
+
+  row.append(el('span', 'who', lane === 'tm'
+    ? (j.customer_display + (j.project ? ` \u00b7 ${j.project}` : ''))
+    : j.inventory_id));
+
+  // Age, not a due date. `unscheduled` means the ERP stamped start and end the
+  // same day, which is every T&M row in the export - "9 months" is true,
+  // "due 07/11/2025" would not be.
+  const age = el('span', 'age', j.age_display || '\u2014');
+  age.title = j.opened_display
+    ? `Raised ${j.opened_display}${j.unscheduled ? ' \u2014 the ERP has no schedule for this job' : ''}`
+    : '';
+  if ((j.age_days ?? 0) > 180) age.classList.add('is-stale');
+  row.append(age);
+
+  const acts = el('span', 'acts');
+  const lbl = el('button', 'mini', 'Label');
+  lbl.addEventListener('click', () => openLabelEditor(j));
+  const hide = el('button', 'mini', j.hidden ? 'Unhide' : 'Hide');
+  hide.addEventListener('click', () => (j.hidden ? unhide(j) : openHideDialog(j)));
+  const done = el('button', 'mini', 'Done');
+  done.title = 'Mark completed \u2014 reversible from History';
+  done.addEventListener('click', () => openCompleteDialog([j]));
+  acts.append(lbl, hide, done);
+  row.append(acts);
+  return row;
+}
+
+// ---------------------------------------------------------------------------
+// the import tab
+//
+// An upload used to be a single irreversible act: drop the file and the board
+// changed under whoever else was looking at it. This stages it instead - the
+// rows are parsed, the result is described, and nothing is committed until the
+// manager applies it. It is also where everything the import is unsure about is
+// gathered, rather than scattered across warning panels after the fact.
+// ---------------------------------------------------------------------------
+
+let staged = null;      // { src, board } - parsed, not committed
+
+function renderImport() {
+  const host = $('importHost');
+  host.textContent = '';
+  $('dropZone').hidden = Boolean(staged);
+  if (!staged) {
+    if (state.source) {
+      host.append(el('div', 'import-current',
+        `Currently loaded: ${state.source.sourceLabel ?? 'an export'} \u2014 `
+        + `${state.board?.meta?.row_count ?? 0} rows, `
+        + `${state.board?.meta?.job_count ?? 0} production orders. `
+        + 'Drop a new export above to replace it.'));
+    }
+    return;
+  }
+
+  const b = staged.board;
+  const box = el('div', 'import-review');
+  box.append(el('h2', null, 'Review this import'));
+  box.append(el('div', 'lede',
+    `${staged.src.sourceLabel} \u2014 ${staged.src.rows.length} rows from the `
+    + `"${staged.src.sheetName}" sheet. Nothing changes until you apply it.`));
+
+  const grid = el('div', 'import-stats');
+  const stat = (n, label, note) => {
+    const c = el('div', 'stat');
+    c.append(el('b', null, String(n)), el('span', null, label));
+    if (note) c.append(el('em', null, note));
+    grid.append(c);
+  };
+  stat(b.meta.job_count, 'production orders', `${b.meta.print_count} on the printed sheet`);
+  stat(b.meta.internal_count, 'internal factory jobs');
+  stat(b.meta.tm_count, 'time & materials jobs');
+  stat(b.excluded.length, 'rows excluded', 'by status or category');
+  box.append(grid);
+
+  const q = importQuestions(b, staged.src);
+  if (q.length) {
+    const list = el('div', 'import-flags');
+    list.append(el('h3', null, `${q.length} thing${q.length > 1 ? 's' : ''} to look at`));
+    for (const item of q) {
+      const r = el('div', `flag flag-${item.level}`);
+      r.append(el('b', null, item.title));
+      r.append(el('span', null, item.detail));
+      list.append(r);
+    }
+    box.append(list);
+  } else {
+    box.append(el('div', 'import-clean', 'Nothing ambiguous \u2014 every row classified cleanly.'));
+  }
+
+  const acts = el('div', 'import-actions');
+  const apply = el('button', 'primary', 'Apply this import');
+  apply.addEventListener('click', commitImport);
+  const cancel = el('button', 'ghost', 'Cancel');
+  cancel.addEventListener('click', () => {
+    staged = null; renderImport(); toast('Import cancelled - nothing changed.');
+  });
+  acts.append(apply, cancel);
+  box.append(acts);
+  host.append(box);
+}
+
+/**
+ * What the import cannot answer on its own. Ordered worst first: a broken
+ * export makes the whole board wrong, an unknown vessel code makes some rows
+ * wrong, and the rest are judgement calls a person may want to make.
+ */
+function importQuestions(b, src) {
+  const out = [];
+  const many = (n, one, more) => (n === 1 ? one : more);
+
+  for (const w of src.warnings ?? []) {
+    if (w.startsWith('Note:')) continue;
+    out.push({ level: 'bad', title: 'Export problem', detail: w });
+  }
+
+  const nc = b.warnings.newCodes ?? [];
+  if (nc.length) {
+    out.push({
+      level: 'bad',
+      title: `${nc.length} unknown vessel ${many(nc.length, 'code', 'codes')}`,
+      detail: `${nc.map((n) => n.code).join(', ')} \u2014 you will be asked what the floor should read.`,
+    });
+  }
+
+  const cn = b.warnings.customNames ?? [];
+  if (cn.length) {
+    out.push({
+      level: 'warn',
+      title: `${cn.length} custom ${many(cn.length, 'job', 'jobs')} with no clear name`,
+      detail: `${cn.map((j) => j.prod_no).join(', ')} \u2014 neither column reads as a boat.`,
+    });
+  }
+
+  const un = b.warnings.unmapped ?? [];
+  if (un.length) {
+    out.push({
+      level: 'bad',
+      title: `${un.length} unmapped item ${many(un.length, 'code', 'codes')}`,
+      detail: `${[...new Set(un.map((e) => e.inventory_id))].join(', ')} \u2014 off the board until a rule exists.`,
+    });
+  }
+
+  // A stock build booked as a component part reads as production work, because
+  // the lane rule keys on Type and the ERP says Finished Good on the ones that
+  // matter. SDC0287, the davit rope kit, is the standing example: really an
+  // internal build, filed as a product. The rule cannot tell; a person can.
+  const oddStock = (b.jobs ?? []).filter((j) => j.is_stock && j.is_component);
+  if (oddStock.length) {
+    out.push({
+      level: 'warn',
+      title: `${oddStock.length} stock ${many(oddStock.length, 'build', 'builds')} booked as a component part`,
+      detail: `${oddStock.map((j) => j.prod_no).join(', ')} \u2014 on the production board; check whether it is really internal work.`,
+    });
+  }
+
+  const held = b.warnings.onHold ?? [];
+  if (held.length) {
+    out.push({
+      level: 'warn',
+      title: `${held.length} ${many(held.length, 'job', 'jobs')} on hold`,
+      detail: `${held.map((j) => j.prod_no).join(', ')} \u2014 showing on the board; confirm or hide.`,
+    });
+  }
+
+  const off = b.warnings.offPaper ?? [];
+  if (off.length) {
+    out.push({
+      level: 'info',
+      title: `${off.length} board ${many(off.length, 'job', 'jobs')} will not print`,
+      detail: 'Watermakers, work past the horizon, or stock beyond the cap. All still on the board and the Gantt.',
+    });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // naming a custom one-off
 //
 // `Description` carries the boat on most custom rows and something else
@@ -1251,7 +1647,7 @@ function showCustomName() {
   row('Production number', job.prod_no);
   row('Item code', job.inventory_id);
   row('Production description', job.description);
-  row('Due', job.due_display);
+  row((job.lane ?? 'production') === 'production' ? 'Due' : 'Open', dueOrAge(job));
 
   // An empty column is not an option. Offering "Use the Description" on a blank
   // cell would print "Custom Lifter - " and look like a bug.
@@ -1498,7 +1894,9 @@ let hiding = null;
 
 function openHideDialog(job) {
   hiding = job;
-  $('hideLede').textContent = `${job.prod_no} — ${jobTitle(job)}, due ${job.due_display}.`;
+  $('hideLede').textContent = (job.lane ?? 'production') === 'production'
+    ? `${job.prod_no} — ${jobTitle(job)}, due ${job.due_display}.`
+    : `${job.prod_no} — ${jobTitle(job)}, open ${job.age_display || 'since it was raised'}.`;
   $('hideReason').value = '';
   $('hideOverlay').classList.add('show');
   $('hideReason').focus();

@@ -16,8 +16,13 @@ build step.
 3. Check the warnings, adjust the horizon, hide or relabel anything that needs it.
 4. **Print board.**
 
-Four tabs over the same data: **Current orders**, **Gantt**, **History**, and
-**Print preview**.
+Tabs over the same data: **Import**, **Current orders**, **Gantt**, **Internal
+Factory Jobs**, **Time & Materials Jobs**, and — alone on the right — **Print**,
+which is where the horizon, the stock cap and the printed sheet live.
+
+This is a board for looking at what the workshop has committed to. Printing is
+one thing it does, not what it is for, so the paper settings stay behind that
+one tab and nothing else is trimmed to fit a page.
 
 The vessel codes page prints its own **landscape A4 cheat sheet** — display code
 against ERP codes, Riviera model and hull — for pinning up next to the board.
@@ -44,7 +49,7 @@ Normalising happens in the transform, once, downstream.
 
 | File | Role |
 |---|---|
-| `js/rules.js` | Category prefix map, filters, label overrides. The business rules. |
+| `js/rules.js` | Category prefix map, lane rules, filters, label overrides. The business rules. |
 | `js/vessel-codes.js` | Stella code derivation, boat groups, new-code detection, labels. |
 | `js/transform.js` | `RawRow[] → Job[]`. The only place that knows ERP column names. |
 | `js/adapters/xlsx.js` | Reads the export, validates its columns, stamps provenance. |
@@ -113,6 +118,52 @@ Normalising happens in the transform, once, downstream.
   alone. Component parts that reach the board are flagged, not hidden.
 - **The horizon runs from today**, not from the export date, so a stale export
   shows a shrinking board rather than a wrong one.
+- **The horizon and the stock cap are print settings, not filters.** They used
+  to drop rows out of the board entirely, which quietly made the app a thing for
+  producing one sheet of paper. An order due in five months is still committed
+  work, so it stays on the board and on the Gantt and is marked as not printing.
+  `printJobs()` is the set that reaches the page; three separate things keep a
+  real job off it — no column in `PRINT_LAYOUT`, past the horizon, or already
+  enough of its category under the stock cap.
+- **The export holds three kinds of work, and two fields separate them.**
+  `Order Type == 'TM'` is time & materials; no `Order Nbr.` and
+  `Type == 'Component Part'` is an internal factory job; everything else is a
+  production order. Scored against the office's own hand-sorted sheets that is
+  120 of 120 rows with no misclassification. The sales order is what says
+  whether there is a customer behind the work, and `Type` is what separates an
+  internal sub-assembly (bronze glands, bearing tubes, Aquarius panels) from a
+  stock build of a sellable product (davits, chocks) — production work that
+  happens to have no buyer yet.
+- **The lane rule describes how an order was raised, not what it is for**, so it
+  cannot fix a miskeyed row. `SDC0287`, the davit rope kit, is booked
+  `Finished Good` and therefore reads as production even though it is really
+  internal work. The import review flags it; the rule does not bend around it.
+- **T&M and internal jobs are not on the Gantt, on purpose.** Every T&M row in
+  the 01/09 export has `Start Date` equal to `End Date` equal to the day the
+  order was raised — the ERP stamps it once and nobody revises it — and eight of
+  the thirteen internal rows are the same. Every bar would be a zero-width mark
+  at an arbitrary date. Their tabs show **how long the job has been open**
+  instead, which is the true and useful thing, and two of them are nearly a year
+  old.
+- **`ALL RECORDS` is the sheet the board reads.** It is the whole order book;
+  the hand-sorted sheets beside it are a subset, and the board derives the same
+  split itself. It carries 49 more open rows than those sheets do, most of which
+  the category rules already drop (commissioning, a row literally called
+  `test`); the rest are genuine internal part builds the office's sheet omitted.
+  `Data` is still accepted — that is the older export.
+- **A finished watermaker's item code ends in flow rate over voltage.**
+  `STAQSAB/240/230`, `STG4LA/160/230`. Everything else in the family is a kit,
+  filter, upgrade or spare, so water treatment reaches the board as two
+  categories rather than being excluded outright. The rule anchors on the PAIR
+  of numbers because `STAUTO24` ends in a voltage and is a flush accessory. The
+  same ordering trap applies as everywhere else in that list: `STL`, `STC` and
+  both `COMMISSION` spellings begin with `ST` and are matched above it.
+- **An import is staged, not applied.** Dropping a file parses it, builds the
+  board it would produce against the current overrides and codes, and describes
+  the result — counts per lane, what will not print, every unknown code, every
+  custom job it cannot name, anything booked oddly. Nothing reaches the other
+  managers until Apply. It used to change the board under whoever else was
+  looking at it.
 - **Print column placement is computed, not pinned.** `balanceColumns` tries all
   16 splits of the four narrow categories and takes the shortest page. With 19
   cylinder lifters against 5 rotary, a fixed two-and-two layout wastes half a
@@ -132,6 +183,10 @@ Normalising happens in the transform, once, downstream.
   the production number, so it never returns. Reversible from History.
 - **Completion is not hiding.** Hidden means "not on this print"; completed
   means "finished". They are separate fields with separate consequences.
+- **History is per lane and is not a tab.** Finished production work, finished
+  T&M and finished internal builds are three different questions and one merged
+  list answered none of them. It is a button beside each lane's own controls,
+  because it is something you look up rather than something you keep open.
 - **Dates are calendar days, never instants.** `JSON.stringify` writes a Date as
   UTC, so local midnight on 12 Nov becomes `2026-11-11T14:00:00Z` — and Brisbane
   is UTC+10, the direction that loses a day. Both stores go through the same
@@ -182,12 +237,18 @@ To run the tests, copy from the private handoff folder into `tests/fixtures/`:
 | `Production Order Maintenance 20260821.xlsx` | `export-20260821.xlsx` |
 | `jobs.json` | `jobs.expected.json` |
 | `jobs_excluded.csv` | `excluded.expected.csv` |
+| `Production Order Maintenance 20260901.xlsx` | `export-20260901.xlsx` |
+
+The 01/09 export is the one that carries all three kinds of work, and it ships
+with the office's own hand-sorted `TM` / `INTERNAL` / `REGULAR` sheets. The lane
+tests score the rule against those sheets row by row; without the file they skip
+with a note.
 
 ```bash
 python -m http.server 8777
 ```
 
-Then open <http://127.0.0.1:8777/tests/>. 235 assertions, checked against the
+Then open <http://127.0.0.1:8777/tests/>. 277 assertions, checked against the
 reference implementation's own output row by row.
 
 Four deliberate differences from that output, each asserted explicitly rather
@@ -201,6 +262,12 @@ than quietly tolerated:
   one-off look like a standard model. The reference printed `Custom Lifter -
   GALAXY` for the drawing-fee row; the board still does until somebody answers
   the import prompt, and then prints whatever they chose.
+- **Water treatment is on the board rather than excluded** — 24 rows on the
+  21/08 export, in two categories, neither of which prints. The reference's
+  claim still holds row for row: nothing it kept off the sheet reaches the
+  sheet. "Excluded" and "does not print" are simply no longer the same
+  statement, and the tests assert against the printed set for exactly that
+  reason.
 - **Stock rows have `sales_order: null`** rather than the string `"nan"`, which
   is what Python's `str(NaN)` wrote into every empty cell.
 

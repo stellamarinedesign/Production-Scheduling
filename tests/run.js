@@ -7,8 +7,10 @@
 
 import { xlsxAdapter, validateColumns } from '../js/adapters/index.js';
 import { buildBoard, toDateOnly, toAU, toISO, addWeeks, jobTitle,
-         customNameOptions, CUSTOM_PREFIX, isEmptyCustomName } from '../js/transform.js';
-import { classify, CATEGORY_ORDER } from '../js/rules.js';
+         customNameOptions, CUSTOM_PREFIX, isEmptyCustomName,
+         printJobs, isPrintable, daysBetween, ageLabel } from '../js/transform.js';
+import { classify, CATEGORY_ORDER, PRINT_CATEGORIES, WATERMAKER_CATEGORIES,
+         laneFor, LANE, tmCategory, internalCategory } from '../js/rules.js';
 import { resolveDisplays, aliasGroups, stellaCode, labelFor, detectNewCodes,
          existingBoats, acceptNewCode, applyTemplate, boatRows } from '../js/vessel-codes.js';
 import { renderPrint, measure, fitToPage, balanceColumns } from '../js/print.js';
@@ -161,13 +163,18 @@ export async function run() {
     asOf: { y: 2026, m: 8, d: 21 },
   });
 
-  // The reference implementation dropped every `Component Part`. Two of them are
-  // real workshop jobs, so the board is now 50 rows where the fixture has 48.
-  eq('50 jobs on the board — 48 from the reference plus 2 real component parts',
-    board.jobs.length, expected.job_count + 2);
+  // THE REFERENCE PRODUCED A PRINTED SHEET, so that is what it must be compared
+  // against. `board.jobs` is now a wider thing: the horizon and the stock cap
+  // trim the paper rather than the board, and watermakers are on the board but
+  // have no column on it. `printJobs` is the set the reference was describing.
+  const printed = printJobs(board);
+  eq('50 jobs on the printed sheet — 48 from the reference plus 2 real component parts',
+    printed.length, expected.job_count + 2);
+  check('the board itself is wider than the sheet',
+    board.jobs.length > printed.length, `${board.jobs.length} vs ${printed.length}`);
   eq('horizon end still computed', board.meta.horizon_end, expected.horizon_end);
 
-  const componentJobs = board.jobs.filter((j) => j.is_component);
+  const componentJobs = printed.filter((j) => j.is_component);
   eq('the two component parts that are real jobs are on the board',
     componentJobs.map((j) => j.inventory_id).sort(),
     ['SHCELECPLINTHRIV43SY', 'SWD4PDRIV62SY']);
@@ -177,8 +184,12 @@ export async function run() {
   eq('...labelled through the usual rules, not their raw description',
     componentJobs.map((j) => j.label).sort(),
     ['Helm Seat Box SY20', 'Watertight Door 62SY']);
-  eq('the other 7 component parts are still out, on category alone',
-    board.excluded.filter((e) => /^ST/.test(e.inventory_id) && e.kind === 'category').length >= 7, true);
+  // They used to be excluded as "water treatment". They are now on the board in
+  // the watermaker categories and simply do not print.
+  eq('the water-treatment component parts are on the board but off the sheet',
+    board.jobs.filter((j) => j.is_component && WATERMAKER_CATEGORIES.includes(j.category)).length >= 5, true);
+  eq('...and none of them reach the paper',
+    printed.filter((j) => WATERMAKER_CATEGORIES.includes(j.category)), []);
   eq('nothing is dropped for being a component part any more',
     board.excluded.filter((e) => /component part/i.test(e.reason)), []);
 
@@ -189,7 +200,7 @@ export async function run() {
 
   // Match on production number rather than position: the two component parts
   // sort into the middle of their categories and would shift every index.
-  const gotByProd = new Map(board.jobs.map((j) => [j.prod_no, j]));
+  const gotByProd = new Map(printed.map((j) => [j.prod_no, j]));
   const diffs = [];
   expected.jobs.forEach((exp, i) => {
     const got = gotByProd.get(exp.prod_no);
@@ -225,31 +236,55 @@ export async function run() {
 
   // ---- exclusions ---------------------------------------------------------
   const expExcl = parseCSV(await (await fetch('fixtures/excluded.expected.csv')).text());
-  eq('42 rows excluded — the reference 44 less the 2 now kept',
-    board.excluded.length, expExcl.length - 2);
+  // The reference excluded 44. Two are real jobs now, and the water-treatment
+  // rows are on the board rather than excluded — so the only rows still
+  // EXCLUDED are the ones with no category at all: commissioning, powerpacks,
+  // davit spares. Everything the reference dropped is still off the sheet, but
+  // "off the sheet" and "not in the system" are no longer the same statement.
+  // Which reference rows moved rather than vanished is decided by classifying
+  // them, not by reading the old reason text: STKIT and STF rows were worded
+  // "spares/kit" and are water products all the same.
+  const nowWater = (e) => WATERMAKER_CATEGORIES.includes(classify(e.inventory_id).category);
+  // Two reference exclusions are no longer exclusions at all, for the same
+  // reason: the row is real work that simply has no place on this sheet. Water
+  // products have no column, and a job past the horizon is not yet due. Both
+  // are on the board; neither prints.
+  const offSheetNotOut = (e) => nowWater(e) || /horizon/i.test(e.reason);
+  const stillExcluded = expExcl.filter((e) =>
+    !/component part/i.test(e.reason) && !offSheetNotOut(e));
+  eq('every reference exclusion that was not water is still excluded',
+    board.excluded.length, stillExcluded.length);
 
   // Reasons are worded for the manager now, so compare on what was excluded and
   // why in kind, not on the exact sentence.
   const gotExcl = new Map(board.excluded.map((e) => [e.prod_no, e]));
   const wrong = [];
+  const onPaper = new Set(printed.map((j) => j.prod_no));
   for (const e of expExcl) {
     if (/component part/i.test(e.reason)) continue;          // deliberately kept now
+    // Water rows moved from "excluded" to "on the board, off the sheet". Either
+    // way the reference's claim holds: they do not print.
+    if (offSheetNotOut(e)) {
+      if (onPaper.has(e.prod_no)) wrong.push(`${e.prod_no} should not print`);
+      continue;
+    }
     const got = gotExcl.get(e.prod_no);
     if (!got) { wrong.push(`${e.prod_no} should be excluded (${e.reason})`); continue; }
     if (got.inventory_id !== e.inventory_id) wrong.push(`${e.prod_no} inventory id differs`);
   }
-  check('everything the reference excluded is still excluded', wrong.length === 0, wrong.slice(0, 8).join('\n'));
+  check('nothing the reference kept off the sheet reaches it now',
+    wrong.length === 0, wrong.slice(0, 8).join('\n'));
 
   // ---- excluded ordering --------------------------------------------------
   const capped2 = buildBoard(src.rows, {
     codeMap, horizonWeeks: 12, asOf: { y: 2026, m: 8, d: 21 }, maxStock: 2 });
   const kinds = capped2.excluded.map((e) => e.kind);
-  const firstOf = (k) => kinds.indexOf(k);
-  check('horizon cuts sort first, then the stock cap, then the rest',
-    firstOf('horizon') === 0
-    && firstOf('stockCap') > firstOf('horizon')
-    && firstOf('category') > firstOf('stockCap'),
-    kinds.join(','));
+  // The horizon and the stock cap no longer EXCLUDE anything — they mark a job
+  // as not printing and it stays on the board. So neither can appear here.
+  eq('the horizon is not an exclusion any more',
+    kinds.filter((k) => k === 'horizon' || k === 'stockCap'), []);
+  check('what is left is unmapped codes and things with no category',
+    kinds.every((k) => k === 'category' || k === 'unmapped'), kinds.join(','));
   eq('every excluded row carries the item description field',
     capped2.excluded.every((e) => 'item_description' in e), true);
 
@@ -260,35 +295,45 @@ export async function run() {
 
   // ---- horizon sensitivity (BOARD_SPEC §2) --------------------------------
   const asOf = { y: 2026, m: 8, d: 21 };
+  // Measured on the SHEET now. The board no longer changes size with the
+  // horizon — that is the whole point of the change — so counting board.jobs
+  // here would produce a flat line and prove nothing.
   const counts = {};
   for (const w of [4, 6, 8, 10, 12]) {
-    counts[w] = buildBoard(src.rows, { codeMap, horizonWeeks: w, asOf }).jobs.length;
+    counts[w] = printJobs(buildBoard(src.rows, { codeMap, horizonWeeks: w, asOf })).length;
   }
+  check('the board is the same size at every horizon',
+    new Set([4, 12, 26].map((w) =>
+      buildBoard(src.rows, { codeMap, horizonWeeks: w, asOf }).jobs.length)).size === 1, '');
   // The documented curve was 4->26, 6->33, 8->37, 10->39, 12->48, none->49.
   // Each figure gains the component parts that fall inside that horizon.
   eq('horizon curve still climbs with the documented shape',
     Object.values(counts).every((n, i, a) => i === 0 || n >= a[i - 1]), true);
-  eq('12 weeks shows 50', counts[12], 50);
-  eq('unlimited horizon shows 51',
-    buildBoard(src.rows, { codeMap, horizonWeeks: null, asOf }).jobs.length, 51);
+  eq('12 weeks prints 50', counts[12], 50);
+  eq('unlimited horizon prints 51',
+    printJobs(buildBoard(src.rows, { codeMap, horizonWeeks: null, asOf })).length, 51);
 
   // ---- stock --------------------------------------------------------------
-  const stock = board.jobs.filter((j) => j.is_stock);
+  const stock = printed.filter((j) => j.is_stock);
   eq('7 stock builds', stock.length, 7);
   check('stock shows STOCK, not a date', stock.every((j) => j.due_display === 'STOCK'), '');
   check('stock ignores the horizon',
-    buildBoard(src.rows, { codeMap, horizonWeeks: 4, asOf }).jobs.filter((j) => j.is_stock).length === 7, '');
+    printJobs(buildBoard(src.rows, { codeMap, horizonWeeks: 4, asOf })).filter((j) => j.is_stock).length === 7, '');
   check('stock sorts last within its category',
     (() => {
-      const d = board.jobs.filter((j) => j.category === 'Davits');
+      const d = printed.filter((j) => j.category === 'Davits');
       return d.findIndex((j) => j.is_stock) === d.length - d.filter((j) => j.is_stock).length;
     })(), '');
 
   const capped = buildBoard(src.rows, { codeMap, horizonWeeks: 12, asOf, maxStock: 3 });
-  eq('stock cap trims to 3 per category',
-    capped.jobs.filter((j) => j.is_stock && j.category === 'Davits').length, 3);
-  check('capped rows are excluded with a reason, not dropped',
-    capped.excluded.some((e) => e.kind === 'stockCap'), '');
+  eq('stock cap trims the sheet to 3 per category',
+    printJobs(capped).filter((j) => j.is_stock && j.category === 'Davits').length, 3);
+  check('...and the capped rows stay on the board, marked',
+    capped.jobs.filter((j) => j.over_stock_cap).length > 0
+    && capped.jobs.filter((j) => j.is_stock && j.category === 'Davits').length
+       === board.jobs.filter((j) => j.is_stock && j.category === 'Davits').length, '');
+  eq('the stock cap excludes nothing',
+    capped.excluded.filter((e) => e.kind === 'stockCap'), []);
 
   // ---- overrides ----------------------------------------------------------
   const ov = buildBoard(src.rows, {
@@ -297,25 +342,26 @@ export async function run() {
   });
   const hidden = ov.jobs.find((j) => j.prod_no === 'P01093');
   check('a hidden job stays in the record but off the count',
-    hidden.hidden === true && hidden.hidden_reason === 'waiting on parts' && ov.meta.job_count === 49, '');
+    hidden.hidden === true && hidden.hidden_reason === 'waiting on parts'
+    && ov.meta.job_count === board.meta.job_count - 1, '');
   const relabelled = ov.jobs.find((j) => j.prod_no === 'P01092');
   check('a label override applies and keeps the original for reset',
     relabelled.label === 'Custom label' && relabelled.base_label === 'SY22 Launcher', '');
 
   // ---- warnings -----------------------------------------------------------
   eq('no unmapped prefixes in this export', board.warnings.unmapped, []);
-  eq('no On Hold jobs on this board', board.warnings.onHold.length, 0);
+  eq('one On Hold job on this board', board.warnings.onHold.length, 1);
 
   const held = buildBoard(
     src.rows.map((r) => (r['Production Nbr.'] === 'P01093' ? { ...r, Status: 'On Hold' } : r)),
     { codeMap, horizonWeeks: 12, asOf },
   );
-  eq('an On Hold job is flagged, not hidden', held.warnings.onHold.length, 1);
+  eq('an On Hold job is flagged, not hidden', held.warnings.onHold.length, 2);
   check('On Hold only warns for jobs that would actually appear',
     buildBoard(
       src.rows.map((r) => (r['Production Nbr.'] === 'P01093' ? { ...r, Status: 'On Hold' } : r)),
       { codeMap, horizonWeeks: 12, asOf, overrides: { P01093: { hidden: true } } },
-    ).warnings.onHold.length === 0, '');
+    ).warnings.onHold.length === 1, '');
 
   // ---- new vessel codes ---------------------------------------------------
   eq('a fully-known export raises no new codes', detectNewCodes(src.rows, codeMap), []);
@@ -369,8 +415,8 @@ export async function run() {
   eq('more than one does', jobTitle({ label: 'Watertight Door 62SY', qty: 5 }), 'Watertight Door 62SY x5');
   eq('a missing quantity is treated as one', jobTitle({ label: 'X' }), 'X');
 
-  const qtyJobs = board.jobs.filter((j) => j.qty > 1);
-  eq('the export carries three multi-quantity jobs on the board',
+  const qtyJobs = printed.filter((j) => j.qty > 1);
+  eq('the export carries three multi-quantity jobs on the sheet',
     qtyJobs.map((j) => `${j.inventory_id}:${j.qty}`).sort(),
     ['SHCELECPLINTHRIV43SY:5', 'STCFXCHOCK:2', 'SWD4PDRIV62SY:5']);
   eq('...and each shows it', qtyJobs.map((j) => jobTitle(j)).sort(),
@@ -386,6 +432,143 @@ export async function run() {
       overrides: { [qtyJobs[0].prod_no]: { labelOverride: 'Bespoke' } } });
     return jobTitle(b.jobs.find((j) => j.prod_no === qtyJobs[0].prod_no));
   })(), `Bespoke x${qtyJobs[0].qty}`);
+
+  // ---- lanes: production, T&M, internal -----------------------------------
+  //
+  // The office sorts the export into three sheets by hand. Two fields
+  // reproduce that split exactly, and the 01/09 export ships the hand-sorted
+  // sheets alongside ALL RECORDS, so the rule can be checked against them.
+  const laneOf = (over) => laneFor({ 'Order Type': 'RO', 'Order Nbr.': '', Type: 'Finished Good', ...over });
+
+  eq('Order Type TM is time & materials', laneOf({ 'Order Type': 'TM' }), LANE.tm);
+  eq('...whatever else the row says',
+    laneOf({ 'Order Type': 'TM', 'Order Nbr.': 'SO002015', Type: 'Component Part' }), LANE.tm);
+  eq('a component part with no sales order is internal',
+    laneOf({ Type: 'Component Part' }), LANE.internal);
+  eq('a component part WITH a sales order is production',
+    laneOf({ Type: 'Component Part', 'Order Nbr.': 'SO002029' }), LANE.production);
+  // This is the distinction that keeps the two real component-part jobs on the
+  // board: a watertight door sold against an order is production work.
+  eq('a finished good with no sales order is a stock build, not internal',
+    laneOf({}), LANE.production);
+
+  // The 21/08 export is the ERP's pre-filtered production inquiry, so every row
+  // in it is production work. The lane rule must not invent lanes that are not
+  // there.
+  eq('the 21/08 export is all production', [board.tm.length, board.internal.length], [0, 0]);
+
+  const newFile = await fetch('fixtures/export-20260901.xlsx', { cache: 'no-store' });
+  if (newFile.ok) {
+    const src2 = await xlsxAdapter.fetch({
+      file: new File([await newFile.arrayBuffer()], 'export-20260901.xlsx') });
+    eq('the newer export is read from ALL RECORDS, not the hand-sorted sheets',
+      src2.sheetName, 'ALL RECORDS');
+
+    // Score the rule against the office's own three sheets, row by row.
+    const XLSXm = await import('https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs');
+    const wb = XLSXm.read(await (await fetch('fixtures/export-20260901.xlsx')).arrayBuffer(),
+      { cellDates: true });
+    const sheet = (n) => XLSXm.utils.sheet_to_json(wb.Sheets[n], { defval: null });
+    const score = (name, expectedLane) => {
+      const rows = sheet(name);
+      const wrongRows = rows.filter((r) => laneFor(r) !== expectedLane);
+      check(`every row on the ${name} sheet reads as ${expectedLane}`,
+        rows.length > 0 && wrongRows.length === 0,
+        `${wrongRows.length} of ${rows.length} wrong: ${wrongRows.slice(0, 3).map((r) => r['Production Nbr.']).join(', ')}`);
+    };
+    score('TM', LANE.tm);
+    score('INTERNAL', LANE.internal);
+    score('REGULAR', LANE.production);
+
+    const b2 = buildBoard(src2.rows, { codeMap, horizonWeeks: 12, asOf: { y: 2026, m: 9, d: 1 } });
+    eq('T&M comes through at the size of its own sheet', b2.tm.length, sheet('TM').length);
+    check('...and internal is at least the size of its own sheet',
+      b2.internal.length >= sheet('INTERNAL').length,
+      `${b2.internal.length} vs ${sheet('INTERNAL').length}`);
+
+    // T&M categories: the sales order is the only distinction the data
+    // supports, and Project agrees with it on every row.
+    eq('T&M splits on whether there is a sales order behind it',
+      [...new Set(b2.tm.map((j) => j.category))].sort(),
+      ['Customer work', 'Workshop & internal']);
+    check('...and Project agrees with that split on every row',
+      sheet('TM').every((r) => (tmCategory(r) === 'Customer work')
+        === (String(r.Project ?? '').trim() !== 'X')), '');
+
+    eq('internal jobs are grouped by product line',
+      [...new Set(b2.internal.map((j) => j.category))].sort(),
+      ['Cylinder lifter parts', 'Davit parts', 'Watermaker parts']);
+    eq('internal category comes off the part number',
+      ['SL0452', 'ST0255', 'SDC0168', 'SXX1'].map(internalCategory),
+      ['Cylinder lifter parts', 'Watermaker parts', 'Davit parts', 'Other parts']);
+
+    // A T&M row's item code is always STELLA-REPAIR-T&M, so the production
+    // description is the job. Running it through the vessel rules would invent
+    // a boat code out of nothing.
+    check('a T&M job is named by its description, not a vessel code',
+      b2.tm.every((j) => j.label && !/^S[A-Z]*RIV/.test(j.label)),
+      b2.tm.slice(0, 3).map((j) => j.label).join(' | '));
+
+    // Neither lane belongs on the Gantt, and this is why: the ERP stamps start
+    // and end to the day the order was raised and never revises it.
+    check('every T&M row has start == end, so it has no schedule to chart',
+      b2.tm.every((j) => j.unscheduled), '');
+    check('...which is what the age is for instead',
+      b2.tm.every((j) => typeof j.age_days === 'number'), '');
+    check('some of them have been open for the better part of a year',
+      Math.max(...b2.tm.map((j) => j.age_days ?? 0)) > 250, '');
+
+    eq('side-lane jobs never reach the printed sheet',
+      printJobs(b2).filter((j) => j.lane !== LANE.production), []);
+  } else {
+    check('the 01/09 export fixture is present', false, 'export-20260901.xlsx not found');
+  }
+
+  eq('days between two calendar days', daysBetween({ y: 2026, m: 8, d: 21 }, { y: 2026, m: 9, d: 1 }), 11);
+  eq('age reads in days up to eight weeks', ageLabel(40), '40 days');
+  eq('...then in months', ageLabel(90), '3 months');
+  eq('...then in years', ageLabel(400), '1.1 years');
+  eq('one day is not "1 days"', ageLabel(1), '1 day');
+
+  // ---- watermakers --------------------------------------------------------
+  //
+  // Water products were excluded outright. They are on the board now, split by
+  // the one thing that reliably separates a finished unit from a kit: an item
+  // code ending in flow rate over voltage.
+  eq('a unit code ends in litres over volts',
+    ['STAQSAB/240/230', 'STG4/240/230', 'STG4LA/160/230'].map((c) => classify(c).category),
+    ['Watermakers', 'Watermakers', 'Watermakers']);
+  eq('a kit, a filter and an upgrade are accessories',
+    ['STKITJUMBO', 'STMEDIAFILTER', 'STG3COMFILTUPGRADE', 'STPH'].map((c) => classify(c).category),
+    ['Watermaker accessories', 'Watermaker accessories',
+      'Watermaker accessories', 'Watermaker accessories']);
+  // STAUTO24 ends in a voltage but is a flush unit. The rule anchors on the
+  // PAIR of numbers for exactly this reason.
+  eq('a trailing voltage alone is not a watermaker',
+    classify('STAUTO24').category, 'Watermaker accessories');
+  // ORDERING TRAP, same family as the COMMISSION one: STL, STC and both
+  // COMMISSION spellings all begin with ST and must still win.
+  eq('launchers, chocks and commissioning are not water',
+    ['STLRIVSY22', 'STCFXCHOCK', 'STLRIVCOMMISSION'].map((c) => classify(c).category),
+    ['Launchers, Doors & Chocks', 'Launchers, Doors & Chocks', null]);
+  eq('no watermaker category is in the print layout',
+    PRINT_CATEGORIES.filter((c) => WATERMAKER_CATEGORIES.includes(c)), []);
+  check('the export puts water work on the board',
+    board.jobs.filter((j) => WATERMAKER_CATEGORIES.includes(j.category)).length === 24,
+    String(board.jobs.filter((j) => WATERMAKER_CATEGORIES.includes(j.category)).length));
+
+  // ---- the horizon is a print setting -------------------------------------
+  const near = buildBoard(src.rows, { codeMap, horizonWeeks: 4, asOf: { y: 2026, m: 8, d: 21 } });
+  check('a job past the horizon stays on the board, marked',
+    near.jobs.some((j) => j.beyond_horizon) && near.jobs.length === board.jobs.length, '');
+  eq('...and does not print',
+    printJobs(near).filter((j) => j.beyond_horizon), []);
+  check('isPrintable rejects each reason separately', [
+    isPrintable({ category: 'Davits' }),
+    isPrintable({ category: 'Davits', beyond_horizon: true }),
+    isPrintable({ category: 'Davits', over_stock_cap: true }),
+    isPrintable({ category: 'Watermakers' }),
+  ].join(',') === 'true,false,false,false', '');
 
   // ---- naming a custom one-off --------------------------------------------
   // Two columns, neither reliably right, so the transform reads both and says
@@ -622,8 +805,9 @@ export async function run() {
   eq('every job is either charted or listed, none lost',
     g.groups.flatMap((x) => x.rows).length + g.unscheduled.length, gJobs.length);
   eq('bands follow board order, not date order',
-    g.groups.map((x) => x.category),
-    ['Launchers, Doors & Chocks', 'Cylinder lifters', 'Ladders and Chairs', 'Rotary Lifters', 'Davits']);
+    g.groups.map((x) => x.category), CATEGORY_ORDER);
+  check('watermakers get their own bands, at the bottom',
+    CATEGORY_ORDER.slice(-2).join('|') === WATERMAKER_CATEGORIES.join('|'), CATEGORY_ORDER.join(','));
   check('within a band, earliest start first',
     g.groups.every((x) => x.rows.every((r, i, a) => i === 0 || a[i - 1].start_date <= r.start_date)), '');
 
@@ -746,12 +930,21 @@ export async function run() {
   eq('nothing packs into nothing', packLanes([]), []);
 
   // Interval partitioning is optimal: lanes used == peak simultaneous jobs.
+  // packLanes enforces a ONE-DAY GAP between bars in a lane, so that a job
+  // ending Friday and the next starting Monday still read as two. Two bars that
+  // merely touch therefore conflict, and the bound has to say so: comparing
+  // against bare overlap understates the lanes needed, which went unnoticed
+  // while every category was small enough for the two to agree.
+  const day = 86400000;
+  const conflicts = (a, b) =>
+    Date.parse(a.start_date) <= Date.parse(b.end_date) + day
+    && Date.parse(b.start_date) <= Date.parse(a.end_date) + day;
   const gLanes = ganttLayout(gJobs, { asOf });
   for (const grp of gLanes.groups) {
-    const peak = Math.max(...grp.rows.map((r) =>
-      grp.rows.filter((o) => o.start_date <= r.end_date && o.end_date >= r.start_date).length));
-    check(`lanes for ${grp.category} are as few as the overlaps allow`,
-      grp.lanes.length <= peak, `${grp.lanes.length} lanes, peak overlap ${peak}`);
+    if (!grp.rows.length) continue;
+    const peak = Math.max(...grp.rows.map((r) => grp.rows.filter((o) => conflicts(o, r)).length));
+    check(`lanes for ${grp.category} are as few as the gap allows`,
+      grp.lanes.length <= peak, `${grp.lanes.length} lanes, peak conflict ${peak}`);
   }
   check('packing loses no job',
     gLanes.groups.every((grp) => grp.lanes.flat().length === grp.rows.length), '');

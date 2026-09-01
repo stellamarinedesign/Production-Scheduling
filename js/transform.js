@@ -10,6 +10,8 @@
 
 import {
   CATEGORY_ORDER, BOARD_STATUSES, INTERNAL_CUSTOMER, HULL_RE,
+  LANE, laneFor, tmCategory, internalCategory,
+  TM_CATEGORY_ORDER, INTERNAL_CATEGORY_ORDER, PRINT_CATEGORIES,
   VESSEL_IN_DESC_RE, CUSTOMER_SUFFIX_RE, LABEL_OVERRIDES, COMPONENT_TYPE,
   EXCLUSION_ORDER, classify,
 } from './rules.js';
@@ -253,6 +255,118 @@ export function shortLabel({
 }
 
 // ---------------------------------------------------------------------------
+// What reaches the paper
+//
+// Three separate reasons a real job does not print, all of them page-fitting
+// decisions rather than judgements about the work:
+//   - its category is not in PRINT_LAYOUT (watermakers)
+//   - it is past the horizon
+//   - the stock cap already took enough of its category
+// None of them removes it from the board, the Gantt or the order count.
+// ---------------------------------------------------------------------------
+
+const PRINTABLE = new Set(PRINT_CATEGORIES);
+
+export const isPrintable = (j) =>
+  PRINTABLE.has(j.category) && !j.beyond_horizon && !j.over_stock_cap;
+
+/** The production jobs that go on the printed sheet, in board order. */
+export const printJobs = (board) =>
+  (board?.jobs ?? []).filter((j) => !j.hidden && !j.completed && isPrintable(j));
+
+// ---------------------------------------------------------------------------
+// T&M and internal jobs
+//
+// These are NOT production orders and are deliberately not modelled as if they
+// were. Two differences drive everything below.
+//
+// There is no vessel code and no label to derive: a T&M row's item code is
+// always STELLA-REPAIR-T&M, so the production description IS the name of the
+// job — "Machine Rudder Components", "Maintenance on Laser cutter". Running it
+// through shortLabel would produce a boat code out of thin air.
+//
+// And there is no schedule. Every T&M row in the 01/09 export has Start Date
+// equal to End Date equal to the date the order was raised: the ERP stamps the
+// day and nobody revises it. Eight of the thirteen internal rows are the same.
+// A due date built on that is fiction, and a Gantt bar built on it is a
+// zero-width mark at an arbitrary point — which is why neither lane goes on the
+// chart. What IS true and useful is how long the job has been open, so that is
+// what these carry instead.
+// ---------------------------------------------------------------------------
+
+/** Whole days from `from` to `to`, both calendar days. */
+export function daysBetween(from, to) {
+  if (!from || !to) return null;
+  return Math.round((Date.UTC(to.y, to.m - 1, to.d) - Date.UTC(from.y, from.m - 1, from.d)) / 86400000);
+}
+
+export function ageLabel(days) {
+  if (days === null || days === undefined) return '';
+  if (days <= 0) return 'today';
+  if (days === 1) return '1 day';
+  if (days < 56) return `${days} days`;
+  const months = Math.round(days / 30.4);
+  return months < 12 ? `${months} months` : `${(days / 365).toFixed(1)} years`;
+}
+
+function sideJob(r, lane, { overrides, asOf }) {
+  const prodNo = text(r['Production Nbr.']);
+  const inv = text(r['Inventory ID']);
+  const ov = overrides[prodNo] ?? {};
+  const status = text(r['Status']);
+  const customer = text(r['Customer Name']);
+  const startDate = toDateOnly(r['Start Date']);
+  const endDate = toDateOnly(r['End Date']);
+  const opened = startDate ?? toDateOnly(r['Created Date']);
+  const age = daysBetween(opened, asOf);
+
+  // The description is the job. Trimmed of the ERP's own boilerplate prefix so
+  // twenty rows do not all begin with the same eight words.
+  const described = text(r['Production Description']).replace(/^Stella\s+Repair\s*[-–]\s*/i, '').trim();
+
+  return {
+    prod_no: prodNo,
+    lane,
+    category: lane === LANE.tm ? tmCategory(r) : internalCategory(inv),
+    label: ov.labelOverride || described || inv,
+    base_label: described || inv,
+    inventory_id: inv,
+    description: described,
+    item_description: text(r['Item Description']),
+    customer,
+    // A T&M row with no customer at all is the workshop's own work; saying so
+    // beats an empty cell.
+    customer_display: customer && customer !== INTERNAL_CUSTOMER ? customer : 'Stella Marine',
+    project: textOrNull(r['Project']) === 'X' ? null : textOrNull(r['Project']),
+    sales_order: textOrNull(r['Order Nbr.']),
+    customer_po: textOrNull(r['Customer Order Nbr.']),
+    status,
+    type: text(r['Type']),
+    qty: Number(r['Qty. to Produce']) || 1,
+    notes: textOrNull(r['Internal Notes']),
+    on_hold: status === 'On Hold',
+    // Kept so the record is complete and the import review can show them, but
+    // NOT surfaced as a due date — see the note above.
+    start_date: toISO(startDate),
+    end_date: toISO(endDate),
+    opened_date: toISO(opened),
+    opened_display: opened ? toAU(opened) : '',
+    age_days: age,
+    age_display: ageLabel(age),
+    // The ERP stamps start and end the same day on a row nobody has scheduled.
+    // Say so rather than drawing a one-day job.
+    unscheduled: Boolean(startDate && endDate
+      && toISO(startDate) === toISO(endDate)),
+    hidden: Boolean(ov.hidden),
+    hidden_reason: ov.hiddenReason ?? null,
+    completed: Boolean(ov.completed),
+    completed_at: ov.completedAt ?? null,
+    completed_by: ov.completedBy ?? null,
+    progress: ov.completed ? 1 : (typeof ov.progress === 'number' ? ov.progress : null),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // The board
 // ---------------------------------------------------------------------------
 
@@ -284,6 +398,8 @@ export function buildBoard(rows, opts = {}) {
   const cutoffOrd = cutoff ? ord(cutoff) : null;
 
   const jobs = [];
+  const tmJobs = [];
+  const internalJobs = [];
   const excluded = [];
   const completed = [];
 
@@ -307,6 +423,22 @@ export function buildBoard(rows, opts = {}) {
       kind,
     });
 
+    // Which of the three kinds of work this is. Decided BEFORE the category
+    // map, because the map would mislead: every T&M row is booked to
+    // STELLA-REPAIR-T&M, which starts with ST and would read as a water
+    // product. See rules.js `laneFor`.
+    const lane = laneFor(r);
+
+    const status0 = text(r['Status']);
+    if (!BOARD_STATUSES.has(status0)) { drop(`status '${status0}' not shown on board`, 'category'); continue; }
+
+    if (lane !== LANE.production) {
+      const job = sideJob(r, lane, { overrides, asOf });
+      if (job.completed) { completed.push(job); if (!includeCompleted) continue; }
+      (lane === LANE.tm ? tmJobs : internalJobs).push(job);
+      continue;
+    }
+
     const { category, excludeReason } = classify(inv);
     if (excludeReason) {
       drop(excludeReason, excludeReason.startsWith('unmapped') ? 'unmapped' : 'category');
@@ -317,8 +449,7 @@ export function buildBoard(rows, opts = {}) {
     // record so the manager view can flag a component part, not used to drop it.
     const type = text(r['Type']);
 
-    const status = text(r['Status']);
-    if (!BOARD_STATUSES.has(status)) { drop(`status '${status}' not shown on board`, 'category'); continue; }
+    const status = status0;
 
     const endDate = toDateOnly(r['End Date']);
     if (!endDate) { drop('no End Date', 'category'); continue; }
@@ -356,6 +487,7 @@ export function buildBoard(rows, opts = {}) {
 
     const job = {
       prod_no: prodNo,
+      lane: LANE.production,
       category,
       description: text(r['Production Description']),
       label: ov.labelOverride || label,
@@ -410,12 +542,18 @@ export function buildBoard(rows, opts = {}) {
       if (!includeCompleted) continue;
     }
 
-    // Stock builds carry no real due-date commitment — they stay on the board
-    // regardless of horizon, shown as STOCK.
-    if (cutoffOrd !== null && ord(endDate) > cutoffOrd && !isStock && !job.completed) {
-      drop(`due ${toAU(endDate)}, beyond the ${horizonWeeks}-week horizon`, 'horizon');
-      continue;
-    }
+    // THE HORIZON IS A PRINT SETTING, NOT A FILTER.
+    //
+    // It used to drop rows out of the board entirely, which made the app a
+    // thing for producing one sheet of paper. It is used far more for looking
+    // at what the workshop has committed to, and an order due in five months is
+    // still committed work. So a job beyond the horizon stays on the board and
+    // on the Gantt, marked, and the printed sheet is what the horizon trims.
+    //
+    // Stock builds carry no due-date commitment at all — they are never trimmed
+    // by the horizon, and print as STOCK.
+    job.beyond_horizon = cutoffOrd !== null && ord(endDate) > cutoffOrd
+      && !isStock && !job.completed;
 
     jobs.push(job);
   }
@@ -428,29 +566,17 @@ export function buildBoard(rows, opts = {}) {
     || (a.is_stock ? 1 : 0) - (b.is_stock ? 1 : 0)
     || String(a.due_date ?? '9999').localeCompare(String(b.due_date ?? '9999')));
 
-  // Per-board stock cap. Trims only when an export carries more stock builds
-  // than the page will hold; off by default.
-  let kept = jobs;
+  // Stock cap — like the horizon, a question about what fits on the page, so it
+  // marks rather than removes. Counted after the sort, so the cap keeps the
+  // stock builds that sort first rather than whichever the export listed first.
+  const kept = jobs;
   if (maxStock !== null && maxStock !== undefined && maxStock !== '') {
     const seen = new Map();
-    kept = [];
     for (const j of jobs) {
-      if (j.is_stock) {
-        const n = (seen.get(j.category) ?? 0) + 1;
-        seen.set(j.category, n);
-        if (n > Number(maxStock)) {
-          excluded.push({
-            prod_no: j.prod_no,
-            inventory_id: j.inventory_id,
-            description: j.description.slice(0, 70),
-            item_description: j.item_description ?? '',
-            reason: `stock build beyond the cap of ${maxStock} per category`,
-            kind: 'stockCap',
-          });
-          continue;
-        }
-      }
-      kept.push(j);
+      if (!j.is_stock) continue;
+      const n = (seen.get(j.category) ?? 0) + 1;
+      seen.set(j.category, n);
+      j.over_stock_cap = n > Number(maxStock);
     }
   }
 
@@ -463,9 +589,26 @@ export function buildBoard(rows, opts = {}) {
     || String(a.reason).localeCompare(String(b.reason))
     || String(a.prod_no).localeCompare(String(b.prod_no)));
 
+  // Side lanes: category order, then oldest first — what a manager wants from
+  // these tabs is what has been sitting the longest.
+  const sortSide = (rows, order) => {
+    const r = new Map(order.map((c, i) => [c, i]));
+    return rows.sort((a, b) =>
+      (r.get(a.category) ?? 99) - (r.get(b.category) ?? 99)
+      || (b.age_days ?? 0) - (a.age_days ?? 0)
+      || String(a.prod_no).localeCompare(String(b.prod_no)));
+  };
+  sortSide(tmJobs, TM_CATEGORY_ORDER);
+  sortSide(internalJobs, INTERNAL_CATEGORY_ORDER);
+
   const visible = kept.filter((j) => !j.hidden && !j.completed);
+  const onPaper = visible.filter(isPrintable);
+  const tmVisible = tmJobs.filter((j) => !j.hidden && !j.completed);
+  const internalVisible = internalJobs.filter((j) => !j.hidden && !j.completed);
   return {
     jobs: kept,
+    tm: tmJobs,
+    internal: internalJobs,
     excluded,
     completed: completed.sort((a, b) =>
       String(b.completed_at ?? '').localeCompare(String(a.completed_at ?? ''))),
@@ -479,6 +622,12 @@ export function buildBoard(rows, opts = {}) {
       // the bulk-complete sweep.
       pastDue: visible.filter((j) => j.end_date && j.end_date < toISO(asOf)),
       components: visible.filter((j) => j.is_component),
+      // On the board but not on the printed sheet. NOT exclusions — the horizon
+      // and the stock cap are page-fitting settings, and these are real jobs the
+      // manager can see everywhere except on paper.
+      beyondHorizon: visible.filter((j) => j.beyond_horizon),
+      overStockCap: visible.filter((j) => j.over_stock_cap),
+      offPaper: visible.filter((j) => !isPrintable(j)),
       // Custom jobs the board can only guess the name of. A job override means
       // a human has settled it — whichever way they answered, including the
       // reading the board would have picked anyway, so it is never re-asked.
@@ -495,6 +644,9 @@ export function buildBoard(rows, opts = {}) {
       max_stock: maxStock ?? null,
       row_count: rows.length,
       job_count: visible.length,
+      tm_count: tmVisible.length,
+      internal_count: internalVisible.length,
+      print_count: onPaper.length,
     },
     resolved,
   };

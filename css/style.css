@@ -445,6 +445,88 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 .tab:hover { color: var(--white); }
 .tab[aria-current="page"] { color: var(--white); border-bottom-color: var(--red-bright); }
 
+/* Print sits alone on the right. It is the one tab that is a destination
+   rather than a view of the work, and the gap says so without a divider. */
+.tab-spacer { flex: 1 1 auto; }
+
+/* ---------- the side lanes: internal factory jobs, T&M ---------- */
+/* Prod nbr / job / for-or-item / age / actions. No due date column: the ERP
+   stamps start and end to the day the order was raised on every one of these,
+   so a due date would be a number that means nothing. */
+.lane-table { font-size: 13.5px; }
+.lane-row {
+  display: grid; grid-template-columns: 78px 1.6fr 1fr 92px 172px;
+  align-items: baseline; gap: 10px;
+  padding: 7px 0; border-bottom: 1px solid var(--line);
+}
+.lane-head {
+  font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text-dim); border-bottom: 1px solid var(--line); padding-bottom: 6px;
+}
+.lane-row .prod { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.lane-row .label { color: var(--white); }
+.lane-row .who { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lane-row .age { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+/* Six months open is not a schedule slipping, it is a job nobody has closed. */
+.lane-row .age.is-stale { color: var(--red-bright); }
+.lane-row .acts { display: flex; gap: 6px; justify-content: flex-end; }
+.lane-row.is-hidden { opacity: .45; }
+.lane-row.is-hidden .label { text-decoration: line-through; }
+.lane-row .flag {
+  margin-left: 8px; font-size: 10px; font-weight: 700; letter-spacing: .1em;
+  color: var(--red-bright);
+}
+
+/* History is a panel inside each lane now, not a tab of its own. */
+.history-panel { margin-top: 4px; }
+.mini.quiet { color: var(--text-dim); border-color: var(--line); }
+.mini.quiet[aria-pressed="true"] { color: var(--white); border-color: var(--red-bright); }
+
+/* A "Decide now" button in a warning row stretched across its whole grid
+   track, which read as a banner rather than a control. */
+.xrow .mini { justify-self: start; }
+
+/* Watermakers on the orders view. Same rows as everything else, set below a
+   rule because they are the part of the board that never reaches the paper. */
+.board-offsheet { margin-top: 26px; border-top: 1px solid var(--line); padding-top: 14px; }
+.offsheet-note {
+  font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text-dim); margin-bottom: 12px;
+}
+
+/* ---------- import review ---------- */
+.import-current { color: var(--text-dim); font-size: 13px; margin-top: 16px; }
+.import-review { margin-top: 18px; }
+.import-review h2 {
+  font-size: 15px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+  border-bottom: 2px solid var(--red-deep); padding-bottom: 6px; margin-bottom: 10px;
+}
+.import-review .lede { color: var(--text-dim); font-size: 13px; margin-bottom: 16px; }
+.import-stats { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
+.import-stats .stat {
+  flex: 1 1 150px; background: var(--band); border: 1px solid var(--line);
+  border-radius: 10px; padding: 12px 14px;
+}
+.import-stats .stat b { display: block; font-size: 26px; line-height: 1.1; color: var(--white); }
+.import-stats .stat span { display: block; font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+.import-stats .stat em { display: block; font-size: 11px; color: var(--text-dim); opacity: .75; font-style: normal; margin-top: 4px; }
+
+.import-flags h3 {
+  font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text-dim); margin-bottom: 8px;
+}
+.import-flags .flag {
+  border-left: 3px solid var(--line); background: var(--band);
+  padding: 10px 14px; margin-bottom: 8px; border-radius: 0 8px 8px 0;
+}
+.import-flags .flag b { display: block; font-size: 13.5px; color: var(--white); margin-bottom: 3px; }
+.import-flags .flag span { font-size: 12.5px; color: var(--text-dim); }
+.flag-bad { border-left-color: var(--red-bright); }
+.flag-warn { border-left-color: #C8912F; }
+.flag-info { border-left-color: var(--line); }
+.import-clean { color: var(--text-dim); font-size: 13px; margin-bottom: 18px; }
+.import-actions { display: flex; gap: 10px; margin-top: 18px; }
+
 /* Kept in the layout but out of sight, so the print view can still be
    measured for auto-fit while the edit tab is showing. display:none would
    report a height of zero. */
