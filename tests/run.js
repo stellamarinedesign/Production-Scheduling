@@ -8,9 +8,10 @@
 import { xlsxAdapter, validateColumns } from '../js/adapters/index.js';
 import { buildBoard, toDateOnly, toAU, toISO, addWeeks, jobTitle,
          customNameOptions, CUSTOM_PREFIX, isEmptyCustomName,
-         printJobs, isPrintable, daysBetween, ageLabel,
+         printJobs, isPrintable, daysBetween, ageLabel, retainedRows,
          effectiveStatus, snapshotOf, fromSnapshot, shortLabel, isCustomBuild } from '../js/transform.js';
 import { classify, CATEGORY_ORDER, PRINT_CATEGORIES, WATERMAKER_CATEGORIES, LABEL_OVERRIDES,
+         ANCHOR_CATEGORY,
          laneFor, LANE, tmCategory, internalCategory,
          isWaterUnit, WATERMAKER_UNIT_RE } from '../js/rules.js';
 import { resolveDisplays, aliasGroups, stellaCode, labelFor, detectNewCodes,
@@ -18,7 +19,8 @@ import { resolveDisplays, aliasGroups, stellaCode, labelFor, detectNewCodes,
 import { renderPrint, measure, fitToPage, balanceColumns } from '../js/print.js';
 import { ganttLayout, packLanes, renderGantt as renderGanttChart } from '../js/gantt.js';
 import { fitCodesSheet, measureSheet, renderCodesSheet, CONTENT_H, TYPE_STEPS } from '../js/codes-print.js';
-import { packRows, unpackRows, isEmptyOverride, OVERRIDE_FIELDS } from '../js/store.js';
+import { packRows, unpackRows, isEmptyOverride, OVERRIDE_FIELDS,
+         isNewerImport } from '../js/store.js';
 
 const results = [];
 const check = (name, pass, detail = '') => results.push({ name, pass, detail });
@@ -832,6 +834,77 @@ export async function run() {
     }),
     'Boarding Ladder 56SY');
 
+  // ---- what an applied import carries forward -----------------------------
+  //
+  // The import record is ONE Firestore document and Firestore caps a document
+  // at 1 MiB. The 01/09 export packs to 1.12 MB on its own, and the record also
+  // carries the rendered board - 1.38 MB, refused, silently, so the upload
+  // looked fine to the manager who made it and reached nobody else.
+  //
+  // 1047 of those 1216 rows are Completed, Closed or Canceled and the board can
+  // never show them. An applied import keeps the open order book.
+  const newFile2 = await fetch('fixtures/export-20260901.xlsx', { cache: 'no-store' });
+  if (newFile2.ok) {
+    const src3 = await xlsxAdapter.fetch({
+      file: new File([await newFile2.arrayBuffer()], 'export-20260901.xlsx') });
+    const keep = retainedRows(src3.rows);
+    // Measured in UTF-8 BYTES, which is what Firestore counts. A JS string's
+    // .length counts UTF-16 units and under-reports every em dash in every ERP
+    // description by two.
+    const bytes = (x) => new TextEncoder().encode(String(x)).length;
+    // The record is the rows AND the rendered board, which is what tipped it
+    // over: the rows alone are just under the limit and looked survivable.
+    const record = (rows) => bytes(packRows(rows))
+      + bytes(JSON.stringify(buildBoard(rows, { codeMap, horizonWeeks: 12,
+        asOf: { y: 2026, m: 9, d: 1 } }).jobs));
+    check('the whole file is too large for one Firestore document',
+      record(src3.rows) > 1048576, `${record(src3.rows)} bytes`);
+    check('...and the open order book is comfortably inside it',
+      record(keep) < 1048576 * 0.5, `${record(keep)} bytes`);
+    eq('only open statuses are kept',
+      [...new Set(keep.map((r) => String(r.Status).trim()))].sort(),
+      ['In Process', 'On Hold', 'Planned', 'Released']);
+    check('it is a real reduction', keep.length < src3.rows.length / 5,
+      `${keep.length} of ${src3.rows.length}`);
+
+    // The board must be identical either way: everything dropped was already
+    // being dropped by the status gate.
+    const full = buildBoard(src3.rows, { codeMap, horizonWeeks: 12, asOf: { y: 2026, m: 9, d: 1 } });
+    const trim = buildBoard(keep, { codeMap, horizonWeeks: 12, asOf: { y: 2026, m: 9, d: 1 } });
+    eq('trimming changes nothing the board shows',
+      [trim.jobs.length, trim.tm.length, trim.internal.length],
+      [full.jobs.length, full.tm.length, full.internal.length]);
+    eq('...right down to the production numbers',
+      trim.jobs.map((j) => j.prod_no), full.jobs.map((j) => j.prod_no));
+    // What it does change: the excluded list stops being 1108 rows of history.
+    check('and the excluded list becomes readable',
+      trim.excluded.length < full.excluded.length / 10,
+      `${trim.excluded.length} vs ${full.excluded.length}`);
+  }
+  eq('an empty export retains nothing', retainedRows([]), []);
+  eq('a completed row is not retained',
+    retainedRows([{ Status: 'Completed' }, { Status: 'Closed' }, { Status: 'Canceled' }]), []);
+
+  // ---- a published import never moves the board backwards -----------------
+  //
+  // This was an inequality check, and it cost a manager their import: a
+  // snapshot carrying an OLDER record replaced the export they had just
+  // applied. It surfaced when a publish was refused for being too large - the
+  // newest record in the collection was still the previous one, and the watcher
+  // handed it straight back.
+  const rec = (at) => ({ retrievedAt: at, rowsJson: '[]' });
+  check('a newer export is taken',
+    isNewerImport(rec('2026-09-01T00:00:00.000Z'), '2026-08-21T00:00:00.000Z'), '');
+  check('an OLDER one is not',
+    !isNewerImport(rec('2026-08-21T00:00:00.000Z'), '2026-09-01T00:00:00.000Z'), '');
+  check('nor the same one again',
+    !isNewerImport(rec('2026-09-01T00:00:00.000Z'), '2026-09-01T00:00:00.000Z'), '');
+  check('anything beats having nothing', isNewerImport(rec('2026-01-01T00:00:00.000Z'), ''), '');
+  check('a record with no timestamp is never newer', !isNewerImport(rec(''), ''), '');
+  check('nor one with no rows to give',
+    !isNewerImport({ retrievedAt: '2027-01-01T00:00:00.000Z' }, ''), '');
+  check('nor nothing at all', !isNewerImport(null, ''), '');
+
   // ---- a one-off on a standard code ---------------------------------------
   //
   // A custom LIFTER has its own item code. This is the other kind: a standard
@@ -934,10 +1007,43 @@ export async function run() {
     `${JSON.stringify(balanced)}`);
   eq('the 19-row category gets a column to itself',
     balanced.left.length === 1 || balanced.right.length === 1, true);
+  eq('...on the left, where it is pinned', balanced.left, [ANCHOR_CATEGORY]);
   eq('an empty category is not given a table',
     balanceColumns({ 'Cylinder lifters': 4, 'Ladders and Chairs': 0,
       'Launchers, Doors & Chocks': 0, 'Rotary Lifters': 0 }),
-    { left: [], right: ['Cylinder lifters'] });
+    { left: ['Cylinder lifters'], right: [] });
+
+  // ---- the anchor ---------------------------------------------------------
+  //
+  // Cylinder lifters are pinned to the top of the left column. It is the
+  // biggest category and the one the floor reads first, and a balancer free to
+  // move it did - the board reshuffled between exports as the counts drifted.
+  const anchorAt = (c) => balanceColumns(c).left[0];
+  eq('the anchor leads the left column', anchorAt(C), ANCHOR_CATEGORY);
+  eq('...even when it is by far the biggest',
+    anchorAt({ 'Cylinder lifters': 40, 'Ladders and Chairs': 1,
+      'Launchers, Doors & Chocks': 1, 'Rotary Lifters': 1 }), ANCHOR_CATEGORY);
+  eq('...and when it is the smallest',
+    anchorAt({ 'Cylinder lifters': 1, 'Ladders and Chairs': 20,
+      'Launchers, Doors & Chocks': 20, 'Rotary Lifters': 20 }), ANCHOR_CATEGORY);
+  check('...and never appears on the right',
+    [[19, 6, 7, 5], [3, 3, 3, 3], [1, 30, 2, 2], [12, 0, 0, 9]].every(([a, b, c2, d]) =>
+      !balanceColumns({ 'Cylinder lifters': a, 'Ladders and Chairs': b,
+        'Launchers, Doors & Chocks': c2, 'Rotary Lifters': d })
+        .right.includes(ANCHOR_CATEGORY)), '');
+  // With the anchor fixed, the other three still balance around it: pinning one
+  // category must not stop the page being as short as it can be.
+  check('the rest still balance around it', (() => {
+    const c = { 'Cylinder lifters': 2, 'Ladders and Chairs': 9,
+      'Launchers, Doors & Chocks': 9, 'Rotary Lifters': 1 };
+    const b = balanceColumns(c);
+    return Math.abs(cost(b.left, c) - cost(b.right, c)) <= 2;
+  })(), JSON.stringify(balanceColumns({ 'Cylinder lifters': 2, 'Ladders and Chairs': 9,
+    'Launchers, Doors & Chocks': 9, 'Rotary Lifters': 1 })));
+  // An export with no cylinder lifters at all must not leave a hole.
+  eq('no anchor, no empty left column',
+    balanceColumns({ 'Cylinder lifters': 0, 'Ladders and Chairs': 5,
+      'Launchers, Doors & Chocks': 5, 'Rotary Lifters': 0 }).left.length, 1);
 
   // ---- three scopes -------------------------------------------------------
   // Boat, item and job are different things. The case that forces the middle

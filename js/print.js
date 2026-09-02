@@ -4,7 +4,7 @@
 // A4 page: an invisible two-column grid holds the four narrow categories,
 // Davits runs full-width underneath because its descriptions are long.
 
-import { PRINT_LAYOUT, CATEGORY_ORDER } from './rules.js';
+import { PRINT_LAYOUT, ANCHOR_CATEGORY, CATEGORY_ORDER } from './rules.js';
 import { byCategory, toAU, toDateOnly, jobTitle, printJobs } from './transform.js';
 
 // A4 at 96dpi, less the margins in the @page rule.
@@ -19,22 +19,33 @@ const CONTENT_H = PAGE_H - Math.round(0.625 * 96) - Math.round(0.49 * 96);   // 
  * + rotary on the right. With 19 cylinder-lifter rows against 5 rotary that
  * leaves the right column half empty and the page taller than it needs to be.
  *
- * Four categories is 16 possible splits, so this takes the genuine optimum
+ * ANCHOR_CATEGORY is exempt: cylinder lifters are pinned to the top of the left
+ * column. It is the biggest category and the one the floor reads first, and a
+ * balancer free to move it did — as row counts drifted between exports the
+ * board reshuffled, which is exactly what makes a printed sheet hard to read.
+ * The remaining three still balance around it, which is where the balancing was
+ * earning its keep anyway.
+ *
+ * Three categories is 8 possible splits, so this takes the genuine optimum
  * rather than a heuristic. Cost is rows plus TABLE_OVERHEAD for the banner and
  * column-header rows each table carries; the taller column sets the height.
  * Ties keep board order, so the layout only moves when it actually gains
- * something — a board that reshuffles between prints is hard to read.
+ * something.
  */
 const TABLE_OVERHEAD = 2;
 
 export function balanceColumns(counts, categories = PRINT_LAYOUT.narrow) {
   const present = categories.filter((c) => (counts[c] ?? 0) > 0);
+  const anchored = present.filter((c) => c === ANCHOR_CATEGORY);
+  const free = present.filter((c) => c !== ANCHOR_CATEGORY);
   const cost = (set) => set.reduce((n, c) => n + counts[c] + TABLE_OVERHEAD, 0);
 
   let best = null;
-  for (let mask = 0; mask < (1 << present.length); mask++) {
-    const left = present.filter((_, i) => mask & (1 << i));
-    const right = present.filter((_, i) => !(mask & (1 << i)));
+  for (let mask = 0; mask < (1 << free.length); mask++) {
+    // The anchor is always first in the left column, so it is prepended rather
+    // than being one of the things the mask decides.
+    const left = [...anchored, ...free.filter((_, i) => mask & (1 << i))];
+    const right = free.filter((_, i) => !(mask & (1 << i)));
     const height = Math.max(cost(left), cost(right));
     // Prefer the shorter page; then the more even split; then board order.
     const skew = Math.abs(cost(left) - cost(right));

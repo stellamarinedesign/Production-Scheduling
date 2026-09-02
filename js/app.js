@@ -2,13 +2,13 @@
 
 import { xlsxAdapter } from './adapters/index.js';
 import { buildBoard, byCategory, today, toAU, toDateOnly, jobTitle, CUSTOM_PREFIX,
-         isEmptyCustomName, snapshotOf, isPrintable } from './transform.js';
+         isEmptyCustomName, snapshotOf, isPrintable, retainedRows } from './transform.js';
 import { CATEGORY_ORDER, PRINT_LAYOUT, EXCLUSION_ORDER, EXCLUSION_GROUP_LABEL,
          TM_CATEGORY_ORDER, INTERNAL_CATEGORY_ORDER, LANE_LABEL, WATERMAKER_CATEGORIES,
          SETTABLE_STATUSES } from './rules.js';
 import { stellaCode, labelFor, existingBoats, acceptNewCode, applyTemplate } from './vessel-codes.js';
 import { Auth, ROLE, friendlyAuthError } from './auth.js';
-import { Store, packRows, unpackRows } from './store.js';
+import { Store, packRows, unpackRows, isNewerImport } from './store.js';
 import { renderPrint, measure, fitToPage } from './print.js';
 import { renderGantt } from './gantt.js';
 import { balanceColumns } from './print.js';
@@ -198,10 +198,8 @@ function startLiveSync() {
   }));
 
   unsubscribes.push(Store.watchLatestImport((rec, meta) => {
-    if (!rec?.rowsJson || meta.fromSelf) return;
-    // A different export is a bigger event than an edit, so say so rather than
-    // swapping the board out from under somebody mid-sentence.
-    if (rec.retrievedAt === state.source?.retrievedAt) return;
+    // NEWER, not merely different — see `isNewerImport`.
+    if (meta.fromSelf || !isNewerImport(rec, state.source?.retrievedAt)) return;
     const rows = unpackRows(rec.rowsJson);
     if (!rows?.length) return;
     state.rows = rows;
@@ -425,26 +423,37 @@ async function commitImport() {
   if (!staged) return;
   const { src } = staged;
 
-  state.rows = src.rows;
+  // The open order book, not the whole file. See `retainedRows`: carrying the
+  // 1047 closed rows in the 01/09 export pushed the import record past
+  // Firestore's 1 MiB document limit, so the write was refused and the upload
+  // reached nobody else. The review above ran against the full file.
+  const keep = retainedRows(src.rows);
+  state.rows = keep;
   state.source = {
     sourceId: src.sourceId,
     sourceLabel: src.sourceLabel,
     retrievedAt: src.retrievedAt,
     warnings: src.warnings,
+    rowsInFile: src.rows.length,
+    rowsKept: keep.length,
   };
   staged = null;
-  Store.cacheRows(src.rows, state.source);
-  rebuild();
+  Store.cacheRows(keep, state.source);
+  // OFF THE IMPORT PAGE FIRST, then rebuild. `rebuild` measures the print host
+  // to fit the page, and a [hidden] ancestor gives it no layout — measured from
+  // behind the import page it reported "will not fit one page (null pages)" on
+  // a board that fits comfortably.
   showImportPage(false);
+  rebuild();
   showTab('edit');
-  toast(`${src.rows.length} rows in — ${state.board.meta.job_count} production orders.`);
+  toast(`${keep.length} open rows in — ${state.board.meta.job_count} production orders.`);
   queueImportQuestions();
 
   // Publishing is a SEPARATE failure from parsing. Both used to sit in one try,
   // so a save that was refused reported "could not read that file" — which
   // points at the spreadsheet and hides the fact that the board never reached
   // anybody else.
-  await publish(src.rows, 'shared with the other managers');
+  await publish(keep, 'shared with the other managers');
 }
 
 /**
@@ -452,8 +461,32 @@ async function commitImport() {
  *
  * `imports` is append-only, so this adds a record rather than editing one.
  */
+// Firestore's hard limit on a single document. The import record is one
+// document, so this is the real ceiling on how much of an export can be shared.
+const FIRESTORE_DOC_LIMIT = 1048576;
+
+const utf8Bytes = (str) => new TextEncoder().encode(String(str ?? '')).length;
+
 async function publish(rows, what) {
   try {
+    const packed = packRows(rows);
+    // Check before writing rather than letting the server refuse: a size error
+    // from Firestore says nothing a manager can act on, and the failure is
+    // silent from their side — the board looks fine on the machine that made
+    // it and reaches nobody.
+    // UTF-8 BYTES, not string length. Firestore counts bytes and a JS string's
+    // .length counts UTF-16 units, so `.length` under-reports every non-ASCII
+    // character — and this export is full of them, every "—" in a description
+    // being three bytes and one unit. Measured wrong, the guard would wave
+    // through exactly the payload it exists to catch.
+    const size = utf8Bytes(packed) + utf8Bytes(JSON.stringify(state.board.jobs ?? []));
+    if (size > FIRESTORE_DOC_LIMIT * 0.9) {
+      toast(`This export is too large to share — ${(size / 1048576).toFixed(2)} MB `
+        + `against a 1 MB limit. The board is on this device only. `
+        + `Narrow the ERP inquiry, or ask for the export to be split.`, 12000);
+      console.error('[publish] payload too large', size);
+      return false;
+    }
     await Store.recordImport({
       retrievedAt: state.source.retrievedAt,
       sourceId: state.source.sourceId,
@@ -469,7 +502,7 @@ async function publish(rows, what) {
       // rather than being asked to upload the same file again. The jobs array
       // is a rendering of one horizon; the rows are what the transform needs to
       // re-render at another.
-      rowsJson: packRows(rows),
+      rowsJson: packed,
     });
     markPublished(state.source.retrievedAt);
     if (what) toast(`Board ${what}.`);
@@ -614,7 +647,13 @@ function rebuild() {
   $('provenance').hidden = false;
 
   const host = $('printPreview');
-  if (state.settings.autoFit) {
+  // A rebuild can happen while the board is off screen — a live edit from
+  // another manager arriving mid-import-review. Nothing can be measured then,
+  // so build the board and leave the last known fit alone rather than replacing
+  // it with a failure that says more about the layout than the page.
+  if (state.importPage) {
+    state.board = build(state.fit?.weeks ?? state.settings.horizonWeeks);
+  } else if (state.settings.autoFit) {
     state.fit = fitToPage(host, build, { startWeeks: state.settings.horizonWeeks, minWeeks: 4 });
     state.board = state.fit.board;
   } else {

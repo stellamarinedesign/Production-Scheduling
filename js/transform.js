@@ -367,6 +367,34 @@ export const snapshotOf = (j) => ({
 });
 
 // ---------------------------------------------------------------------------
+// What is worth carrying forward
+//
+// `ALL RECORDS` is the whole order book back to the beginning: the 01/09 export
+// is 1216 rows, of which 1047 are Completed, Closed or Canceled. The board can
+// never show them - BOARD_STATUSES drops every one - and carrying them cost
+// more than it sounds:
+//
+//   The import record is a single Firestore document and Firestore documents
+//   are capped at 1 MiB. Packed, those 1216 rows are 1.12 MB, and the record
+//   also carries the rendered board, so the write was 1.38 MB and was REFUSED.
+//   The upload looked fine on the machine that did it and reached nobody else.
+//
+//   localStorage is around 5 MB for the whole origin, and the cache was already
+//   using three of them.
+//
+// So an applied import keeps the open order book and lets the closed history
+// go. Nothing is lost that the board could have used: completed work of our own
+// is remembered by its snapshot (see `fromSnapshot`), not by the export.
+//
+// The import review still runs against the FULL file - saying what a file
+// contains is exactly its job - which is why this is applied at commit rather
+// than in the adapter.
+// ---------------------------------------------------------------------------
+
+export const retainedRows = (rows) =>
+  (rows ?? []).filter((r) => BOARD_STATUSES.has(text(r['Status'])));
+
+// ---------------------------------------------------------------------------
 // What reaches the paper
 //
 // Three separate reasons a real job does not print, all of them page-fitting

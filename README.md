@@ -172,6 +172,23 @@ Normalising happens in the transform, once, downstream.
   later, the row stops being exported, and the completed job vanished from the
   one view whose job is to remember it. A completed job now carries a snapshot
   of itself, so History outlives the export it came from.
+- **An applied import keeps the open order book, not the whole file.**
+  `ALL RECORDS` goes back to the beginning: the 01/09 export is 1216 rows of
+  which 1047 are Completed, Closed or Canceled and can never reach the board.
+  Carrying them broke sharing outright — the import record is a single Firestore
+  document, documents are capped at 1 MiB, and rows plus the rendered board came
+  to 1.38 MB. The write was refused, so the upload looked fine on the machine
+  that made it and reached nobody. `publish` now checks the size in UTF-8 bytes
+  before writing and says so plainly if it will not fit.
+- **A published import must be NEWER, not merely different.** The live watcher
+  compared for inequality, so a snapshot carrying an older record replaced the
+  export a manager had just applied — silently, back to the previous sheet. It
+  showed up exactly when a publish had been refused for size: the newest record
+  in the collection was still the previous one. `isNewerImport` is the rule now.
+- **Cylinder lifters are pinned top-left**, on the sheet and in the orders view.
+  It is the biggest category and the one the floor reads first, and a balancer
+  free to move it did — the board reshuffled between exports as counts drifted.
+  The other three still balance around it.
 - **An import is staged, not applied.** Dropping a file parses it, builds the
   board it would produce against the current overrides and codes, and describes
   the result — counts per lane, what will not print, every unknown code, every

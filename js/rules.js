@@ -112,6 +112,14 @@ export const PRINT_LAYOUT = {
   full:   ['Davits'],
 };
 
+// Pinned to the top of the left column, on the sheet and in the orders view.
+//
+// It is the biggest category and the one the floor reads first, and a balancer
+// free to put it anywhere moved it between prints as the row counts drifted.
+// Everything else still balances around it, which is where the balancing earns
+// its keep; this one category just does not move.
+export const ANCHOR_CATEGORY = 'Cylinder lifters';
+
 /** Every category that reaches the printed sheet, in board order. */
 export const PRINT_CATEGORIES = [...PRINT_LAYOUT.narrow, ...PRINT_LAYOUT.full];
 

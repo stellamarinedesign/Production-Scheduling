@@ -73,6 +73,25 @@ export const isEmptyOverride = (o) => !OVERRIDE_FIELDS.some((f) => {
   return v !== undefined && v !== null && v !== false && v !== '';
 });
 
+/**
+ * Should a published import replace what this device already has?
+ *
+ * NEWER, not merely different. This was an inequality check, which meant a
+ * snapshot carrying an OLDER record replaced the export the manager had just
+ * applied — the board silently reverted to the previous sheet and their import
+ * was gone. It surfaced when a publish was refused for being too large: the
+ * newest record in the collection was still the previous one, and the watcher
+ * handed it straight back.
+ *
+ * `retrievedAt` is an ISO-8601 string stamped by the adapter, so it sorts
+ * lexicographically. A record without one is never newer than anything.
+ */
+export const isNewerImport = (rec, currentRetrievedAt) => {
+  const at = rec?.retrievedAt ?? '';
+  if (!at || !rec?.rowsJson) return false;
+  return at > (currentRetrievedAt ?? '');
+};
+
 export const Store = {
   mode: 'local',          // 'firestore' | 'local'
   reason: '',             // why local, when local
