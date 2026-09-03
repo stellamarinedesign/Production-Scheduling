@@ -96,6 +96,32 @@ main { padding: 16px 22px 60px; max-width: 1720px; margin: 0 auto; }
 /* Which build is on screen. Pages serves everything with max-age=600, so a
    refresh soon after a deploy can legitimately show the old stylesheet — and
    without this that is indistinguishable from a fix that did not work. */
+/* ---------- help ---------- */
+/* The long explanations, out of the interface and behind a button. */
+.help-body { max-height: 60vh; overflow-y: auto; padding-right: 6px; }
+.help-section {
+  font-size: 11.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--text-dim); margin: 20px 0 8px; border-bottom: 1px solid var(--line);
+  padding-bottom: 5px;
+}
+.help-section:first-child { margin-top: 4px; }
+.help-topic { border-bottom: 1px solid var(--line); }
+.help-topic summary {
+  cursor: pointer; padding: 9px 0; font-size: 13.5px; color: var(--white);
+  list-style: none;
+}
+.help-topic summary::-webkit-details-marker { display: none; }
+.help-topic summary::before { content: "▸\00a0\00a0"; color: var(--text-dim); font-size: 10px; }
+.help-topic[open] summary::before { content: "▾\00a0\00a0"; }
+.help-topic[open] summary { color: var(--red-bright); }
+.help-topic p {
+  font-size: 12.5px; color: var(--text-dim); line-height: 1.65;
+  margin: 0 0 9px 14px; max-width: 74ch;
+}
+
+/* A model code chosen by hand, as against every one the data carries. */
+.c-riv.is-set { color: var(--white); }
+
 .state .backlink {
   display: inline-block; margin-top: 14px; color: var(--red-bright);
   font-weight: 600; text-decoration: none; border-bottom: 1px solid var(--red-deep);
@@ -1041,7 +1067,8 @@ button.linkish:disabled { opacity: .5; cursor: default; }
 /* ---------- vessel codes: one line per boat ---------- */
 .codes-head, .code-row {
   display: grid;
-  grid-template-columns: 190px 200px 130px 130px minmax(200px, 1fr) 132px;
+  /* Three buttons in the actions cell now — Model, Rename, Split. */
+  grid-template-columns: 180px 190px 130px 120px minmax(180px, 1fr) 198px;
   gap: 14px; align-items: baseline; padding: 9px 10px;
 }
 .codes-head {

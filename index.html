@@ -8,7 +8,7 @@
 <link rel="apple-touch-icon" href="assets/logo.png">
 <title>Production Board — Stella Marine</title>
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="css/style.css?v=2026-09-03.5">
+<link rel="stylesheet" href="css/style.css?v=2026-09-04.1">
 </head>
 <body>
 
@@ -48,6 +48,7 @@
     <button class="navlink manager-only" id="importNav">Import</button>
     <button class="navlink" id="boardNav" aria-current="page">Board</button>
     <a href="vessel-codes" class="manager-only">Vessel codes</a>
+    <button class="navlink" id="helpBtn" title="Explanations, in one place">Help</button>
   </nav>
   <span class="who" id="whoami"></span>
   <button class="mini" id="signOut" hidden>Sign out</button>
@@ -194,6 +195,18 @@
 
 </main>
 
+<!-- ============ HELP ============
+     Everything that used to be printed into the interface. Nothing here is
+     needed to use the board; it is here for the tenth read, not the first. -->
+<div class="overlay" id="helpOverlay">
+  <div class="box wide">
+    <h3>Help</h3>
+    <div class="lede">Pick a topic. Nothing here is required to use the board.</div>
+    <div id="helpBody" class="help-body"></div>
+    <div class="actions"><button class="ghost" id="helpClose">Close</button></div>
+  </div>
+</div>
+
 <!-- ============ LABEL EDIT — scope first ============ -->
 <div class="overlay" id="labelOverlay">
   <div class="box">
@@ -201,11 +214,7 @@
     <div class="lede" id="lblLede"></div>
 
     <div id="lblScope">
-      <div class="scope-note">
-        Three different things. The narrowest that fixes it is usually the right
-        one — a wrong <em>boat</em> code is a boat problem, but a part built to
-        another boat's drawings is an <em>item</em> problem.
-      </div>
+      <div class="scope-note">Pick the narrowest that fixes it.</div>
       <button class="scope-opt" id="scopeJob">
         <b>Just this job</b>
         <span>Changes the whole label on this production order only. Other jobs
@@ -259,7 +268,7 @@
       </button>
 
       <button class="scope-opt" data-mode="riviera" id="ncRivOpt">
-        <b>Use the Riviera model — <span id="ncRiv"></span></b>
+        <b>Use the model code — <span id="ncRiv"></span></b>
         <span>What the ERP description calls it. Prints as
               <em id="ncRivPreview"></em>.</span>
       </button>
@@ -278,7 +287,7 @@
         <b>Enter the code to display</b>
         <span>Anything else — a code the floor uses that neither field carries.</span>
         <div class="inline">
-          <input type="text" id="ncCustom" placeholder="e.g. 58SY" autocomplete="off" spellcheck="false">
+          <input type="text" id="ncCustom" placeholder="code to display" autocomplete="off" spellcheck="false">
           <button class="mini" data-mode="custom">Use this</button>
         </div>
       </div>
@@ -390,6 +399,6 @@
 
 </div><!-- /#appShell -->
 
-<script type="module" src="js/app.js?v=2026-09-03.5"></script>
+<script type="module" src="js/app.js?v=2026-09-04.1"></script>
 </body>
 </html>

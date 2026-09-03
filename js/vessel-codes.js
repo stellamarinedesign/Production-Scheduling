@@ -371,6 +371,10 @@ export function boatRows(codeMap, classify, { mode = 'boats' } = {}) {
       codes: g.codes,
       confirmed: g.codes.some((c) => codeMap[c]?._confirmed),
       riviera: [...riviera].sort(),
+      // What the cheat sheet's Model column prints: the override where one is
+      // set, every derived code otherwise.
+      model: modelFor(g, codeMap),
+      modelSet: g.codes.some((c) => String(codeMap[c]?.sheetModel ?? '').trim()),
       hulls: [...hulls].sort(),
       byCategory,
       categories,
@@ -409,6 +413,34 @@ export function boatRows(codeMap, classify, { mode = 'boats' } = {}) {
  * Existing boats, for the "add to an existing code" dropdown.
  * @returns {Array<{boat, codes[], display}>}
  */
+/**
+ * What the Model column prints for a boat.
+ *
+ * A hull often carries several manufacturer codes — a plain one, the same code
+ * with a voltage, one with a note somebody appended — and the cheat sheet is a
+ * single sheet of paper. Which of them to show is a decision, and sometimes the
+ * answer is none of them: a boat sold under one code may be known on the floor
+ * by another entirely.
+ *
+ * So `sheetModel` on any code in the group overrides the lot. Derived codes are
+ * the suggestions, not the answer — the same arrangement as the display code,
+ * for the same reason.
+ *
+ * @returns {string} the override, or every derived code joined.
+ */
+export function modelFor(group, codeMap) {
+  for (const c of group.codes) {
+    const set = String(codeMap[c]?.sheetModel ?? '').trim();
+    if (set) return set;
+  }
+  return [...new Set(group.codes.flatMap((c) => codeMap[c]?.riviera ?? []))].join('  ·  ');
+}
+
+/** Every derived model code on a boat, as the options to choose between. */
+export function modelOptions(group, codeMap) {
+  return [...new Set(group.codes.flatMap((c) => codeMap[c]?.riviera ?? []))];
+}
+
 export function existingBoats(codeMap) {
   return aliasGroups(codeMap)
     .map((g) => {

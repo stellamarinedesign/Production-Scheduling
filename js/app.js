@@ -9,6 +9,7 @@ import { CATEGORY_ORDER, PRINT_LAYOUT, EXCLUSION_ORDER, EXCLUSION_GROUP_LABEL,
 import { stellaCode, labelFor, existingBoats, acceptNewCode, applyTemplate } from './vessel-codes.js';
 import { Auth, ROLE, friendlyAuthError, setManagers, managerCount } from './auth.js';
 import { VERSION } from './version.js';
+import { wireHelp } from './help.js';
 import { Store, packRows, unpackRows, isNewerImport } from './store.js';
 import { renderPrint, measure, fitToPage } from './print.js';
 import { renderGantt } from './gantt.js';
@@ -189,6 +190,7 @@ async function start(st) {
     : `Local only — ${Store.reason}`;
   $('provStore').style.color = Store.mode === 'firestore' ? '' : 'var(--red-bright)';
 
+  wireHelp();
   wireUpload();
   wireControls();
   wireOverlays();
@@ -882,7 +884,7 @@ function renderWarnings() {
       build: (b) => {
         for (const c of w.codeConflicts) {
           b.append(el('div', null,
-            `${c.codes.join(' and ')} are the same boat (Riviera ${c.models.join(', ')}) ` +
+            `${c.codes.join(' and ')} are the same boat (model ${c.models.join(', ')}) ` +
             `but are confirmed to different display codes: ` +
             `${c.values.map((v) => `${v.code}→${v.display}`).join(', ')}. ` +
             `Fix it on the vessel codes page.`));
@@ -1516,7 +1518,7 @@ function showNewCode() {
   };
   row('Item codes', item.items.join('  ·  '));
   row('Stella code', item.code);
-  row('Riviera model', item.riviera.join(', '));
+  row('Model', item.riviera.join(', '));
   row('Hull prefix', item.hull_prefix.join(', '));
   row('Description', item.descriptions[0] ?? '');
 
@@ -2260,9 +2262,7 @@ function showLabelForm(scope) {
   if (scope === 'job') {
     $('lblFieldLabel').textContent = 'Label for this job';
     $('lblInput').value = job.label;
-    $('lblHint').textContent =
-      `Replaces the whole label on ${job.prod_no} only. Saved against the `
-      + `production number, so it survives the next upload.`;
+    $('lblHint').textContent = `Replaces the label on ${job.prod_no} only.`;
     $('lblReset').hidden = job.label === job.base_label;
 
   } else if (scope === 'item') {
@@ -2272,16 +2272,14 @@ function showLabelForm(scope) {
       $('lblFieldLabel').textContent = `Display code for ${job.inventory_id}`;
       $('lblInput').value = pinned?.displayCode
         ?? state.board.resolved.display.get(code) ?? code;
-      $('lblHint').textContent =
-        `Just the vessel code — the product wording is added by the template, so `
-        + `"56SY" becomes "${applyTemplate(job.inventory_id, '56SY')}". Applies to `
-        + `this item code only, on every future order.`;
+      // The example is built from THIS item, so it is never a code from
+      // somebody's real order book.
+      const sample = applyTemplate(job.inventory_id, 'XX00');
+      $('lblHint').textContent = `Code only — wording comes from the template ("XX00" → "${sample}").`;
     } else {
       $('lblFieldLabel').textContent = `Label for ${job.inventory_id}`;
       $('lblInput').value = pinned?.label ?? job.base_label;
-      $('lblHint').textContent =
-        `This item has no vessel code, so this is the whole label. Applies to `
-        + `${job.inventory_id} on every future order.`;
+      $('lblHint').textContent = 'No vessel code on this item, so this is the whole label.';
     }
     $('lblReset').hidden = !pinned;
 
@@ -2289,10 +2287,7 @@ function showLabelForm(scope) {
     const group = state.board.resolved.groups.find((g) => g.codes.includes(code));
     $('lblFieldLabel').textContent = `Display code for boat ${group.boat ?? group.codes[0]}`;
     $('lblInput').value = state.board.resolved.display.get(code) ?? code;
-    $('lblHint').textContent =
-      `Applies to ${group.codes.join(', ')} — every product on this boat. `
-      + `An item that needs to differ from its boat should use the item scope `
-      + `instead.`;
+    $('lblHint').textContent = `Applies to ${group.codes.join(', ')} — every product on this boat.`;
   }
   $('lblInput').focus();
   $('lblInput').select();

@@ -16,6 +16,7 @@ import { classify } from './rules.js';
 import { Auth, ROLE, setManagers } from './auth.js';
 import { VERSION } from './version.js';
 import { fitCodesSheet, TYPE_STEPS } from './codes-print.js';
+import { wireHelp } from './help.js';
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => {
@@ -89,6 +90,7 @@ const collapsed = new Set();
 
   $('modeBoats').addEventListener('click', () => setMode('boats'));
   $('modeProducts').addEventListener('click', () => setMode('products'));
+  wireHelp();
   $('saveCodes').addEventListener('click', saveCodesFile);
   $('loadCodes').addEventListener('click', () => $('codesFile').click());
   $('codesFile').addEventListener('change', (e) => {
@@ -238,7 +240,11 @@ function boatRow(r) {
   row.append(codes);
 
   // 3. What Riviera call it, and the hulls it has been fitted to.
-  row.append(el('div', 'c-riv', r.riviera.join(', ') || '—'));
+  // What the cheat sheet prints, not every code the data carries — a boat with
+  // three manufacturer codes should not put all three on a sheet of paper.
+  const riv = el('div', `c-riv${r.modelSet ? ' is-set' : ''}`, r.model || '—');
+  if (r.modelSet) riv.title = `Set by hand. Found in the data: ${r.riviera.join(', ') || 'none'}`;
+  row.append(riv);
   row.append(el('div', 'c-hull', r.hulls.join(', ') || '—'));
 
   // 4. Products. In boats mode a boat with several product lines shows them as
@@ -256,10 +262,14 @@ function boatRow(r) {
   row.append(items);
 
   const act = el('div', 'c-act');
+  const model = el('button', 'mini', 'Model');
+  model.title = 'What the cheat sheet prints in the Model column';
+  model.addEventListener('click', () => setModel(r));
+
   const edit = el('button', 'mini', 'Rename');
   edit.title = 'Change the code the floor reads. Applies to every ERP code on this line.';
   edit.addEventListener('click', () => rename(r));
-  act.append(edit);
+  act.append(model, edit);
 
   const move = el('button', 'mini', 'Split');
   move.title = 'Move one ERP code onto a different boat';
@@ -310,9 +320,8 @@ async function rename(r) {
   const next = prompt(
     'What should the floor read for this boat?\n\n'
     + `ERP codes on this line: ${r.codes.join(', ')}\n`
-    + `Riviera call it: ${r.riviera.join(', ') || 'not recorded'}\n\n`
-    + 'Just the vessel code — the product wording comes from the template, so '
-    + '"56SY" becomes "56SY Garage Door".',
+    + `Model: ${r.riviera.join(', ') || 'not recorded'}\n\n`
+    + 'Code only — the product wording comes from the template.',
     r.display,
   );
   if (next === null) return;
@@ -474,4 +483,37 @@ async function reviewCodesFile(file) {
   acts.append(apply, cancel);
   host.append(acts);
   host.scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+
+/**
+ * Choose what the cheat sheet prints in the Model column.
+ *
+ * A boat can carry several manufacturer codes — a plain one, the same with a
+ * voltage, one with a note appended — and the sheet has room for one. Sometimes
+ * the right answer is none of them, so this takes free text as well as the
+ * codes found in the data.
+ *
+ * Stored on the boat, affects the cheat sheet only.
+ */
+async function setModel(r) {
+  const found = r.riviera;
+  const current = r.modelSet ? r.model : '';
+  const next = prompt(
+    `Model column on the cheat sheet for ${r.display}.\n\n`
+    + `Found in the data: ${found.join(', ') || 'none'}\n\n`
+    + 'Type one of those, or anything else. Leave empty to show them all.',
+    current,
+  );
+  if (next === null) return;
+  const value = next.trim();
+  try {
+    // Written to every code on the line so it survives a split or a rename of
+    // any one of them.
+    for (const code of r.codes) await Store.saveCode(code, { sheetModel: value || null });
+    codeMap = await Store.loadCodes();
+    render();
+    toast(value ? `${r.display} prints "${value}".` : `${r.display} shows every model code.`);
+  } catch (e) {
+    toast(`Could not save — ${e.message}`, 6000);
+  }
 }

@@ -64,7 +64,7 @@ export function renderCodesSheet(host, rows, { mode = 'boats', asOf = todayDate(
 
   const thead = el('thead');
   const hr = el('tr');
-  hr.append(el('th', null, 'Reads as'), el('th', null, 'Riviera'),
+  hr.append(el('th', null, 'Reads as'), el('th', null, 'Model'),
     el('th', null, 'Hull'), el('th', null, 'Products'));
   thead.append(hr);
   table.append(thead);
@@ -86,7 +86,9 @@ export function renderCodesSheet(host, rows, { mode = 'boats', asOf = todayDate(
     tr.append(el('td', 'cs-disp', r.display));
     // Riviera's own model sits next to what we print, because that is the pair
     // read together when a Riviera document and a Stella one disagree.
-    tr.append(el('td', 'cs-riv', r.riviera.join(', ') || '—'));
+    // `model` not `riviera`: a boat can carry several manufacturer codes and the
+    // sheet shows the one somebody chose. See `modelFor`.
+    tr.append(el('td', 'cs-riv', r.model || '—'));
     tr.append(el('td', 'cs-hull', r.hulls.join(', ') || '—'));
     tr.append(el('td', 'cs-prod', mode === 'products'
       ? r.items.map((x) => x.item).join('  ·  ')

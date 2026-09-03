@@ -15,7 +15,8 @@ import { classify, CATEGORY_ORDER, PRINT_CATEGORIES, WATERMAKER_CATEGORIES, LABE
          laneFor, LANE, tmCategory, internalCategory,
          isWaterUnit, WATERMAKER_UNIT_RE } from '../js/rules.js';
 import { resolveDisplays, aliasGroups, stellaCode, labelFor, detectNewCodes,
-         existingBoats, acceptNewCode, applyTemplate, boatRows } from '../js/vessel-codes.js';
+         existingBoats, acceptNewCode, applyTemplate, boatRows,
+         modelFor, modelOptions } from '../js/vessel-codes.js';
 import { renderPrint, measure, fitToPage, balanceColumns } from '../js/print.js';
 import { ganttLayout, packLanes, renderGantt as renderGanttChart } from '../js/gantt.js';
 import { fitCodesSheet, measureSheet, renderCodesSheet, CONTENT_H, TYPE_STEPS } from '../js/codes-print.js';
@@ -1051,6 +1052,30 @@ export async function run() {
     balanceColumns({ 'Cylinder lifters': 0, 'Ladders and Chairs': 5,
       'Launchers, Doors & Chocks': 5, 'Rotary Lifters': 0 }).left.length, 1);
 
+  // ---- the model on the cheat sheet ---------------------------------------
+  //
+  // A boat can carry several manufacturer codes and the sheet has room for one.
+  // Which one, or whether to print something else entirely, is a decision.
+  const twoCodes = {
+    A: { display: 'B1', boat: 'B1', riviera: ['46SY', '46SY 24V'], items: ['SLRIVA'], _confirmed: true },
+  };
+  const grpA = aliasGroups(twoCodes)[0];
+  eq('every derived code shows when nothing is chosen',
+    modelFor(grpA, twoCodes), '46SY  \u00b7  46SY 24V');
+  eq('...and they are the options to choose between',
+    modelOptions(grpA, twoCodes), ['46SY', '46SY 24V']);
+  eq('a chosen one wins',
+    modelFor(grpA, { A: { ...twoCodes.A, sheetModel: '46SY' } }), '46SY');
+  // The point of free text: the sheet may need a code the data does not carry.
+  eq('so does something the data never had',
+    modelFor(grpA, { A: { ...twoCodes.A, sheetModel: '60SY' } }), '60SY');
+  eq('blank means show them all',
+    modelFor(grpA, { A: { ...twoCodes.A, sheetModel: '   ' } }), '46SY  \u00b7  46SY 24V');
+  // Written to every code on the line, so any one of them answers.
+  eq('an override on a sibling code still counts',
+    modelFor(aliasGroups({ A: { boat: 'B', riviera: ['1'] }, B: { boat: 'B', riviera: ['2'], sheetModel: 'X' } })[0],
+      { A: { boat: 'B', riviera: ['1'] }, B: { boat: 'B', riviera: ['2'], sheetModel: 'X' } }), 'X');
+
   // ---- three scopes -------------------------------------------------------
   // Boat, item and job are different things. The case that forces the middle
   // one: an item code naming one boat for a part built to the drawings of
@@ -1503,7 +1528,7 @@ export async function run() {
       ['CYLINDER LIFTERS', 'ROTARY LIFTERS']);
     eq('the display leads each row',
       sh.querySelector('tbody tr:not(.cs-banner) td').textContent, sheetRows[0].display);
-    eq('...with the Riviera model beside it',
+    eq('...with the model beside it',
       [...[...sh.querySelectorAll('tbody tr:not(.cs-banner)')]
         .find((tr) => tr.children[0].textContent === 'SY20').children]
         .slice(0, 2).map((c) => c.textContent),
@@ -1513,7 +1538,7 @@ export async function run() {
     // problem and lives on the vessel codes page.
     eq('the header order matches',
       [...sh.querySelectorAll('thead th')].map((h) => h.textContent),
-      ['Reads as', 'Riviera', 'Hull', 'Products']);
+      ['Reads as', 'Model', 'Hull', 'Products']);
     eq('no row carries an ERP code column',
       [...sh.querySelectorAll('tbody tr:not(.cs-banner)')]
         .map((tr) => tr.children.length).filter((n) => n !== 4), []);

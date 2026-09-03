@@ -7,7 +7,7 @@
 <link rel="icon" type="image/png" href="assets/logo.png">
 <title>Vessel codes — Stella Marine</title>
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="css/style.css?v=2026-09-03.5">
+<link rel="stylesheet" href="css/style.css?v=2026-09-04.1">
 <!-- AFTER style.css: it declares A4 portrait for the board, and @page cannot be
      scoped by selector, so the landscape rule has to win by coming later. -->
 <link rel="stylesheet" href="css/codes-print.css">
@@ -21,17 +21,14 @@
   <span class="spacer"></span>
   <nav>
     <a href="./">Board</a>
+    <button class="navlink" id="helpBtn" title="Explanations, in one place">Help</button>
     <a href="vessel-codes" aria-current="page">Vessel codes</a>
   </nav>
 </header>
 
 <main>
   <div class="provenance">
-    <span>
-      <b>DISPLAY</b> is what prints on the board. It is a human decision and cannot be
-      derived — Riviera issue concept hull codes to conceal unreleased models, so
-      <code>SY23</code> is the Stella item code but <code>56SY</code> is what the floor uses.
-    </span>
+    <span><b>DISPLAY</b> is what the floor reads and what the board prints.</span>
     <span class="spacer" style="margin-left:auto"></span>
     <span id="storeMode"></span>
     <span id="pageVersion" title="Which build is on screen. If this is not the version you were told to expect, the browser is holding an old copy — reload with Ctrl+Shift+R."></span>
@@ -70,36 +67,28 @@
   <div id="codesPrintRoot" hidden><div id="codesSheet"></div></div>
 
   <div class="codes-head">
-    <div>Display</div><div>ERP codes</div><div>Riviera</div><div>Hull</div>
+    <div>Display</div><div>ERP codes</div><div>Model</div><div>Hull</div>
     <div>Products</div><div></div>
   </div>
   <div id="rows"></div>
 
-  <div class="panel" style="margin-top:22px">
-    <div class="body" style="padding:14px 15px">
-      <strong style="color:var(--white)">The display code is the boat.</strong>
-      It is what the floor reads and what the board prints, so it is the key here
-      rather than something derived further down the line. Every ERP code that
-      resolves to it sits on the same row &mdash; <code>SY20</code> and
-      <code>43SY</code> are one boat, not two.
-      <br><br>
-      A boat usually builds more than one product. <b>One line per boat</b> tags
-      each with the line it is best known by, lifters first. <b>Split by product</b>
-      gives it a row per category, so the 56SY lifter and the 56SY boarding ladder
-      are separate.
-      <br><br>
-      <strong style="color:var(--white)">Grouping is manual, and has to be.</strong>
-      Riviera call one hull both <code>56SY</code> and <code>5000SY</code>, and
-      <code>56</code> was office shorthand. Nothing upstream records which codes
-      mean the same boat, so <b>Rename</b> sets what a line reads and <b>Split</b>
-      moves a code off a row that grouped wrongly.
-    </div>
-  </div>
 
 </main>
 
+<!-- ============ HELP ============
+     Everything that used to be printed into the interface. Nothing here is
+     needed to use the board; it is here for the tenth read, not the first. -->
+<div class="overlay" id="helpOverlay">
+  <div class="box wide">
+    <h3>Help</h3>
+    <div class="lede">Pick a topic. Nothing here is required to use the board.</div>
+    <div id="helpBody" class="help-body"></div>
+    <div class="actions"><button class="ghost" id="helpClose">Close</button></div>
+  </div>
+</div>
+
 <div id="toast"></div>
 
-<script type="module" src="js/codes-page.js?v=2026-09-03.5"></script>
+<script type="module" src="js/codes-page.js?v=2026-09-04.1"></script>
 </body>
 </html>
