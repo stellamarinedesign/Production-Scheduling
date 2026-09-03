@@ -13,7 +13,8 @@
 import { Store } from './store.js';
 import { resolveDisplays, boatRows } from './vessel-codes.js';
 import { classify } from './rules.js';
-import { Auth, ROLE } from './auth.js';
+import { Auth, ROLE, setManagers } from './auth.js';
+import { VERSION } from './version.js';
 import { fitCodesSheet, TYPE_STEPS } from './codes-print.js';
 
 const $ = (id) => document.getElementById(id);
@@ -30,14 +31,42 @@ let mode = 'boats';                 // 'boats' | 'products'
 const collapsed = new Set();
 
 (async function boot() {
-  // Floor accounts have no business here; the rules deny the writes anyway.
-  await Auth.init((st) => {
-    if (st.role === ROLE.FLOOR) { location.replace('./'); }
+  $('pageVersion').textContent = `v${VERSION}`;
+
+  // THE STORE COMES UP BEFORE THE ROLE IS READ.
+  //
+  // The manager list lives in Firestore now, and Firebase reports the signed-in
+  // user before the store exists — so the role Auth first hands over is always
+  // FLOOR, whoever signed in. This page acted on that immediately and bounced
+  // every manager straight back to the board, which made it unreachable.
+  //
+  // The callback also has to be resolved rather than assumed: onAuthStateChanged
+  // fires asynchronously, so reading Auth.role right after init is a race.
+  const first = await new Promise((resolve) => {
+    let done = false;
+    Auth.init((st) => { if (!done) { done = true; resolve(st); } });
   });
+
   await Store.init();
+  setManagers(await Store.loadManagers());
+  const role = Auth.refreshRole();
+
+  // Not signed in at all: the board page owns the sign-in screen, so send them
+  // there rather than showing an empty table behind a denied read.
+  if (first.mode === 'firebase' && role === ROLE.NONE) { location.replace('./'); return; }
+  // Floor accounts have no business here; the rules deny the writes anyway.
+  if (role === ROLE.FLOOR) { location.replace('./'); return; }
+
   $('storeMode').textContent = Store.mode === 'firestore' ? 'Saved to Firestore' : 'Saved on this device only';
   if (Store.mode !== 'firestore') $('storeMode').style.color = 'var(--red-bright)';
   codeMap = await Store.loadCodes();
+
+  // The seed file is no longer deployed — Firestore is the source of truth. An
+  // empty map here means a store that has never been seeded, not a page with
+  // nothing to say, so it should not look like an empty table.
+  if (!Object.keys(codeMap).length) {
+    $('codesEmpty').hidden = false;
+  }
 
   $('modeBoats').addEventListener('click', () => setMode('boats'));
   $('modeProducts').addEventListener('click', () => setMode('products'));

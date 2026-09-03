@@ -7,7 +7,7 @@
 <link rel="icon" type="image/png" href="assets/logo.png">
 <title>Vessel codes — Stella Marine</title>
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="css/style.css?v=2026-09-03.3">
+<link rel="stylesheet" href="css/style.css?v=2026-09-03.4">
 <!-- AFTER style.css: it declares A4 portrait for the board, and @page cannot be
      scoped by selector, so the landscape rule has to win by coming later. -->
 <link rel="stylesheet" href="css/codes-print.css">
@@ -34,6 +34,14 @@
     </span>
     <span class="spacer" style="margin-left:auto"></span>
     <span id="storeMode"></span>
+    <span id="pageVersion" title="Which build is on screen. If this is not the version you were told to expect, the browser is holding an old copy — reload with Ctrl+Shift+R."></span>
+  </div>
+
+  <div class="state" id="codesEmpty" hidden>
+    <strong>No vessel codes stored yet</strong>
+    Codes are created by answering the prompts on import, and live in Firestore.
+    A store that has never been seeded starts empty — see the private SETUP
+    document for how to load the starting map into a fresh project.
   </div>
 
   <div id="warnings"></div>

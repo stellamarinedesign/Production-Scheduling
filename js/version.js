@@ -12,4 +12,4 @@
 //
 // The stylesheet links in index.html and vessel-codes.html carry `?v=` with
 // this same string. Bump all three together.
-export const VERSION = '2026-09-03.3';
+export const VERSION = '2026-09-03.4';
