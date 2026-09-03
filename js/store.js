@@ -333,6 +333,21 @@ export const Store = {
     }
   },
 
+  /**
+   * Write the manager list.
+   *
+   * SAFE TO OFFER FROM THE APP, because the Firestore rules are what actually
+   * decide who may write here — they name the manager accounts independently of
+   * this document. A real manager's write succeeds; anybody else is refused by
+   * the server, and the refusal is the point rather than a failure.
+   */
+  async saveManagers(emails) {
+    if (this.mode === 'local') return;
+    const { doc, setDoc } = this._fs;
+    await setDoc(doc(this._db, 'settings', 'access'),
+      { managers: emails, updatedAt: new Date().toISOString() }, { merge: true });
+  },
+
   async saveSettings(patch) {
     if (this.mode === 'local') { lsSet('settings', { ...lsGet('settings', {}), ...patch }); return; }
     const { doc, setDoc } = this._fs;

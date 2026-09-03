@@ -70,6 +70,64 @@ function showAuth() {
 }
 
 let started = false;
+/**
+ * First run: nobody is a manager yet, so offer to make this account one.
+ *
+ * The list decides what is DRAWN. The Firestore rules decide what is ALLOWED,
+ * and they name the manager accounts independently of this document — so this
+ * button is not self-service access. A real manager's write is permitted by the
+ * rules and succeeds; anyone else is refused by the server, which is the
+ * intended answer rather than a failure to work around.
+ *
+ * Offered only when the document is MISSING. A list that exists and is empty is
+ * somebody's deliberate decision and is left alone.
+ *
+ * @returns {Promise<boolean>} true when the role changed and start() re-ran.
+ */
+async function offerBootstrap(email) {
+  const host = $('floorEmpty');
+  host.hidden = false;
+  host.textContent = '';
+  host.append(el('strong', null, 'No manager list yet'));
+  host.append(el('div', null,
+    'Nobody has been given the manager view, so every signed-in account sees '
+    + 'the read-only board. Whoever is setting this up can claim it here.'));
+
+  const act = el('div', 'boot-actions');
+  const btn = el('button', 'primary', `Make ${email} a manager`);
+  const note = el('div', 'hint');
+  act.append(btn, note);
+  host.append(act);
+
+  return new Promise((resolve) => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      note.textContent = 'Saving…';
+      try {
+        await Store.saveManagers([String(email).trim().toLowerCase()]);
+        setManagers(await Store.loadManagers());
+        if (!managerCount()) throw new Error('The list saved but came back empty.');
+        host.hidden = true;
+        started = false;                     // let start() run its manager path
+        await start({ role: Auth.refreshRole(), email, mode: 'firebase' });
+        toast('You are now a manager on this board.');
+        resolve(true);
+      } catch (e) {
+        btn.disabled = false;
+        // A refusal here is the rules doing their job. Say so, and give the
+        // console route, rather than implying the app is broken.
+        note.innerHTML = /permission|insufficient/i.test(e.message)
+          ? 'Firestore refused that write, which means this account is not a '
+            + 'manager in the security rules either. Add it there first, or create '
+            + '<code>settings/access</code> in the Firebase console with a '
+            + '<code>managers</code> array.'
+          : `Could not save — ${e.message}`;
+        resolve(false);
+      }
+    });
+  });
+}
+
 let storeReady = false;
 
 async function start(st) {
@@ -110,12 +168,7 @@ async function start(st) {
   // looks like — so say which, rather than leaving a manager wondering why
   // their own board has gone read-only.
   if (st.role === ROLE.FLOOR && Auth.mode === 'firebase' && !managerCount()) {
-    $('floorEmpty').hidden = false;
-    $('floorEmpty').innerHTML =
-      '<strong>No manager list configured</strong>'
-      + 'Everyone signed in sees the floor view until <code>settings/access</code> '
-      + 'exists in Firestore with a <code>managers</code> array of email addresses. '
-      + 'See the private SETUP document.';
+    if (await offerBootstrap(st.email)) return;   // claimed; start() re-ran
   }
 
   if (st.role === ROLE.FLOOR) { await startFloor(); return; }

@@ -382,7 +382,12 @@ Firebase email/password, no self-signup — the same model as the Drawings app.
 | Any other signed-in account | Floor view: the printed board, read-only |
 
 The manager list is a `managers` array on the Firestore document
-`settings/access`, not a constant in the source. It used to be two staff
+`settings/access`, not a constant in the source. On a board where it does not
+exist yet, the app offers to create it for whoever is signed in — safe to offer,
+because the Firestore rules name the manager accounts independently, so a real
+manager's write is permitted and anyone else's is refused by the server. Offered
+only when the document is MISSING; a list that exists and is empty is somebody's
+decision and is left alone. It used to be two staff
 addresses in `js/auth.js`, and a static site hands its JavaScript to anyone who
 asks — so publishing the app published the addresses. Which accounts exist is in
 the private SETUP document.
