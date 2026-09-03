@@ -8,3 +8,13 @@ node_modules/
 # Riviera's order book. Never commit these; the repo is public.
 # The files live on disk for local test runs; originals are in ../handoff/.
 tests/fixtures/
+
+# The vessel code map: every boat, its Stella and Riviera codes, its hull
+# prefixes and the item codes built for it. It is Stella's and Riviera's product
+# structure and it was being served as a plain JSON file to anyone who asked.
+#
+# It is only ever a BOOTSTRAP — `loadCodes` seeds Firestore from it once, and
+# from then on Firestore is the source of truth. A deployment that has been
+# seeded never reads it again, so the live app does not need it and the
+# repository should not carry it. The file lives in the private handoff folder.
+data/vessel-codes.seed.json

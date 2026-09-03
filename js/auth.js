@@ -5,28 +5,40 @@
 // console (Authentication → Settings → User actions → "Enable create
 // (sign-up)" unticked).
 //
-// THE LISTS BELOW ARE NOT SECURITY. They decide what gets drawn. The Firestore
-// rules are the real enforcement and carry the same addresses — keep the two in
-// sync, and see the private SETUP document for the rules themselves.
-
-/** Full manager view: upload, edit, hide, relabel, print. */
-export const MANAGER_EMAILS = [
-  'design@stellamarine.com.au',
-  'production@stellamarine.com.au',
-];
+// THIS LIST IS NOT SECURITY. It decides what gets drawn. The Firestore rules
+// are the real enforcement — see the private SETUP document.
+//
+// IT IS ALSO NOT IN THIS FILE ANY MORE. It used to be two staff addresses in
+// plain sight, and a static site hands its JavaScript to anyone who asks for
+// it, signed in or not — so publishing the app published the addresses. They
+// live in Firestore now, at `settings/access`, readable only by a signed-in
+// user, and `setManagers` hands them here once loaded.
+//
+// Empty until then, and empty means nobody is a manager: an unknown account
+// gets the floor view rather than the run of the board. That is the same
+// fail-closed default as before, now covering the not-yet-loaded case too.
+let managerEmails = [];
 
 /**
- * Anyone else who is signed in gets the floor view: the board, read-only,
- * no manager chrome. `workshop@stellamarine.com.au` is the intended account.
- * Defaulting unknown-but-authenticated accounts DOWN to floor rather than up
- * to manager means a new account added in the console can never accidentally
- * arrive with edit rights.
+ * @param {string[]} emails from Firestore `settings/access`.
+ */
+export function setManagers(emails) {
+  managerEmails = (emails ?? []).map((e) => String(e).trim().toLowerCase()).filter(Boolean);
+}
+
+export const managerCount = () => managerEmails.length;
+
+/**
+ * Anyone signed in who is not on that list gets the floor view: the board,
+ * read-only, no manager chrome. Defaulting unknown-but-authenticated accounts
+ * DOWN to floor rather than up to manager means a new account added in the
+ * console can never accidentally arrive with edit rights.
  */
 export const ROLE = { MANAGER: 'manager', FLOOR: 'floor', NONE: 'none' };
 
 export function roleFor(email) {
   if (!email) return ROLE.NONE;
-  return MANAGER_EMAILS.includes(email.trim().toLowerCase()) ? ROLE.MANAGER : ROLE.FLOOR;
+  return managerEmails.includes(email.trim().toLowerCase()) ? ROLE.MANAGER : ROLE.FLOOR;
 }
 
 export const Auth = {
@@ -61,6 +73,22 @@ export const Auth = {
       onChange({ role: this.role, email: user?.email ?? null, mode: 'firebase' });
     });
     return 'firebase';
+  },
+
+  /**
+   * Re-decide the role now the manager list has loaded.
+   *
+   * The list lives in Firestore, and Firebase reports the signed-in user before
+   * the store is up — so the first decision is always made against an empty
+   * list and is always FLOOR. This is the second, real one.
+   *
+   * Local mode never consults the list: there is no sign-in and no second
+   * device, and the single user of a local board is the manager.
+   */
+  refreshRole() {
+    if (this.mode === 'local') return this.role;
+    this.role = this.user ? roleFor(this.user.email) : ROLE.NONE;
+    return this.role;
   },
 
   async signIn(email, password) {

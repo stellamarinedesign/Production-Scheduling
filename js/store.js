@@ -126,7 +126,15 @@ export const Store = {
    * wherever they exist; the seed only fills gaps.
    */
   async loadCodes() {
-    const seed = await (await fetch(new URL('../data/vessel-codes.seed.json', import.meta.url))).json();
+    // The seed is a BOOTSTRAP and is not in the repository — it is the product
+    // structure of every boat, and as a static file it was readable by anyone
+    // who knew the URL. Firestore is the source of truth once seeded, so a
+    // deployment that has been seeded never needs it. Absent, this is `{}` and
+    // everything comes from the store.
+    //
+    // Seeding a FRESH environment means copying the file from the private
+    // handoff folder into data/ for one load. See the private SETUP document.
+    const seed = await Store._seed();
     const merge = (stored) => {
       const out = { ...seed };
       for (const [code, entry] of Object.entries(stored ?? {})) {
@@ -143,6 +151,7 @@ export const Store = {
 
     const { collection, getDocs, doc, setDoc } = this._fs;
     const snap = await getDocs(collection(this._db, 'vesselCodes'));
+    if (snap.empty && !Object.keys(seed).length) return {};
     if (snap.empty) {
       await Promise.all(Object.entries(seed).map(([code, entry]) =>
         setDoc(doc(this._db, 'vesselCodes', code), entry)));
@@ -151,6 +160,17 @@ export const Store = {
     const stored = {};
     snap.forEach((d) => { stored[d.id] = d.data(); });
     return merge(stored);
+  },
+
+  /** The bootstrap map, or {} when it is not deployed. Never throws. */
+  async _seed() {
+    if (this.__seed) return this.__seed;
+    try {
+      const r = await fetch(new URL('../data/vessel-codes.seed.json', import.meta.url),
+        { cache: 'no-store' });
+      this.__seed = r.ok ? await r.json() : {};
+    } catch { this.__seed = {}; }
+    return this.__seed;
   },
 
   async saveCode(code, patch) {
@@ -290,6 +310,27 @@ export const Store = {
     const { doc, getDoc } = this._fs;
     const snap = await getDoc(doc(this._db, 'settings', 'board'));
     return { ...defaults, ...(snap.exists() ? snap.data() : {}) };
+  },
+
+  /**
+   * Who sees the manager view. Kept in Firestore rather than in the shipped
+   * JavaScript, which anyone can fetch — see auth.js.
+   *
+   * In local mode there is no Firestore and no sign-in either, so the single
+   * user of a local board is the manager by definition.
+   */
+  async loadManagers() {
+    if (this.mode === 'local') return ['*'];
+    try {
+      const { doc, getDoc } = this._fs;
+      const snap = await getDoc(doc(this._db, 'settings', 'access'));
+      const list = snap.exists() ? snap.data()?.managers : null;
+      return Array.isArray(list) ? list : [];
+    } catch (e) {
+      // Fail closed and loudly: an unreadable list must not promote anybody.
+      console.error('[access]', e.message);
+      return [];
+    }
   },
 
   async saveSettings(patch) {

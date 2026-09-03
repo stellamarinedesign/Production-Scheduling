@@ -1,0 +1,16 @@
+# GitHub Pages publishes the whole repository tree by default, so the tests and
+# this project's documentation were being served at the live URL and fetchable
+# by anyone — no sign-in involved, because a static site hands its files to
+# whoever asks.
+#
+# Jekyll runs on Pages unless a .nojekyll file exists, and its `exclude` list is
+# what keeps a file out of the published site. Do NOT add .nojekyll here without
+# replacing this some other way.
+#
+# This is about what SHIPS. What the repository itself exposes is a separate
+# question, answered by whether the repository is public.
+exclude:
+  - tests/
+  - README.md
+  - _config.yml
+  - .gitignore

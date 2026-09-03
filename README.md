@@ -81,7 +81,10 @@ Normalising happens in the transform, once, downstream.
   `62SY`, not `4PDRIV`.
 - **The display code is a human decision.** `SY23` prints as `56SY` but `SY20`
   prints as `SY20`. Both are correct and confirmed individually. It lives in
-  `data/vessel-codes.seed.json` and is maintained by hand.
+  Firestore, and is maintained by hand. `data/vessel-codes.seed.json` bootstraps
+  a fresh environment only; it is not in this repository and sits in the private
+  handoff folder, because as a static file it was the product structure of every
+  boat, readable by anyone who knew the URL.
 - **Grouping merges on the display, not just the stored key.** Two codes that
   print the same thing are one boat whatever `boat` says, so a legacy value
   cannot split a line — the model heals itself rather than needing a migration.
@@ -289,7 +292,7 @@ Normalising happens in the transform, once, downstream.
   rows in the 1216-row 01/09 export say "custom" without a custom code, and all
   six are genuine — a derated 650kg davit, a custom folding davit, a custom
   filter bracket, custom-length hoses, a custom single-arm lifter, a bespoke
-  Prestige 420. No false positives, so `CUSTOM_TEXT_RE` is a keyword and not a
+  Meridian 420. No false positives, so `CUSTOM_TEXT_RE` is a keyword and not a
   cleverer comparison: comparing the production description against the item
   description flags nine davit rows of which only two are real, the rest being
   customer names and shipping notes. For a davit the production order is the one
@@ -315,6 +318,11 @@ Full background: `handoff/STELLA_PRODUCTION_BOARD_CONTEXT.md`.
 
 No Node in the target environment, so the tests run in a browser against the
 real 21/08/2026 export and the reference implementation's real output.
+
+**Nothing real is served.** `_config.yml` keeps `tests/` and this README out of
+the published site: GitHub Pages publishes the whole tree by default, and a
+static site hands its files to anyone who asks — no sign-in involved. Comments
+and test data use invented customers and hull numbers for the same reason.
 
 **The fixtures are not in this repo and never will be.** They carry customer
 names, Riviera PO numbers, sales orders, hull numbers and ERP internal notes —
@@ -351,7 +359,7 @@ than quietly tolerated:
 - **`43SY` displays `SY20`** — same boat as the SY20 lifter.
 - **Custom jobs read `Custom Lifter - Riviera 48`** — the vessel alone made a
   one-off look like a standard model. The reference printed `Custom Lifter -
-  GALAXY` for the drawing-fee row; the board still does until somebody answers
+  NORTHWIND` for the drawing-fee row; the board still does until somebody answers
   the import prompt, and then prints whatever they chose.
 - **Water treatment is on the board rather than excluded** — 24 rows on the
   21/08 export, in two categories, neither of which prints. The reference's
@@ -370,11 +378,19 @@ Firebase email/password, no self-signup — the same model as the Drawings app.
 
 | Account | Sees |
 |---|---|
-| `design@` · `production@` | Full manager view: upload, edit, hide, relabel, print |
-| `workshop@` | Floor view: the printed board, read-only |
+| Anyone on the manager list | Full manager view: upload, edit, hide, relabel, print |
+| Any other signed-in account | Floor view: the printed board, read-only |
 
-Roles fail closed — any signed-in address that is not a manager gets the floor
-view, so a new account can never arrive with edit rights by accident. Hiding
+The manager list is a `managers` array on the Firestore document
+`settings/access`, not a constant in the source. It used to be two staff
+addresses in `js/auth.js`, and a static site hands its JavaScript to anyone who
+asks — so publishing the app published the addresses. Which accounts exist is in
+the private SETUP document.
+
+Roles fail closed — any signed-in address that is not on the list gets the floor
+view, so a new account can never arrive with edit rights by accident. An empty
+or unreadable list means nobody is a manager, which also covers the moment
+before it has loaded. Hiding
 manager controls is tidiness, not security; the Firestore rules are the
 enforcement.
 

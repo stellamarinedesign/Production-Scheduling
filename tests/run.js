@@ -11,7 +11,7 @@ import { buildBoard, toDateOnly, toAU, toISO, addWeeks, jobTitle,
          printJobs, isPrintable, daysBetween, ageLabel, retainedRows,
          effectiveStatus, snapshotOf, fromSnapshot, shortLabel, isCustomBuild } from '../js/transform.js';
 import { classify, CATEGORY_ORDER, PRINT_CATEGORIES, WATERMAKER_CATEGORIES, LABEL_OVERRIDES,
-         ANCHOR_CATEGORY,
+         ANCHOR_CATEGORY, CUSTOMER_SUFFIX_RE,
          laneFor, LANE, tmCategory, internalCategory,
          isWaterUnit, WATERMAKER_UNIT_RE } from '../js/rules.js';
 import { resolveDisplays, aliasGroups, stellaCode, labelFor, detectNewCodes,
@@ -383,15 +383,15 @@ export async function run() {
     ...src.rows.find((r) => String(r['Inventory ID']).startsWith('SGDRIV')),
     'Production Nbr.': 'P99001',
     'Inventory ID': 'SGDRIVSY31',
-    'Production Description': 'Hydraulic Garage Door Opening System - Riviera 78SY - Used by 78SY/002',
+    'Production Description': 'Hydraulic Garage Door Opening System - Riviera 78SY - Used by 00SY/001',
     // Both free-text fields, or the hull scan finds the donor row's 68SY first.
-    Description: 'Used by 78SY/002',
+    Description: 'Used by 00SY/001',
   }];
   const fresh = detectNewCodes(withNew, codeMap);
   eq('an unseen code is detected', fresh.map((f) => f.code), ['SY31']);
   eq('...with the Stella code it would use', fresh[0].suggestion.stella, 'SY31');
   eq('...and the Riviera model from the description', fresh[0].suggestion.riviera, '78SY');
-  eq('...and the hull prefix', fresh[0].hull_prefix, ['78SY']);
+  eq('...and the hull prefix', fresh[0].hull_prefix, ['00SY']);
 
   // The four choices.
   eq('choosing the Stella code', acceptNewCode('SY31', { mode: 'stella' }, fresh[0]).display, 'SY31');
@@ -709,26 +709,26 @@ export async function run() {
   eq('a standard item has no custom naming to do',
     customNameOptions({ inventoryId: 'SBLRIV56', descField: 'x', customer: 'y' }), null);
 
-  const vesselRow = opts({ descField: 'Riviera 48', customer: 'Rory Corbett' });
+  const vesselRow = opts({ descField: 'Riviera 48', customer: 'Alex Turner' });
   eq('a vessel in the Description settles it', vesselRow.ambiguous, false);
   eq('...and is what the board takes', vesselRow.chosen.label, 'Custom Lifter - Riviera 48');
   eq('trailing words after the vessel are dropped',
     opts({ descField: 'Alaska 47 square transom', customer: 'Leigh Smith Yachts' }).chosen.label,
     'Custom Lifter - Alaska 47');
 
-  const feeRow = opts({ descField: '5% drawing fee', customer: 'Galaxy Charters' });
+  const feeRow = opts({ descField: '5% drawing fee', customer: 'Northwind Charters' });
   check('text the vessel rule cannot read is ambiguous, not silently dropped', feeRow.ambiguous);
-  eq('...the board still prints what it always did', feeRow.chosen.label, 'Custom Lifter - GALAXY');
+  eq('...the board still prints what it always did', feeRow.chosen.label, 'Custom Lifter - NORTHWIND');
   eq('...and both columns are offered verbatim',
-    [feeRow.description.raw, feeRow.customer.raw], ['5% drawing fee', 'Galaxy Charters']);
+    [feeRow.description.raw, feeRow.customer.raw], ['5% drawing fee', 'Northwind Charters']);
   eq('...each with the label it would produce',
     [feeRow.description.label, feeRow.customer.label],
-    ['Custom Lifter - 5% drawing fee', 'Custom Lifter - GALAXY']);
+    ['Custom Lifter - 5% drawing fee', 'Custom Lifter - NORTHWIND']);
 
   // An empty column is not an option — the dialog hides it rather than offering
   // a choice that prints "Custom Lifter - ".
-  eq('a blank Description offers no label', opts({ descField: '', customer: 'Galaxy Charters' }).description.label, null);
-  eq('...and is still ambiguous', opts({ descField: '', customer: 'Galaxy Charters' }).ambiguous, true);
+  eq('a blank Description offers no label', opts({ descField: '', customer: 'Northwind Charters' }).description.label, null);
+  eq('...and is still ambiguous', opts({ descField: '', customer: 'Northwind Charters' }).ambiguous, true);
 
   // On the real export: three custom rows, one of which the board is guessing at.
   eq('the export raises exactly one ambiguous custom name',
@@ -743,19 +743,19 @@ export async function run() {
   // otherwise "use the customer name" is asked again on every single import.
   const answered = (label) => buildBoard(src.rows, { codeMap, horizonWeeks: 12, asOf,
     overrides: { P01137: { labelOverride: label } } });
-  eq('answering clears the question', answered('Custom Lifter - GALAXY').warnings.customNames, []);
+  eq('answering clears the question', answered('Custom Lifter - NORTHWIND').warnings.customNames, []);
   eq('...including when the answer matches the guess exactly',
-    answered('Custom Lifter - GALAXY').jobs.find((j) => j.prod_no === 'P01137').label,
-    'Custom Lifter - GALAXY');
+    answered('Custom Lifter - NORTHWIND').jobs.find((j) => j.prod_no === 'P01137').label,
+    'Custom Lifter - NORTHWIND');
   eq('a typed answer prints as typed',
-    answered('Custom Lifter - Galaxy 62 hull 4').jobs.find((j) => j.prod_no === 'P01137').label,
-    'Custom Lifter - Galaxy 62 hull 4');
+    answered('Custom Lifter - Northwind 62 hull 4').jobs.find((j) => j.prod_no === 'P01137').label,
+    'Custom Lifter - Northwind 62 hull 4');
 
   // Nothing more specific may be second-guessed: a pinned item label decides
   // before the custom branch is ever reached, so there is nothing to ask about.
   eq('an item override leaves nothing ambiguous',
     buildBoard(src.rows, { codeMap, horizonWeeks: 12, asOf,
-      itemOverrides: { 'SLCUSTOMDOUBLE(24)': { label: 'Galaxy one-off' } } }).warnings.customNames, []);
+      itemOverrides: { 'SLCUSTOMDOUBLE(24)': { label: 'Northwind one-off' } } }).warnings.customNames, []);
 
   eq('the prefix is what marks a job as a one-off', CUSTOM_PREFIX, 'Custom Lifter - ');
 
@@ -797,7 +797,7 @@ export async function run() {
   eq('the item description drives it, whatever the order says',
     shortLabel({
       inventoryId: 'SDC550SSHLHSHE',
-      productionDescription: '550kg full hyd Lawson marine',
+      productionDescription: '550kg full hyd Harbour Marine',
       itemDescription: 'Stella Davit 550kg - Single Stage (Hydraulic Luff / Hydraulic Slew / Hydraulic Extension)',
       resolved, codeMap,
     }),
@@ -821,7 +821,7 @@ export async function run() {
   // way it always was.
   eq('a davit with no item description falls back',
     shortLabel({
-      inventoryId: 'SDC200FOLD', productionDescription: 'Stella Davit 200Kg Folding - Used by 58SM/043',
+      inventoryId: 'SDC200FOLD', productionDescription: 'Stella Davit 200Kg Folding - Used by 00SM/001',
       itemDescription: '', resolved, codeMap,
     }),
     '200Kg Folding');
@@ -916,7 +916,7 @@ export async function run() {
   check('so can the Description column',
     isCustomBuild({ productionDescription: 'Stella Davit 650kg', descField: '650kg davit derated to 500kg (custom)' }), '');
   check('a standard build says neither',
-    !isCustomBuild({ productionDescription: '250Kg Single Stage Davit', descField: 'Used by 58SM/043' }), '');
+    !isCustomBuild({ productionDescription: '250Kg Single Stage Davit', descField: 'Used by 00SM/001' }), '');
   // Whole word only: "customer" is not "custom".
   check('a customer is not a custom build',
     !isCustomBuild({ productionDescription: 'Customer supplied davit', descField: '' }), '');
@@ -937,7 +937,7 @@ export async function run() {
       inventoryId: 'SDC650SSHLHSHE',
       productionDescription: '650kg davit',
       itemDescription: 'Stella Davit 650kg - Single Stage (Hydraulic Luff / Hydraulic Slew / Hydraulic Extension)',
-      descField: 'Used by 58SM/043', resolved, codeMap,
+      descField: 'Used by 00SM/001', resolved, codeMap,
     }),
     '650kg - Single Stage (Hydraulic Luff / Hydraulic Slew / Hydraulic Extension)');
 
@@ -988,9 +988,15 @@ export async function run() {
   eq('...taking the vessel from the Description field where there is one',
     customs.find((j) => j.inventory_id === 'SLCUSTOMSINGLE(12)')?.label,
     'Custom Lifter - Riviera 48');
+  // Derived from the fixture rather than written out: this row's customer is a
+  // real one, and the assertion is about the RULE — customer name, company
+  // suffix stripped, uppercased — not about who they are.
+  const byCustomer = customs.find((j) => j.inventory_id === 'SLCUSTOMDOUBLE(24)');
   eq('...and the customer name where that field holds something else',
-    customs.find((j) => j.inventory_id === 'SLCUSTOMDOUBLE(24)')?.label,
-    'Custom Lifter - GALAXY');
+    byCustomer?.label,
+    `Custom Lifter - ${byCustomer?.customer.replace(CUSTOMER_SUFFIX_RE, '').toUpperCase()}`);
+  check('...which is not just the whole field',
+    byCustomer?.label.length < `Custom Lifter - ${byCustomer?.customer}`.length, '');
 
   // ---- column balancing ---------------------------------------------------
   // 19 cylinder lifters against 5 rotary: pinning two-and-two wastes a column.

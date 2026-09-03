@@ -7,7 +7,7 @@ import { CATEGORY_ORDER, PRINT_LAYOUT, EXCLUSION_ORDER, EXCLUSION_GROUP_LABEL,
          TM_CATEGORY_ORDER, INTERNAL_CATEGORY_ORDER, LANE_LABEL, WATERMAKER_CATEGORIES,
          SETTABLE_STATUSES } from './rules.js';
 import { stellaCode, labelFor, existingBoats, acceptNewCode, applyTemplate } from './vessel-codes.js';
-import { Auth, ROLE, friendlyAuthError } from './auth.js';
+import { Auth, ROLE, friendlyAuthError, setManagers, managerCount } from './auth.js';
 import { VERSION } from './version.js';
 import { Store, packRows, unpackRows, isNewerImport } from './store.js';
 import { renderPrint, measure, fitToPage } from './print.js';
@@ -70,9 +70,22 @@ function showAuth() {
 }
 
 let started = false;
+let storeReady = false;
+
 async function start(st) {
   $('authView').classList.remove('show');
   $('appShell').hidden = false;
+
+  // THE STORE COMES UP BEFORE THE ROLE IS READ. The manager list is in
+  // Firestore rather than in the shipped JavaScript, and Firebase reports the
+  // signed-in user before the store exists — so the role Auth first hands us is
+  // always FLOOR, whoever signed in. Load the list, then ask again.
+  if (!storeReady) {
+    storeReady = true;
+    await Store.init();
+    setManagers(await Store.loadManagers());
+  }
+  st = { ...st, role: Auth.refreshRole() };
 
   // Role decides what is drawn. The Firestore rules decide what is allowed —
   // hiding a button is not security, it is tidiness.
@@ -89,11 +102,22 @@ async function start(st) {
   if (started) { rebuild(); return; }
   started = true;
 
-  await Store.init();
-
   // Floor accounts read the last published board and render the printed sheet.
   // No upload, no controls, no edit affordances — that is the whole point of
   // the role, and the rules deny those writes regardless.
+  // An empty list means every signed-in account gets the floor view. That is
+  // the right default, and it is also what a missing `settings/access` document
+  // looks like — so say which, rather than leaving a manager wondering why
+  // their own board has gone read-only.
+  if (st.role === ROLE.FLOOR && Auth.mode === 'firebase' && !managerCount()) {
+    $('floorEmpty').hidden = false;
+    $('floorEmpty').innerHTML =
+      '<strong>No manager list configured</strong>'
+      + 'Everyone signed in sees the floor view until <code>settings/access</code> '
+      + 'exists in Firestore with a <code>managers</code> array of email addresses. '
+      + 'See the private SETUP document.';
+  }
+
   if (st.role === ROLE.FLOOR) { await startFloor(); return; }
 
   state.settings = await Store.loadSettings();

@@ -115,7 +115,7 @@ export function addWeeks(dt, weeks) {
 // Labels
 // ---------------------------------------------------------------------------
 
-/** 'Used by 78SY/002' out of any free-text field. Null if absent. */
+/** 'Used by 00SY/001' out of any free-text field. Null if absent. */
 export function extractHull(...fields) {
   for (const f of fields) {
     if (isBlank(f) || f === '') continue;
@@ -132,7 +132,7 @@ export function extractHull(...fields) {
 // text — and the two columns that could supply it disagree. In the 21/08 export
 // `Description` holds the vessel on two of the three custom rows ("Riviera 48",
 // "Alaska 47 square transom") and "5% drawing fee" on the third, where the real
-// answer is the customer, Galaxy. Neither column is reliably the right one.
+// answer is the customer, Northwind. Neither column is reliably the right one.
 //
 // So this returns BOTH readings and what each would print, rather than picking.
 // `chosen` is what the board shows when nobody has been asked — the historical
