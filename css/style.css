@@ -93,6 +93,13 @@ main { padding: 16px 22px 60px; max-width: 1720px; margin: 0 auto; }
 .provenance b { color: var(--white); font-weight: 600; }
 .provenance .age.stale { color: var(--red-bright); font-weight: 700; }
 .provenance .src { font-variant-numeric: tabular-nums; }
+/* Which build is on screen. Pages serves everything with max-age=600, so a
+   refresh soon after a deploy can legitimately show the old stylesheet — and
+   without this that is indistinguishable from a fix that did not work. */
+#provVersion {
+  color: var(--text-dim); opacity: .6; font-variant-numeric: tabular-nums;
+  margin-left: 14px; cursor: help;
+}
 
 /* ---------- drop zone ---------- */
 #dropZone {

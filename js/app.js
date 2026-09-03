@@ -8,6 +8,7 @@ import { CATEGORY_ORDER, PRINT_LAYOUT, EXCLUSION_ORDER, EXCLUSION_GROUP_LABEL,
          SETTABLE_STATUSES } from './rules.js';
 import { stellaCode, labelFor, existingBoats, acceptNewCode, applyTemplate } from './vessel-codes.js';
 import { Auth, ROLE, friendlyAuthError } from './auth.js';
+import { VERSION } from './version.js';
 import { Store, packRows, unpackRows, isNewerImport } from './store.js';
 import { renderPrint, measure, fitToPage } from './print.js';
 import { renderGantt } from './gantt.js';
@@ -105,6 +106,7 @@ async function start(st) {
   $('maxStock').value = state.settings.maxStock ?? '';
   setAutoFit(state.settings.autoFit, { save: false });
 
+  $('provVersion').textContent = `v${VERSION}`;
   $('provStore').textContent = Store.mode === 'firestore'
     ? 'Edits sync to Firestore'
     : `Local only — ${Store.reason}`;
