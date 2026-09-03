@@ -81,10 +81,14 @@ Normalising happens in the transform, once, downstream.
   `62SY`, not `4PDRIV`.
 - **The display code is a human decision.** `SY23` prints as `56SY` but `SY20`
   prints as `SY20`. Both are correct and confirmed individually. It lives in
-  Firestore, and is maintained by hand. `data/vessel-codes.seed.json` bootstraps
-  a fresh environment only; it is not in this repository and sits in the private
-  handoff folder, because as a static file it was the product structure of every
-  boat, readable by anyone who knew the URL.
+  Firestore, and is maintained by hand. It moves on a FILE: **Save file** and
+  **Load file…** on the vessel codes page write it out and read it back, which
+  is both the backup and how a map reaches a fresh environment. It used to ship
+  as `data/vessel-codes.seed.json` — the product structure of every boat, one
+  URL away from anybody, because a static site hands its files to whoever asks.
+  Load says what it would add and what it would overwrite before writing
+  anything; overwriting a hand-made decision is the point of it, and the reason
+  to look first.
 - **Grouping merges on the display, not just the stored key.** Two codes that
   print the same thing are one boat whatever `boat` says, so a legacy value
   cannot split a line — the model heals itself rather than needing a migration.
