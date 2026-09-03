@@ -7,7 +7,7 @@
 <link rel="icon" type="image/png" href="assets/logo.png">
 <title>Vessel codes — Stella Marine</title>
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="css/style.css?v=2026-09-03.4">
+<link rel="stylesheet" href="css/style.css?v=2026-09-03.5">
 <!-- AFTER style.css: it declares A4 portrait for the board, and @page cannot be
      scoped by selector, so the landscape rule has to win by coming later. -->
 <link rel="stylesheet" href="css/codes-print.css">
@@ -37,6 +37,8 @@
     <span id="pageVersion" title="Which build is on screen. If this is not the version you were told to expect, the browser is holding an old copy — reload with Ctrl+Shift+R."></span>
   </div>
 
+  <div class="state" id="codesDenied" hidden></div>
+
   <div class="state" id="codesEmpty" hidden>
     <strong>No vessel codes stored yet</strong>
     Codes are created by answering the prompts on import, and live in Firestore.
@@ -51,9 +53,18 @@
     <button class="tab" id="modeProducts" aria-current="false">Split by product</button>
     <span class="spacer"></span>
     <span class="hint" id="modeHint"></span>
+    <button class="mini" id="saveCodes" title="Download the current map as JSON — a backup, and how you move it to another environment">Save file</button>
+    <button class="mini" id="loadCodes" title="Load a code map from a JSON file on this machine">Load file…</button>
+    <input type="file" id="codesFile" accept=".json,application/json" hidden>
     <button class="mini" id="previewSheet" aria-pressed="false">Cheat sheet</button>
     <button class="primary" id="printSheet">Print cheat sheet</button>
   </div>
+
+  <!-- The map used to ship as data/vessel-codes.seed.json, which meant the
+       product structure of every boat was a URL away for anyone. It is loaded
+       from a file on the manager's own machine now, and never lives in the
+       repository or on the web server. -->
+  <div id="codesLoad" class="import-review" hidden></div>
 
   <div id="sheetStatus" class="fit-status" hidden></div>
   <div id="codesPrintRoot" hidden><div id="codesSheet"></div></div>
@@ -89,6 +100,6 @@
 
 <div id="toast"></div>
 
-<script type="module" src="js/codes-page.js"></script>
+<script type="module" src="js/codes-page.js?v=2026-09-03.5"></script>
 </body>
 </html>

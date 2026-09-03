@@ -202,6 +202,27 @@ export const Store = {
     await deleteDoc(doc(this._db, 'vesselCodes', code));
   },
 
+  /**
+   * Write a whole map, one document per code.
+   *
+   * Used by the drop-in on the vessel codes page. Unlike `mergeCodes` this is
+   * deliberate and overwrites: somebody has chosen a file and confirmed what it
+   * changes, so a hand-confirmed `display` in the file is the answer, not
+   * something to protect the store from.
+   */
+  async putCodes(map) {
+    const entries = Object.entries(map ?? {});
+    if (this.mode === 'local') {
+      lsSet('vesselCodes', { ...lsGet('vesselCodes', {}), ...map });
+      return entries.length;
+    }
+    const { doc, setDoc } = this._fs;
+    for (const [code, entry] of entries) {
+      await setDoc(doc(this._db, 'vesselCodes', code), entry, { merge: true });
+    }
+    return entries.length;
+  },
+
   /** Merge newly-derived codes in without ever overwriting a `display`. */
   async mergeCodes(map, addedCodes) {
     if (!addedCodes.length) return;

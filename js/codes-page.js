@@ -51,11 +51,30 @@ const collapsed = new Set();
   setManagers(await Store.loadManagers());
   const role = Auth.refreshRole();
 
-  // Not signed in at all: the board page owns the sign-in screen, so send them
-  // there rather than showing an empty table behind a denied read.
-  if (first.mode === 'firebase' && role === ROLE.NONE) { location.replace('./'); return; }
-  // Floor accounts have no business here; the rules deny the writes anyway.
-  if (role === ROLE.FLOOR) { location.replace('./'); return; }
+  // SAY WHY, DO NOT BOUNCE.
+  //
+  // This used to redirect to the board. A redirect leaves nothing on screen to
+  // read — not the reason, not the build — so when it fired wrongly there was
+  // no way to tell a broken role check from a cached copy of this file, and no
+  // way to tell either of those from "you are not a manager". Whatever the
+  // answer is, it is more useful on the page than in the address bar.
+  if (role !== ROLE.MANAGER) {
+    const why = role === ROLE.NONE
+      ? 'You are not signed in.'
+      : `You are signed in as ${first.email ?? 'an account'}, which is not on the manager list.`;
+    const host = $('codesDenied');
+    host.hidden = false;
+    host.textContent = '';
+    host.append(el('strong', null, 'Vessel codes are for managers'));
+    host.append(el('div', null, `${why} The board itself is read-only for everyone else.`));
+    const back = el('a', 'backlink', 'Go to the board');
+    back.href = './';
+    host.append(back);
+    for (const n of document.querySelectorAll('main .view-bar, main #rows, main #warnings, main .provenance')) {
+      n.hidden = true;
+    }
+    return;
+  }
 
   $('storeMode').textContent = Store.mode === 'firestore' ? 'Saved to Firestore' : 'Saved on this device only';
   if (Store.mode !== 'firestore') $('storeMode').style.color = 'var(--red-bright)';
@@ -70,6 +89,13 @@ const collapsed = new Set();
 
   $('modeBoats').addEventListener('click', () => setMode('boats'));
   $('modeProducts').addEventListener('click', () => setMode('products'));
+  $('saveCodes').addEventListener('click', saveCodesFile);
+  $('loadCodes').addEventListener('click', () => $('codesFile').click());
+  $('codesFile').addEventListener('change', (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';                      // so the same file can be picked twice
+    if (f) reviewCodesFile(f);
+  });
   $('previewSheet').addEventListener('click', () => togglePreview());
   $('printSheet').addEventListener('click', () => window.print());
   render();
@@ -334,4 +360,118 @@ function toast(msg, ms = 3200) {
   t.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), ms);
+}
+
+// ---------------------------------------------------------------------------
+// the code map as a file
+//
+// The map used to ship as data/vessel-codes.seed.json, which put the product
+// structure of every boat one URL away from anybody — a static site hands its
+// files to whoever asks, signed in or not. It moves on a file from the
+// manager's own machine now, and never touches the repository or the web
+// server.
+//
+// Save is also the backup. Firestore is the source of truth and there is no
+// other copy of a decision somebody made by hand.
+// ---------------------------------------------------------------------------
+
+function saveCodesFile() {
+  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const blob = new Blob([JSON.stringify(codeMap, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `vessel-codes-${stamp}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast(`${Object.keys(codeMap).length} codes saved. Keep it out of the repository.`);
+}
+
+/** A code entry is an object; everything else in the file is refused. */
+function validCodeMap(data) {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return 'That is not a code map.';
+  const codes = Object.keys(data);
+  if (!codes.length) return 'That file has no codes in it.';
+  const bad = codes.filter((c) => {
+    const v = data[c];
+    return !v || typeof v !== 'object' || Array.isArray(v);
+  });
+  if (bad.length) return `${bad.length} entries are not code records: ${bad.slice(0, 3).join(', ')}`;
+  return null;
+}
+
+async function reviewCodesFile(file) {
+  let data;
+  try {
+    data = JSON.parse(await file.text());
+  } catch (e) {
+    toast(`Could not read that file — ${e.message}`, 6000);
+    return;
+  }
+  const problem = validCodeMap(data);
+  if (problem) { toast(problem, 6000); return; }
+
+  // NOTHING IS WRITTEN UNTIL IT IS CONFIRMED, and what changes is spelled out
+  // first: this overwrites hand-made decisions, which is the whole point and
+  // also the reason to look before doing it.
+  const fresh = [], changed = [], same = [];
+  for (const [code, entry] of Object.entries(data)) {
+    const now = codeMap[code];
+    if (!now) fresh.push(code);
+    else if (JSON.stringify({ ...now, ...entry }) !== JSON.stringify(now)) {
+      changed.push({ code, from: now.display ?? '—', to: entry.display ?? now.display ?? '—' });
+    } else same.push(code);
+  }
+
+  const host = $('codesLoad');
+  host.hidden = false;
+  host.textContent = '';
+  host.append(el('h2', null, 'Load these codes?'));
+  host.append(el('div', 'lede',
+    `${file.name} — ${Object.keys(data).length} codes. Nothing is written until you apply it.`));
+
+  const grid = el('div', 'import-stats');
+  const stat = (n, label, note) => {
+    const c = el('div', 'stat');
+    c.append(el('b', null, String(n)), el('span', null, label));
+    if (note) c.append(el('em', null, note));
+    grid.append(c);
+  };
+  stat(fresh.length, 'new codes');
+  stat(changed.length, 'changed', changed.length ? 'existing decisions overwritten' : '');
+  stat(same.length, 'unchanged');
+  host.append(grid);
+
+  if (changed.length) {
+    const list = el('div', 'flag-rows');
+    for (const c of changed.slice(0, 40)) {
+      const r = el('div', 'flag-row');
+      r.append(el('span', 'fr-key', c.code), el('span', 'fr-main', `${c.from} → ${c.to}`),
+        el('span', 'fr-detail', ''), el('span', 'fr-act', ''));
+      list.append(r);
+    }
+    host.append(el('div', 'detail-group', `Changing (${changed.length})`));
+    host.append(list);
+  }
+
+  const acts = el('div', 'import-actions');
+  const apply = el('button', 'primary', `Load ${Object.keys(data).length} codes`);
+  apply.addEventListener('click', async () => {
+    apply.disabled = true;
+    try {
+      const n = await Store.putCodes(data);
+      codeMap = await Store.loadCodes();
+      host.hidden = true;
+      $('codesEmpty').hidden = true;
+      render();
+      toast(`${n} codes loaded.`);
+    } catch (e) {
+      apply.disabled = false;
+      toast(`Could not save — ${e.message}`, 8000);
+    }
+  });
+  const cancel = el('button', 'ghost', 'Cancel');
+  cancel.addEventListener('click', () => { host.hidden = true; });
+  acts.append(apply, cancel);
+  host.append(acts);
+  host.scrollIntoView({ block: 'start', behavior: 'smooth' });
 }

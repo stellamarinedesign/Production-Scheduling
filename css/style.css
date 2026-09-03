@@ -96,6 +96,12 @@ main { padding: 16px 22px 60px; max-width: 1720px; margin: 0 auto; }
 /* Which build is on screen. Pages serves everything with max-age=600, so a
    refresh soon after a deploy can legitimately show the old stylesheet — and
    without this that is indistinguishable from a fix that did not work. */
+.state .backlink {
+  display: inline-block; margin-top: 14px; color: var(--red-bright);
+  font-weight: 600; text-decoration: none; border-bottom: 1px solid var(--red-deep);
+}
+.state .backlink:hover { color: var(--white); }
+
 .boot-actions { margin-top: 16px; display: flex; flex-direction: column; gap: 10px; align-items: center; }
 .boot-actions .hint { font-size: 12.5px; color: var(--text-dim); line-height: 1.6; max-width: 60ch; }
 .boot-actions .hint code { color: var(--white); }
