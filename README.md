@@ -206,6 +206,13 @@ Normalising happens in the transform, once, downstream.
   **Cancel & undo** (put back everything that run changed). Every count opens
   too: "69 production orders" is a number you should be able to check, and its
   groups collapse — the excluded list runs to four figures and starts shut.
+- **The print stylesheet hides tab sections structurally, not by name.**
+  `.offstage` parks a tab at `left:-100000px` so auto-fit can still measure it,
+  and off-canvas is not out of flow for paper — the printer counts the area and
+  emits a blank second sheet. Naming each section made every new tab a blank
+  page waiting to happen, and it happened twice: first Gantt and History, then
+  Internal Factory Jobs and Time & Materials. Every section is hidden and
+  `#tabPrint` is brought back, with two ids so it outranks the rule above it.
 - **Print column placement is computed, not pinned.** `balanceColumns` tries all
   16 splits of the four narrow categories and takes the shortest page. With 19
   cylinder lifters against 5 rotary, a fixed two-and-two layout wastes half a

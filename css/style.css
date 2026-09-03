@@ -422,13 +422,20 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
      and keep the chain from body down to the board laid out. */
   body { background: #fff; }
 
-  /* #tabGantt and #tabHistory are parked with `position:absolute; left:-100000px`.
-     Off-canvas is not out of flow for paper: the printer still counts the area
-     and emits a blank second page. They have to be display:none, not merely
-     offstage. */
+  /* `.offstage` parks a tab with `position:absolute; left:-100000px`, which
+     keeps it measurable for auto-fit. Off-canvas is NOT out of flow for paper:
+     the printer still counts the area and emits a blank second page, so
+     anything parked has to be display:none here.
+
+     STRUCTURAL, NOT A LIST OF NAMES. This used to name each tab section, which
+     made every new tab a blank second page waiting to happen — and it happened,
+     twice: first Gantt and History, then Internal Factory Jobs and Time &
+     Materials. Hide every section and bring back the one that prints. */
+  .offstage,
+  #boardWrap > section,
+  #importPage,
   header, #authView, #toast, .overlay,
   .provenance, #dropZone, .controls, #warnings, .tabs, .view-bar,
-  #tabEdit, #tabGantt, #tabHistory,
   .fit-status, #floorEmpty, #emptyState { display: none !important; }
 
   #appShell:not([hidden]), main, #boardWrap:not([hidden]) {
@@ -436,8 +443,10 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
     padding: 0 !important; margin: 0 !important; max-width: none !important;
   }
 
-  /* The print tab is parked off-screen while the edit tab shows; bring it back. */
-  #tabPrint, #tabPrint.offstage {
+  /* The one section that prints. Two ids so it outranks `#boardWrap > section`
+     above — both carry !important, so this comes down to specificity, and a
+     single id would lose. */
+  #boardWrap > #tabPrint, #tabPrint.offstage {
     position: static !important; left: auto !important;
     visibility: visible !important; display: block !important;
   }
@@ -501,6 +510,15 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
   margin-left: 8px; font-size: 10px; font-weight: 700; letter-spacing: .1em;
   color: var(--red-bright);
 }
+
+/* A lane's category headings sit between two lists, where the board's sit at
+   the top of a column. They need air above them and enough weight to read as a
+   break rather than as another row. */
+#tabInternal .cat, #tabTm .cat { margin-bottom: 8px; }
+#tabInternal .cat + .cat, #tabTm .cat + .cat { margin-top: 30px; }
+#tabInternal .cat-head, #tabTm .cat-head { padding-bottom: 8px; margin-bottom: 8px; }
+#tabInternal .cat-head h2, #tabTm .cat-head h2 { font-size: 16px; letter-spacing: .1em; }
+#tabInternal .cat-head .n, #tabTm .cat-head .n { font-size: 13px; }
 
 /* History is a panel inside each lane now, not a tab of its own. */
 .history-panel { margin-top: 4px; }
@@ -649,6 +667,10 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 @media (max-width: 900px) {
   .flag-row { grid-template-columns: 78px 1fr 104px; }
   .flag-row .fr-detail { display: none; }
+}
+
+@media (max-width: 1240px) {
+  .lane-row { grid-template-columns: 72px 1.3fr 1fr 80px 258px; }
 }
 
 /* Kept in the layout but out of sight, so the print view can still be
