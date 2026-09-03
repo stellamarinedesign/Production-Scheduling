@@ -489,7 +489,10 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
    so a due date would be a number that means nothing. */
 .lane-table { font-size: 13.5px; }
 .lane-row {
-  display: grid; grid-template-columns: 78px 1.6fr 1fr 92px 172px;
+  /* The actions track holds FOUR controls — Label, Hide, the status select and
+     Done — and was sized for three, so the Open column ran underneath them.
+     Same fault as the board rows had, in the place that was missed. */
+  display: grid; grid-template-columns: 78px 1.6fr 1fr 92px 264px;
   align-items: baseline; gap: 10px;
   padding: 7px 0; border-bottom: 1px solid var(--line);
 }
