@@ -11,7 +11,7 @@
 // instead of the answer.
 
 import { Store, unpackRows } from './store.js';
-import { resolveDisplays, boatRows, itemFacts } from './vessel-codes.js';
+import { resolveDisplays, boatRows, itemFacts, factsFromStore } from './vessel-codes.js';
 import { classify } from './rules.js';
 import { Auth, ROLE, setManagers } from './auth.js';
 import { VERSION } from './version.js';
@@ -143,6 +143,7 @@ function render() {
   const rows = boatRows(codeMap, classify, { mode, facts });
   const host = $('rows');
   host.textContent = '';
+  renderDavitRows();
 
   $('modeHint').textContent = mode === 'boats'
     ? `${rows.length} boats, tagged with the product line each is best known by.`
@@ -189,7 +190,7 @@ function renderSheet(rows) {
   root.hidden = false;
   root.classList.toggle('offstage', !sheetShown);
 
-  const fit = fitCodesSheet(host, rows, { mode, davits });
+  const fit = fitCodesSheet(host, rows.filter((r) => !r.sheetHidden), { mode, davits: withDavitHulls(davits) });
 
   const status = $('sheetStatus');
   status.hidden = !sheetShown;
@@ -211,6 +212,87 @@ function togglePreview() {
   $('previewSheet').classList.toggle('on', sheetShown);
   $('previewSheet').setAttribute('aria-pressed', String(sheetShown));
   render();
+}
+
+/**
+ * The davit lines: what the sheet reads for each boat, and whether it reaches
+ * the sheet at all.
+ *
+ * They come from the export rather than the code map, so they are stored and
+ * edited separately — but they carry the same two decisions as every other
+ * line, and the sheet prints them in the same four columns.
+ */
+/**
+ * Hulls for each davit line, from the accumulated item facts.
+ *
+ * Kept out of davits.js: that module reads the export and nothing else, and
+ * hulls are a fact about the item that the store has been collecting.
+ */
+function withDavitHulls(list) {
+  return list.map((d) => ({
+    ...d,
+    hulls: [...new Set(d.davits.flatMap((x) => facts?.get(x.item)?.hulls ?? []))].sort(),
+  }));
+}
+
+function renderDavitRows() {
+  const section = $('davitSection');
+  const host = $('davitRows');
+  section.hidden = !davits.length;
+  host.textContent = '';
+  if (!davits.length) return;
+
+  for (const d of withDavitHulls(davits)) {
+    const row = el('div', `code-row${d.sheetHidden ? ' is-offsheet' : ''}`);
+    row.append(el('div', 'c-display', d.display || d.boat));
+    row.append(el('div', 'c-riv', d.boat));
+    row.append(el('div', 'c-hull', (d.hulls ?? []).join(', ') || '\u2014'));
+
+    const items = el('div', 'c-items');
+    for (const x of d.davits) {
+      const chip = el('span', 'c-item', x.description);
+      chip.title = x.item;
+      items.append(chip);
+    }
+    row.append(items);
+
+    const act = el('div', 'c-act');
+    const rename = el('button', 'mini', 'Rename');
+    rename.title = 'What the cheat sheet reads for this boat';
+    rename.addEventListener('click', () => renameDavit(d));
+    const hide = el('button', `mini${d.sheetHidden ? ' on' : ''}`, d.sheetHidden ? 'Hidden' : 'Hide');
+    hide.addEventListener('click', () => toggleDavitHidden(d));
+    act.append(rename, hide);
+    row.append(act);
+    host.append(row);
+  }
+}
+
+async function saveDavits(next) {
+  davits = next;
+  try {
+    await Store.saveDavits(davits);
+    render();
+  } catch (e) {
+    toast(`Could not save — ${e.message}`, 6000);
+  }
+}
+
+async function renameDavit(d) {
+  const next = prompt(
+    `Cheat sheet name for this boat.\n\nFound in the item codes: ${d.boat}`,
+    d.display || d.boat,
+  );
+  if (next === null) return;
+  const value = next.trim();
+  await saveDavits(davits.map((x) => (x.boat === d.boat ? { ...x, display: value || null } : x)));
+  toast(value ? `Davit line reads "${value}".` : `Davit line reads ${d.boat}.`);
+}
+
+async function toggleDavitHidden(d) {
+  const next = !d.sheetHidden;
+  await saveDavits(davits.map((x) => (x.boat === d.boat ? { ...x, sheetHidden: next || null } : x)));
+  toast(next ? `${d.display || d.boat} is off the cheat sheet.` : `${d.display || d.boat} is back.`);
 }
 
 function categoryHead(cat, n) {
@@ -236,7 +318,7 @@ const SHORT = {
 const shortCat = (c) => SHORT[c] ?? c;
 
 function boatRow(r) {
-  const row = el('div', 'code-row');
+  const row = el('div', `code-row${r.sheetHidden ? ' is-offsheet' : ''}`);
 
   // 1. THE DISPLAY. First, largest, and what everything else hangs off.
   const disp = el('div', 'c-display');
@@ -285,6 +367,12 @@ function boatRow(r) {
   row.append(items);
 
   const act = el('div', 'c-act');
+  const hide = el('button', `mini${r.sheetHidden ? ' on' : ''}`, r.sheetHidden ? 'Hidden' : 'Hide');
+  hide.title = r.sheetHidden
+    ? 'Kept off the printed cheat sheet. Click to put it back.'
+    : 'Keep this line off the printed cheat sheet';
+  hide.addEventListener('click', () => toggleSheetHidden(r));
+
   const model = el('button', 'mini', 'Model');
   model.title = 'What the cheat sheet prints in the Model column';
   model.addEventListener('click', () => setModel(r));
@@ -293,6 +381,7 @@ function boatRow(r) {
   edit.title = 'Change the code the floor reads. Applies to every ERP code on this line.';
   edit.addEventListener('click', () => rename(r));
   act.append(model, edit);
+  act.append(hide);
 
   const move = el('button', 'mini', 'Split');
   move.title = 'Move one ERP code onto a different boat';
@@ -437,11 +526,17 @@ async function loadDavits() {
 
 async function loadFacts() {
   try {
+    // THE ACCUMULATED LIST, not a reading of the rows to hand. Those are the
+    // open ones, so a product would drop off the sheet when its last order
+    // closed — see `mergeItemFacts`. Falls back to the rows only when nothing
+    // has been accumulated yet, so a board imported before this existed still
+    // shows something.
+    const stored = await Store.loadItemFacts();
+    if (Object.keys(stored).length) return factsFromStore(stored);
     const cached = Store.cachedRows?.();
     if (cached?.rows?.length) return itemFacts(cached.rows);
     const published = await Store.latestBoard();
-    const rows = published?.rowsJson ? unpackRows(published.rowsJson) : null;
-    return itemFacts(rows ?? []);
+    return itemFacts(published?.rowsJson ? unpackRows(published.rowsJson) : []);
   } catch (e) {
     console.warn('[facts]', e.message);
     return new Map();
@@ -559,6 +654,27 @@ async function reviewCodesFile(file) {
  *
  * Stored on the boat, affects the cheat sheet only.
  */
+/**
+ * Keep a line off the printed cheat sheet, or put it back.
+ *
+ * For a boat nobody builds any more. It stays on this page — hiding is a
+ * decision about a sheet of paper, not a deletion — and the sheet is what runs
+ * out of room, not the screen.
+ *
+ * Stored on every code on the line, so it survives a rename or a split.
+ */
+async function toggleSheetHidden(r) {
+  const next = !r.sheetHidden;
+  try {
+    for (const code of r.codes) await Store.saveCode(code, { sheetHidden: next || null });
+    codeMap = await Store.loadCodes();
+    render();
+    toast(next ? `${r.display} is off the cheat sheet.` : `${r.display} is back on the cheat sheet.`);
+  } catch (e) {
+    toast(`Could not save — ${e.message}`, 6000);
+  }
+}
+
 async function setModel(r) {
   const found = r.riviera;
   const current = r.modelSet ? r.model : '';

@@ -407,11 +407,21 @@ export function itemFacts(rows) {
     if (desc && !f.description) f.description = desc;
     const order = String(r['Customer Order Nbr.'] ?? '').trim();
     if (order) f.orders.add(order);
-    // EVERY hull on the row, not just the first. "Used by 56SY/010, /011,
-    // 62SY/002" names two boats, and reading one of them is how a hull went
-    // missing from the line it belonged to.
+    // EVERY hull in the "Used by" clause, not just the first: "Used by
+    // 56SY/010, /011, 62SY/002" names two boats, and reading one of them is how
+    // a hull went missing from the line it belonged to.
+    //
+    // STILL ANCHORED ON "Used by". Scanning the whole cell for code/number
+    // instead reads product names as hulls — a rope kit described as
+    // "450/550/650/750kg" yielded four of them.
     const blob = `${r['Description'] ?? ''} ${r['Production Description'] ?? ''}`;
-    for (const m of blob.matchAll(/([A-Z0-9]{2,})\s*\/\s*[0-9]/gi)) f.hulls.add(m[1].toUpperCase());
+    for (const clause of blob.matchAll(/Used\s*by\s*([^.;]*)/gi)) {
+      for (const m of clause[1].matchAll(/([A-Z]{0,4}[0-9]{1,4}[A-Z]{0,4})\s*\/\s*[0-9]/gi)) {
+        const hull = m[1].toUpperCase();
+        // A bare number before a slash is a capacity, not a hull code.
+        if (/[A-Z]/.test(hull)) f.hulls.add(hull);
+      }
+    }
   }
   for (const f of out.values()) {
     f.orders = [...f.orders].sort();
@@ -419,6 +429,42 @@ export function itemFacts(rows) {
   }
   return out;
 }
+
+/**
+ * Fold a fresh reading of the export into the stored one.
+ *
+ * THE PRODUCT LIST IS A TOTAL, NOT A SNAPSHOT. An applied import keeps only
+ * open rows, so read from those alone a product vanishes from the cheat sheet
+ * the moment its last order closes — and a boat's fitments are no less true for
+ * nobody having ordered one this month.
+ *
+ * Hulls and descriptions accumulate; nothing is removed automatically. A line
+ * that has genuinely gone away is hidden by hand, which is a deliberate act and
+ * reversible. See `sheetHidden`.
+ *
+ * @param {Object} stored  plain object, as it comes back from the store
+ * @param {Map} fresh      from `itemFacts`
+ * @returns {Object} inventoryId -> { description, hulls[] }
+ */
+export function mergeItemFacts(stored, fresh) {
+  const out = {};
+  for (const [inv, f] of Object.entries(stored ?? {})) {
+    out[inv] = { description: f?.description ?? '', hulls: [...(f?.hulls ?? [])] };
+  }
+  for (const [inv, f] of (fresh ?? new Map()).entries()) {
+    const now = out[inv] ?? { description: '', hulls: [] };
+    out[inv] = {
+      // A description that has been filled in is not replaced by a blank one.
+      description: f.description || now.description,
+      hulls: [...new Set([...now.hulls, ...(f.hulls ?? [])])].sort(),
+    };
+  }
+  return out;
+}
+
+/** The stored facts object, as the Map the rest of this module expects. */
+export const factsFromStore = (obj) => new Map(Object.entries(obj ?? {})
+  .map(([inv, f]) => [inv, { description: f?.description ?? '', orders: [], hulls: f?.hulls ?? [] }]));
 
 export function boatRows(codeMap, classify, { mode = 'boats', facts = null } = {}) {
   const groups = aliasGroups(codeMap);
@@ -460,6 +506,9 @@ export function boatRows(codeMap, classify, { mode = 'boats', facts = null } = {
       primaryCategory: categories[0] ?? null,
       itemCount: [...byCategory.values()].reduce((n, v) => n + v.length, 0),
       orders: ordersFor(g.codes.flatMap((c) => codeMap[c]?.items ?? []), facts),
+      // Kept off the printed sheet by hand — an old line nobody builds any more.
+      // It stays on this page, so hiding is visible and reversible.
+      sheetHidden: g.codes.some((c) => codeMap[c]?.sheetHidden === true),
     };
   });
 

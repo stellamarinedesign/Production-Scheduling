@@ -121,6 +121,15 @@ main { padding: 16px 22px 60px; max-width: 1720px; margin: 0 auto; }
 
 /* A model code chosen by hand, as against every one the data carries. */
 .c-riv.is-set { color: var(--white); }
+/* Kept off the printed sheet. Still here, still editable — dimmed, not gone. */
+.code-row.is-offsheet { opacity: .45; }
+.codes-cat-static {
+  display: flex; align-items: baseline; gap: 10px;
+  border-bottom: 2px solid var(--red-deep); color: var(--white);
+  font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+  padding: 0 0 6px; margin: 26px 0 4px;
+}
+.code-row.is-offsheet .c-display { text-decoration: line-through; }
 
 .state .backlink {
   display: inline-block; margin-top: 14px; color: var(--red-bright);
@@ -1071,7 +1080,8 @@ button.linkish:disabled { opacity: .5; cursor: default; }
   /* Stella | ERP codes | Model | Hull | Products | actions
      No order column: the customer's reference differs per order, so it changed
      on every line and told nobody anything. */
-  grid-template-columns: 170px 185px 125px 115px minmax(190px, 1fr) 198px;
+  /* Stella | ERP codes | Model | Hull | Products | actions (three buttons) */
+  grid-template-columns: 160px 170px 115px 105px minmax(170px, 1fr) 248px;
   gap: 14px; align-items: baseline; padding: 9px 10px;
 }
 .codes-head {

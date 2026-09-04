@@ -11,6 +11,7 @@ import { Auth, ROLE, friendlyAuthError, setManagers, managerCount } from './auth
 import { VERSION } from './version.js';
 import { wireHelp } from './help.js';
 import { davitsByBoat, mergeDavits } from './davits.js';
+import { itemFacts, mergeItemFacts } from './vessel-codes.js';
 import { Store, packRows, unpackRows, isNewerImport } from './store.js';
 import { renderPrint, measure, fitToPage } from './print.js';
 import { renderGantt } from './gantt.js';
@@ -540,8 +541,12 @@ async function commitImport() {
   try {
     const merged = mergeDavits(await Store.loadDavits(), davitsByBoat(src.rows));
     await Store.saveDavits(merged);
+    // Same reasoning for the products themselves: hulls and descriptions
+    // accumulate, so the cheat sheet is a total list rather than a view of what
+    // happens to be open.
+    await Store.saveItemFacts(mergeItemFacts(await Store.loadItemFacts(), itemFacts(src.rows)));
   } catch (e) {
-    console.warn('[davits]', e.message);
+    console.warn('[reference]', e.message);
   }
 
   await publish(keep, 'shared with the other managers');

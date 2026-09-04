@@ -369,6 +369,27 @@ export const Store = {
       { managers: emails, updatedAt: new Date().toISOString() }, { merge: true });
   },
 
+  /**
+   * What is known about each item code — description and hulls — accumulated
+   * across imports so the cheat sheet is a total product list rather than a
+   * view of this month's orders. See `mergeItemFacts`.
+   */
+  async loadItemFacts() {
+    if (this.mode === 'local') return lsGet('itemFacts', {});
+    try {
+      const { doc, getDoc } = this._fs;
+      const snap = await getDoc(doc(this._db, 'settings', 'items'));
+      return snap.exists() ? (snap.data()?.items ?? {}) : {};
+    } catch (e) { console.warn('[items]', e.message); return {}; }
+  },
+
+  async saveItemFacts(items) {
+    if (this.mode === 'local') { lsSet('itemFacts', items); return; }
+    const { doc, setDoc } = this._fs;
+    await setDoc(doc(this._db, 'settings', 'items'),
+      { items, updatedAt: new Date().toISOString() }, { merge: true });
+  },
+
   /** The davit reference list. See davits.js — it accumulates, it is not a view. */
   async loadDavits() {
     if (this.mode === 'local') return lsGet('davits', []);

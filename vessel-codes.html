@@ -7,7 +7,7 @@
 <link rel="icon" type="image/png" href="assets/logo.png">
 <title>Vessel codes — Stella Marine</title>
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="css/style.css?v=2026-09-04.5">
+<link rel="stylesheet" href="css/style.css?v=2026-09-04.6">
 <!-- AFTER style.css: it declares A4 portrait for the board, and @page cannot be
      scoped by selector, so the landscape rule has to win by coming later. -->
 <link rel="stylesheet" href="css/codes-print.css">
@@ -72,6 +72,17 @@
   </div>
   <div id="rows"></div>
 
+  <!-- Davits come from the export rather than the code map (see js/davits.js),
+       so they are their own section. Same controls: what the sheet reads, and
+       whether it reaches the sheet at all. -->
+  <div id="davitSection" hidden>
+    <div class="codes-cat-static">Davits by boat</div>
+    <div class="codes-head">
+      <div>Stella</div><div>Model</div><div>Hull</div><div>Davit</div><div></div>
+    </div>
+    <div id="davitRows"></div>
+  </div>
+
 
 </main>
 
@@ -89,6 +100,6 @@
 
 <div id="toast"></div>
 
-<script type="module" src="js/codes-page.js?v=2026-09-04.5"></script>
+<script type="module" src="js/codes-page.js?v=2026-09-04.6"></script>
 </body>
 </html>

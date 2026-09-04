@@ -95,35 +95,34 @@ export function renderCodesSheet(host, rows, { mode = 'boats', asOf = todayDate(
       : r.categories.map(shortCat).join('  ·  ')));
     tbody.append(tr);
   }
+
+  // DAVITS, in the same table and the same four columns.
+  //
+  // They come from a different place — the export rather than the code map, see
+  // davits.js — but a sheet that changes shape halfway down is harder to read
+  // than one that does not. A banner says where they start; everything else is
+  // identical, including being able to give a boat a display name.
+  if (davits.length) {
+    const banner = el('tr', 'cs-banner');
+    const cell = el('th', null, 'DAVITS');
+    cell.colSpan = 5;
+    banner.append(cell);
+    tbody.append(banner);
+
+    for (const d of davits) {
+      if (d.sheetHidden) continue;
+      const tr = el('tr');
+      tr.append(el('td', 'cs-disp', d.display || d.boat));
+      tr.append(el('td', 'cs-riv', d.boat));
+      tr.append(el('td', 'cs-hull', (d.hulls ?? []).join(', ') || '—'));
+      tr.append(el('td', 'cs-prod', d.davits.map((x) => x.description).join('  \u00b7  ')));
+      tbody.append(tr);
+    }
+  }
+
   table.append(tbody);
   host.append(table);
 
-  // WHICH DAVIT GOES ON WHICH BOAT.
-  //
-  // Read straight from the export and kept apart from the code map on purpose
-  // — see davits.js. Most davits have no boat, so this is short, and it is left
-  // out entirely when the export has none.
-  if (davits.length) {
-    host.append(el('div', 'cs-subhead', 'Davits by boat'));
-    const dt = el('table', 'cs-table cs-davits');
-    const dg = el('colgroup');
-    for (const c of ['c-disp', 'c-prod']) dg.append(el('col', c));
-    dt.append(dg);
-    const dh = el('thead');
-    const dhr = el('tr');
-    dhr.append(el('th', null, 'Boat'), el('th', null, 'Davit'));
-    dh.append(dhr);
-    dt.append(dh);
-    const db = el('tbody');
-    for (const d of davits) {
-      const tr = el('tr');
-      tr.append(el('td', 'cs-disp', d.boat));
-      tr.append(el('td', 'cs-prod', d.davits.map((x) => x.description).join('  \u00b7  ')));
-      db.append(tr);
-    }
-    dt.append(db);
-    host.append(dt);
-  }
 
   return host;
 }

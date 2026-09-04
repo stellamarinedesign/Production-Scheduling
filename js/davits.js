@@ -68,14 +68,25 @@ export function davitsByBoat(rows) {
  */
 export function mergeDavits(stored, fresh) {
   const byBoat = new Map();
+  const kept = new Map();          // decisions made by hand, preserved
   for (const group of [...(stored ?? []), ...(fresh ?? [])]) {
     if (!byBoat.has(group.boat)) byBoat.set(group.boat, new Map());
     const m = byBoat.get(group.boat);
     for (const d of group.davits ?? []) m.set(d.item, d.description);
+    // A display name or a hidden flag is somebody's decision and outlives any
+    // import. Only ever set from the stored side, never invented from a file.
+    const prev = kept.get(group.boat) ?? {};
+    kept.set(group.boat, {
+      display: group.display ?? prev.display ?? null,
+      sheetHidden: group.sheetHidden ?? prev.sheetHidden ?? null,
+      hulls: [...new Set([...(prev.hulls ?? []), ...(group.hulls ?? [])])],
+    });
   }
   return [...byBoat.entries()]
     .map(([boat, items]) => ({
       boat,
+      ...kept.get(boat),
+      hulls: (kept.get(boat)?.hulls ?? []).sort(),
       davits: [...items.entries()]
         .map(([item, description]) => ({ item, description }))
         .sort((a, b) => a.description.localeCompare(b.description)),
