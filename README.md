@@ -73,6 +73,13 @@ Normalising happens in the transform, once, downstream.
   `SLRIVCOMMISSION` starts with `SLRIV`; if it drops below that rule, on-site
   commissioning prints as real cylinder-lifter work. Both `COMMISSION`
   spellings stay pinned at the top.
+- **A sheet's own cell references cannot be trusted either.** One export
+  arrived with every address in lower case — `a1` rather than `A1`. The spec
+  says uppercase and Excel tolerates the other, so a writer can emit it for
+  years unnoticed; SheetJS cannot read it at all, and the failure surfaced as
+  `invalid column -1` with nothing to say about which file or why. The adapter
+  uppercases the keys and rebuilds the range from the cells that exist, rather
+  than trusting a range record that has already proved wrong.
 - **The ERP's own saved filter cannot be trusted** — it excludes
   `SLRIVCOMMISSION` but the data contains `STL`RIVCOMMISSION (with a T), so 15
   rows come through. Filtering happens here, so a raw or filtered export gives

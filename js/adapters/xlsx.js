@@ -52,6 +52,44 @@ export function validateColumns(rows) {
   return warnings;
 }
 
+/**
+ * Repair a sheet whose cell references are lowercase.
+ *
+ * The spreadsheet spec says a cell reference is uppercase — A1, not a1 — and
+ * Excel tolerates the lowercase form, so a writer can emit it for years without
+ * anybody noticing. SheetJS does not tolerate it: `decode_cell('a1')` returns
+ * column -1, the sheet's own range record comes out malformed as `1:A1236`
+ * instead of `A1:AF1236`, and the first thing to touch it throws
+ * "invalid column -1" with nothing to say about which file or why.
+ *
+ * One real export arrived this way. Every cell was present and readable; only
+ * the addresses were the wrong case. So this uppercases the keys and rebuilds
+ * the range from the cells that actually exist, rather than trusting a range
+ * record that has already proved unreliable.
+ *
+ * Returns the sheet untouched when there is nothing wrong with it.
+ */
+export function normaliseRefs(XLSX, sheet) {
+  const keys = Object.keys(sheet);
+  if (!keys.some((k) => !k.startsWith('!') && k !== k.toUpperCase())) return sheet;
+
+  const out = {};
+  let minR = Infinity; let maxR = -1; let minC = Infinity; let maxC = -1;
+  for (const k of keys) {
+    if (k.startsWith('!')) continue;                 // rebuilt below
+    const up = k.toUpperCase();
+    out[up] = sheet[k];
+    const { r, c } = XLSX.utils.decode_cell(up);
+    if (r < minR) minR = r;
+    if (r > maxR) maxR = r;
+    if (c < minC) minC = c;
+    if (c > maxC) maxC = c;
+  }
+  if (maxR < 0 || maxC < 0) return sheet;            // nothing to go on
+  out['!ref'] = XLSX.utils.encode_range({ s: { r: minR, c: minC }, e: { r: maxR, c: maxC } });
+  return out;
+}
+
 export const xlsxAdapter = {
   id: 'xlsx',
   label: 'Upload ERP export',
@@ -91,7 +129,16 @@ export const xlsxAdapter = {
 
     // defval: null so a blank cell arrives as a key with a null value rather
     // than vanishing from the row object entirely.
-    const rows = XLSX.utils.sheet_to_json(sheet, { defval: null });
+    let rows;
+    try {
+      rows = XLSX.utils.sheet_to_json(normaliseRefs(XLSX, sheet), { defval: null });
+    } catch (e) {
+      throw new Error(
+        `Could not read the '${name}' sheet of ${file.name} — ${e.message}. `
+        + `The file opens in Excel but is not written the way the spec requires; `
+        + `re-saving it from Excel usually fixes it.`,
+      );
+    }
 
     return {
       rows,

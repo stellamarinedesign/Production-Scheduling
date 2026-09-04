@@ -20,7 +20,7 @@
 // the transform's job, downstream, done once.
 
 import { xlsxAdapter } from './xlsx.js';
-export { validateColumns } from './xlsx.js';
+export { validateColumns, normaliseRefs } from './xlsx.js';
 
 export const ADAPTERS = {
   [xlsxAdapter.id]: xlsxAdapter,
