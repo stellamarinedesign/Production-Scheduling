@@ -18,3 +18,14 @@ tests/fixtures/
 # seeded never reads it again, so the live app does not need it and the
 # repository should not carry it. The file lives in the private handoff folder.
 data/vessel-codes.seed.json
+
+# The test suite lives with the data it tests.
+#
+# Every assertion is written against the real export — real vessel codes, real
+# item codes, real hull numbers, and at one point a real customer's name. The
+# fixtures were already private, which made the tests unrunnable for anybody
+# else anyway, so the file was carrying that exposure for no benefit.
+#
+# It sits in the private handoff folder, next to the fixtures. Copy it back into
+# tests/ to run it; do not commit it.
+tests/

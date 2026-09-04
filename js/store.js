@@ -305,7 +305,7 @@ export const Store = {
   },
 
   async setItemOverride(inventoryId, patch) {
-    // Firestore doc ids cannot contain '/', and item codes do (SRLRIV505/24).
+    // Firestore doc ids cannot contain '/', and item codes do (SRLRIVXX04/24).
     const id = encodeItemId(inventoryId);
     const stamped = { ...patch, inventoryId, updatedAt: new Date().toISOString() };
     if (this.mode === 'local') {

@@ -2,16 +2,16 @@
 //
 // THE DISPLAY CODE IS THE BOAT.
 //
-// That is the identity everyone actually uses: the floor reads "56SY", not
-// "SY23". So it is the key, the first column, and the thing you edit. The ERP
+// That is the identity everyone actually uses: the floor reads "XX06", not
+// "XX16". So it is the key, the first column, and the thing you edit. The ERP
 // codes sit beside it as evidence rather than as the heading.
 //
-// The old page listed one row per Stella code, which put SY20 and 43SY on
+// The old page listed one row per Stella code, which put XX01 and XX11 on
 // separate lines despite their printing the same thing — it showed the plumbing
 // instead of the answer.
 
-import { Store } from './store.js';
-import { resolveDisplays, boatRows } from './vessel-codes.js';
+import { Store, unpackRows } from './store.js';
+import { resolveDisplays, boatRows, itemFacts } from './vessel-codes.js';
 import { classify } from './rules.js';
 import { Auth, ROLE, setManagers } from './auth.js';
 import { VERSION } from './version.js';
@@ -30,6 +30,7 @@ let codeMap = {};
 let resolved = null;
 let mode = 'boats';                 // 'boats' | 'products'
 const collapsed = new Set();
+let facts = null;   // item code -> { description, orders }
 
 (async function boot() {
   $('pageVersion').textContent = `v${VERSION}`;
@@ -80,6 +81,7 @@ const collapsed = new Set();
   $('storeMode').textContent = Store.mode === 'firestore' ? 'Saved to Firestore' : 'Saved on this device only';
   if (Store.mode !== 'firestore') $('storeMode').style.color = 'var(--red-bright)';
   codeMap = await Store.loadCodes();
+  facts = await loadFacts();
 
   // The seed file is no longer deployed — Firestore is the source of truth. An
   // empty map here means a store that has never been seeded, not a page with
@@ -125,7 +127,7 @@ function render() {
   resolved = resolveDisplays(codeMap);
   renderWarnings();
 
-  const rows = boatRows(codeMap, classify, { mode });
+  const rows = boatRows(codeMap, classify, { mode, facts });
   const host = $('rows');
   host.textContent = '';
 
@@ -239,13 +241,19 @@ function boatRow(r) {
   }
   row.append(codes);
 
-  // 3. What Riviera call it, and the hulls it has been fitted to.
+  // 3. What the manufacturer call it, and the hulls it has been fitted to.
   // What the cheat sheet prints, not every code the data carries — a boat with
   // three manufacturer codes should not put all three on a sheet of paper.
   const riv = el('div', `c-riv${r.modelSet ? ' is-set' : ''}`, r.model || '—');
   if (r.modelSet) riv.title = `Set by hand. Found in the data: ${r.riviera.join(', ') || 'none'}`;
   row.append(riv);
   row.append(el('div', 'c-hull', r.hulls.join(', ') || '—'));
+
+  // The customer's own order number, from the latest export. Empty until one
+  // has been imported — the code map is a map of boats, not an order book.
+  const ord = el('div', 'c-order', r.orders.length ? r.orders.join(', ') : '—');
+  if (r.orders.length > 2) ord.title = r.orders.join('\n');
+  row.append(ord);
 
   // 4. Products. In boats mode a boat with several product lines shows them as
   //    chips; in products mode the row is already one category, so list items.
@@ -257,7 +265,15 @@ function boatRow(r) {
       items.append(chip);
     }
   } else {
-    for (const { item } of r.items) items.append(el('span', 'c-item', item));
+    for (const { item } of r.items) {
+      // A davit's part number says nothing a person can use; its description
+      // gives the capacity and the configuration, which is what the product IS.
+      // Everywhere else the code is the more useful of the two.
+      const desc = r.category === 'Davits' ? facts?.get(item)?.description : null;
+      const chip = el('span', 'c-item', desc || item);
+      if (desc) chip.title = item;
+      items.append(chip);
+    }
   }
   row.append(items);
 
@@ -314,7 +330,7 @@ function renderWarnings() {
 /**
  * Rename a boat. The display and the grouping key move together — keeping them
  * equal is what stops a line printing one code while grouping under another,
- * which is how SY20 and 43SY ended up on separate rows.
+ * which is how XX01 and XX11 ended up on separate rows.
  */
 async function rename(r) {
   const next = prompt(
@@ -383,6 +399,26 @@ function toast(msg, ms = 3200) {
 // Save is also the backup. Firestore is the source of truth and there is no
 // other copy of a decision somebody made by hand.
 // ---------------------------------------------------------------------------
+
+/**
+ * What the latest export knows about each item code: its description, and the
+ * customer's order number.
+ *
+ * Best effort. This page is about the code map and works without any of it, so
+ * a missing or unreadable import is an empty map rather than an error.
+ */
+async function loadFacts() {
+  try {
+    const cached = Store.cachedRows?.();
+    if (cached?.rows?.length) return itemFacts(cached.rows);
+    const published = await Store.latestBoard();
+    const rows = published?.rowsJson ? unpackRows(published.rowsJson) : null;
+    return itemFacts(rows ?? []);
+  } catch (e) {
+    console.warn('[facts]', e.message);
+    return new Map();
+  }
+}
 
 function saveCodesFile() {
   const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');

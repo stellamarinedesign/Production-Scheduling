@@ -130,7 +130,7 @@ export function extractHull(...fields) {
 //
 // A custom lifter carries no model code, so its name has to come out of free
 // text — and the two columns that could supply it disagree. In the 21/08 export
-// `Description` holds the vessel on two of the three custom rows ("Riviera 48",
+// `Description` holds the vessel on two of the three custom rows ("the manufacturer 48",
 // "Alaska 47 square transom") and "5% drawing fee" on the third, where the real
 // answer is the customer, Northwind. Neither column is reliably the right one.
 //
@@ -141,7 +141,7 @@ export function extractHull(...fields) {
 // ---------------------------------------------------------------------------
 
 /**
- * The vessel alone does not say a job is a one-off. "Riviera 48" next to a row
+ * The vessel alone does not say a job is a one-off. "the manufacturer 48" next to a row
  * of standard lifters reads as just another model, so every custom label is
  * prefixed — that is what tells the floor to expect different drawings.
  */
@@ -219,9 +219,9 @@ export function customNameOptions({ inventoryId, productionDescription, customer
  *   2. itemOverrides[inventoryId]           this product, forever
  *   3. vesselCodes[stellaCode].display      every product on this boat
  *
- * Scope 2 exists because the boat is not always the whole story. The SY26
- * lifter and the 56SY lifter are different products and must print different
- * codes — but a 56SY *ladder* fitted to an SY26 hull is still a 56SY ladder.
+ * Scope 2 exists because the boat is not always the whole story. The XX05
+ * lifter and the XX06 lifter are different products and must print different
+ * codes — but a XX06 *ladder* fitted to an XX05 hull is still a XX06 ladder.
  * When an item code says one boat and the part is really another's, the fix
  * belongs to the item, not to the boat and not to one job. It latches to the
  * Inventory ID, so it survives every future production order for that product.
@@ -253,9 +253,9 @@ export function shortLabel({
   // ITEM DESCRIPTION IS THE PRODUCT'S OWN NAME. Across the whole 01/09 export —
   // 1216 rows, 203 item codes, completed and closed included — not one code has
   // two different Item Descriptions. `Production Description` is free text typed
-  // per order and 104 of those 203 codes have more than one: SDC250SSMLMSME
+  // per order and 104 of those 203 codes have more than one: SDC250AAAA
   // alone has seven, from "250Kg Single Stage Davit (Manual Luff/ Manual Slew/
-  // Manual Extension)" down to "250kg SS Davit", and SDC550SSHLHSHE has a
+  // Manual Extension)" down to "250kg SS Davit", and SDC550BBBB has a
   // customer's name in one of them.
   //
   // For a davit that difference matters, because the configuration IS the
@@ -421,7 +421,7 @@ export const printJobs = (board) =>
 // were. Two differences drive everything below.
 //
 // There is no vessel code and no label to derive: a T&M row's item code is
-// always STELLA-REPAIR-T&M, so the production description IS the name of the
+// always REPAIR-T&M, so the production description IS the name of the
 // job — "Machine Rudder Components", "Maintenance on Laser cutter". Running it
 // through shortLabel would produce a boat code out of thin air.
 //
@@ -561,7 +561,7 @@ export function buildBoard(rows, opts = {}) {
       inventory_id: text(inv),
       description: text(r['Production Description']).slice(0, 70),
       // The item's own description, which is often the more canonical of the
-      // two — STFKITAQ reads "Jumbo filter kit Aquarius" here against
+      // two — STFKITXX reads "Jumbo filter kit Aquarius" here against
       // "4.5\" x 10\" 5/20 micron prefilter set" on the production order.
       item_description: text(r['Item Description']).slice(0, 70),
       reason,
@@ -570,7 +570,7 @@ export function buildBoard(rows, opts = {}) {
 
     // Which of the three kinds of work this is. Decided BEFORE the category
     // map, because the map would mislead: every T&M row is booked to
-    // STELLA-REPAIR-T&M, which starts with ST and would read as a water
+    // REPAIR-T&M, which starts with ST and would read as a water
     // product. See rules.js `laneFor`.
     const lane = laneFor(r);
 

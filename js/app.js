@@ -1113,8 +1113,8 @@ function jobRow(j, { full = false } = {}) {
 
   row.append(el('span', 'prod', j.prod_no));
 
-  // Riviera's PO sits next to the production number because that is the pair
-  // the manager reads together when checking an order against Riviera. It is
+  // the manufacturer's PO sits next to the production number because that is the pair
+  // the manager reads together when checking an order against the manufacturer. It is
   // manager-view only and never reaches the printed board.
   row.append(el('span', 'po', j.customer_po ?? ''));
 
@@ -1439,7 +1439,7 @@ function renderFitStatus() {
 // new vessel codes
 //
 // Upstream does not manage these consistently — `56` was an office shorthand
-// for 56SY, and Riviera call the same boat both 56SY and 5000SY. So a code the
+// for XX06, and the manufacturer call the same boat both XX06 and XX15. So a code the
 // map has never seen is never auto-accepted: the board would print a guess and
 // nobody would know it was one. Each is queued and answered on import.
 // ---------------------------------------------------------------------------
@@ -1975,7 +1975,7 @@ function importConcerns(b, src) {
   }
 
   // A stock build booked as a component part reads as production, because the
-  // lane rule keys on Type. SDC0287, the davit rope kit, is the standing
+  // lane rule keys on Type. SDC0000, the davit rope kit, is the standing
   // example. The rule cannot tell; a person can.
   const oddStock = (b.jobs ?? []).filter((j) => j.is_stock && j.is_component);
   if (oddStock.length) {
@@ -2229,20 +2229,12 @@ function openLabelEditor(job) {
   // Scope 2 — this product, forever. Always available: even a davit or a chock
   // with no vessel code can need its label pinned.
   const sameItem = state.board.jobs.filter((j) => j.inventory_id === job.inventory_id).length;
-  $('scopeItemHint').textContent =
-    `Pins the label to ${job.inventory_id} — ${sameItem} job(s) on this board, and `
-    + `every future order for it. Use this when the item code names one boat but `
-    + `the part is built to the drawings of another.`;
 
   // Scope 3 — every product on this boat.
   $('scopeCode').hidden = !onABoat;
   if (onABoat) {
     const group = state.board.resolved.groups.find((g) => g.codes.includes(code));
     const n = state.board.jobs.filter((j) => group.codes.includes(stellaCode(j.inventory_id) ?? '')).length;
-    $('scopeCodeHint').textContent =
-      `Changes the display code for boat ${group.boat ?? group.codes[0]} `
-      + `(${group.codes.join(' / ')}) — ${n} job(s) here, and every future one. `
-      + `The product wording ("Garage Door", "Launcher") is kept.`;
   }
 
   $('labelOverlay').classList.add('show');

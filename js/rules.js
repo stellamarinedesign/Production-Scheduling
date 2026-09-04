@@ -11,13 +11,13 @@
 // category: null  ->  excluded from the board, with the reason given.
 //
 // !! ORDERING TRAP — do not sort this list !!
-// SLRIVCOMMISSION and STLRIVCOMMISSION both exist as real items.
-// SLRIVCOMMISSION begins with SLRIV, so if it drops below the SLRIV rule it is
+// AARIVCOMMISSION and ABRIVCOMMISSION both exist as real items.
+// AARIVCOMMISSION begins with SLRIV, so if it drops below the SLRIV rule it is
 // classified as a cylinder lifter and prints as real work. Both spellings stay
 // pinned above SL and STL.
 //
-// The ERP's own saved filter excludes only SLRIVCOMMISSION — a typo, missing
-// the T — so the 21/08 export carried 15 rows of STLRIVCOMMISSION straight
+// The ERP's own saved filter excludes only AARIVCOMMISSION — a typo, missing
+// the T — so the 21/08 export carried 15 rows of ABRIVCOMMISSION straight
 // through. Never rely on the ERP-side filter; this list is the real one.
 // ---------------------------------------------------------------------------
 // Marker category, never displayed. Water products are one prefix family but two
@@ -26,17 +26,17 @@
 const WATER = '@water';
 
 // A finished watermaker's item code ends in flow rate over voltage:
-// STAQSAB/240/230, STAQFAB/240/230, STAQFAR/240/230, STG4/240/230,
-// STG4LA/160/230. Everything else in the family — STMEDIAFILTER, STKITJUMBO,
-// STFKITAQ, STMU, STPH, ST DUPLEX UPGRADE X3, STG3COMFILTUPGRADE — is a kit,
+// STXXA/000/000, STXXB/000/000, STXXC/000/000, STXXE/000/000,
+// STXXD/000/000. Everything else in the family — STMEDIAFILTER, STKITXX,
+// STFKITXX, STMU, STPH, ST DUPLEX UPGRADE X3, STXXUPGRADE — is a kit,
 // filter, upgrade or spare that ships against the same order.
 //
-// STAUTO24 ends in a voltage but is a flush accessory, not a unit, which is why
+// STXXAUTO00 ends in a voltage but is a flush accessory, not a unit, which is why
 // this anchors on the LPH/volts PAIR rather than one trailing number.
 export const WATERMAKER_UNIT_RE = /\/\d+\/\d+\s*$/;
 
 // Softeners are a product line, not a parts family: SS is the whole prefix and
-// SS17500, the Stellasoftener, is the only code either export has ever carried.
+// SSXX000, the Stellasoftener, is the only code either export has ever carried.
 // So SS is a finished unit on the prefix alone - there is no flow-rate/voltage
 // pair in the code to read, and no SS accessory to confuse it with.
 //
@@ -139,7 +139,7 @@ export const SETTABLE_STATUSES = ['Planned', 'Released', 'In Process', 'On Hold'
 // `Type` is NOT a filter.
 //
 // It used to be: only `Finished Good` reached the board. That was wrong.
-// SWD4PDRIV62SY (a watertight door) and SHCELECPLINTHRIV43SY (a helm seat box)
+// SWD4PDRIVXX02 (a watertight door) and SHCELECPLINTHRIVXX01 (a helm seat box)
 // are both booked as `Component Part` and are both real workshop jobs — the ERP
 // classification reflects how they are sold, not whether the floor builds them.
 //
@@ -196,7 +196,7 @@ export const HULL_RE = /used\s*by\s*([A-Z0-9]+\s*\/\s*[A-Z0-9]+)/i;
 // A person writing "custom" means it; a wording difference means nothing.
 export const CUSTOM_TEXT_RE = /\bcustom\b/i;
 
-// A vessel name in the free-text Description field looks like "Riviera 48" or
+// A vessel name in the free-text Description field looks like "the manufacturer 48" or
 // "Alaska 47 square transom": a word followed by a number. "5% drawing fee"
 // starts with a digit so it does not match and correctly falls through to the
 // customer name.
@@ -213,7 +213,7 @@ export const LABEL_OVERRIDES = {
   // label is built. Kept because BOARD_SPEC lists it and the SDC0 rule could
   // change; harmless while dead.
   SDC0287: 'Davit Rope Kit',
-  // SDC550SSHLHSHE was here, because its PRODUCTION description was
+  // SDC550BBBB was here, because its PRODUCTION description was
   // `550SSHLHSHE Davit (stock)` — a part code where a description belongs. Its
   // ITEM description is `Stella Davit 550kg - Single Stage (Hydraulic Luff /
   // Hydraulic Slew / Hydraulic Extension)`, which is the fix that entry was
@@ -261,7 +261,7 @@ export function classify(inventoryId) {
 // production work that happens to have no buyer yet.
 //
 // This is a rule about how an order was RAISED, not about what it is for, so it
-// cannot fix a miskeyed row: SDC0287, the davit rope kit, is booked Finished
+// cannot fix a miskeyed row: SDC0000, the davit rope kit, is booked Finished
 // Good and therefore reads as production. The import review flags it rather
 // than the rule bending around it.
 // ---------------------------------------------------------------------------
@@ -281,7 +281,7 @@ export function laneFor(row) {
 }
 
 // Categories for the two new lanes. Neither can use CATEGORY_RULES: every T&M
-// row in the export is booked to STELLA-REPAIR-T&M or STELLA-REPAIR-T&M 2, so
+// row in the export is booked to REPAIR-T&M or REPAIR-T&M 2, so
 // the item code carries nothing at all.
 //
 // T&M splits on whether there is a sales order behind it — chargeable customer

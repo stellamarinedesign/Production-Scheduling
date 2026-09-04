@@ -8,7 +8,7 @@
 <link rel="apple-touch-icon" href="assets/logo.png">
 <title>Production Board — Stella Marine</title>
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="css/style.css?v=2026-09-04.1">
+<link rel="stylesheet" href="css/style.css?v=2026-09-04.2">
 </head>
 <body>
 
@@ -215,19 +215,9 @@
 
     <div id="lblScope">
       <div class="scope-note">Pick the narrowest that fixes it.</div>
-      <button class="scope-opt" id="scopeJob">
-        <b>Just this job</b>
-        <span>Changes the whole label on this production order only. Other jobs
-              for the same vessel are untouched.</span>
-      </button>
-      <button class="scope-opt" id="scopeItem">
-        <b>Every job for this item code</b>
-        <span id="scopeItemHint"></span>
-      </button>
-      <button class="scope-opt" id="scopeCode">
-        <b>Every job on this boat</b>
-        <span id="scopeCodeHint"></span>
-      </button>
+      <button class="scope-opt" id="scopeJob"><b>This job only</b></button>
+      <button class="scope-opt" id="scopeItem"><b>This item code</b></button>
+      <button class="scope-opt" id="scopeCode"><b>This boat</b></button>
     </div>
 
     <div id="lblForm" hidden>
@@ -399,6 +389,6 @@
 
 </div><!-- /#appShell -->
 
-<script type="module" src="js/app.js?v=2026-09-04.1"></script>
+<script type="module" src="js/app.js?v=2026-09-04.2"></script>
 </body>
 </html>

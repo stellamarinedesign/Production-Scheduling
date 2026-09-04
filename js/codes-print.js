@@ -3,7 +3,7 @@
 // Same visual language as the production board: red category banners, zebra
 // rows, a title and an "as of" line. Landscape because the useful thing here is
 // the width — a boat's display code, what
-// Riviera call it and which hulls it has been fitted to, all readable on one
+// the manufacturer call it and which hulls it has been fitted to, all readable on one
 // line at arm's length.
 //
 // The board fits by shortening its horizon. This sheet has no horizon to
@@ -64,7 +64,7 @@ export function renderCodesSheet(host, rows, { mode = 'boats', asOf = todayDate(
 
   const thead = el('thead');
   const hr = el('tr');
-  hr.append(el('th', null, 'Reads as'), el('th', null, 'Model'),
+  hr.append(el('th', null, 'Stella'), el('th', null, 'Model'),
     el('th', null, 'Hull'), el('th', null, 'Products'));
   thead.append(hr);
   table.append(thead);
@@ -84,8 +84,8 @@ export function renderCodesSheet(host, rows, { mode = 'boats', asOf = todayDate(
 
     const tr = el('tr');
     tr.append(el('td', 'cs-disp', r.display));
-    // Riviera's own model sits next to what we print, because that is the pair
-    // read together when a Riviera document and a Stella one disagree.
+    // the manufacturer's own model sits next to what we print, because that is the pair
+    // read together when a the manufacturer document and a Stella one disagree.
     // `model` not `riviera`: a boat can carry several manufacturer codes and the
     // sheet shows the one somebody chose. See `modelFor`.
     tr.append(el('td', 'cs-riv', r.model || '—'));

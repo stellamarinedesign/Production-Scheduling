@@ -1,13 +1,13 @@
 // vessel-codes.js — Stella code derivation, boat grouping, board labels.
 //
-// Riviera issue concept hull codes to conceal unreleased vessel models, so a
-// Stella item code (SY23) and the model actually used in practice (56SY) can
+// the manufacturer issue concept hull codes to conceal unreleased vessel models, so a
+// Stella item code (XX16) and the model actually used in practice (XX06) can
 // differ. Which one the floor uses is a HUMAN decision — it cannot be derived.
 // This module derives what can be derived and resolves the rest through the
 // hand-maintained `display` field.
 
 // Everything after "RIV" is the model. Anchoring on RIV rather than on the
-// first digit is what makes SWD4PDRIV62SY resolve to 62SY and not 4PDRIV.
+// first digit is what makes SWD4PDRIVXX02 resolve to XX02 and not 4PDRIV.
 export const CODE_RE = /RIV([A-Z0-9/]+?)(?:\(\d+\)|\/\d+)?$/i;
 
 // Product wording per item-code prefix. {code} is the resolved display code.
@@ -24,6 +24,13 @@ export const PRODUCT_TEMPLATE = [
 
 // Item-code prefixes that carry a vessel code at all. ST* is watermakers but
 // STL* is tender launchers, so the check has to be specific.
+//
+// SDC is deliberately ABSENT. Some davits are built for a specific boat and say
+// so in the code; most are not, and a generic davit has no boat to record.
+// Adding the prefix would work — `stellaCode` already tells them apart — but it
+// makes the manufacturer's own model codes into vessel codes, which every
+// deployment would then be asked to resolve on its next import. That is a
+// decision, not a detail.
 const VESSEL_CODED_PREFIXES = ['SL', 'SRL', 'SBL', 'SGD', 'STL', 'SWD', 'SHC'];
 
 /** The Stella code — the token after RIV. Null when the item carries none. */
@@ -43,20 +50,20 @@ export function isVesselCoded(inventoryId) {
 // BOAT GROUPS
 //
 // Two or more Stella codes can name the same boat. The map is keyed on the
-// Stella code, so SLRIVSY20(24) and SHCELECPLINTHRIV43SY became independent
+// Stella code, so SLRIVXX01(24) and SHCELECPLINTHRIVXX01 became independent
 // entries and nothing ever compared them.
 //
 // Grouping is MANUAL, via the `boat` field. It has to be: the upstream codes
 // are not consistently managed, so no derivable signal gets this right.
 //
-//   - 56 / SY23 / SY26 are one boat. Riviera call it 56SY and also 5000SY;
-//     `56` was a lazy office entry for 56SY. Their Riviera models do not match
+//   - 56 / XX16 / XX05 are one boat. the manufacturer call it XX06 and also XX15;
+//     `56` was a lazy office entry for XX06. Their the manufacturer models do not match
 //     as strings, so a model-matching rule splits them wrongly.
-//   - 56 and SY26 share the hull prefix 5000 — but hull prefixes are a third
-//     code system and a 56SY-model part can be fitted to a 5000 hull, so hull
+//   - 56 and XX05 share the hull prefix 5000 — but hull prefixes are a third
+//     code system and a XX06-model part can be fitted to a 5000 hull, so hull
 //     is not evidence of identity either.
 //
-// A shared Riviera model is still a good SUGGESTION for a code nobody has
+// A shared the manufacturer model is still a good SUGGESTION for a code nobody has
 // assigned yet, so it seeds the group for un-assigned codes only. The moment a
 // human sets `boat`, that wins — in both directions. Two codes sharing a model
 // but carrying different `boat` values stay split, because someone said so.
@@ -94,9 +101,9 @@ export function aliasGroups(codeMap) {
   //
   //    This is what makes the model self-healing. `boat` and `display` are
   //    written together now, but Firestore still holds entries from before they
-  //    were aligned — SY20 stored with boat '43SY' — and a code given the
-  //    display 'SY20' by hand takes boat 'SY20'. Grouping on the key alone put
-  //    those on two rows that both printed SY20, which is precisely the
+  //    were aligned — XX01 stored with boat 'XX11' — and a code given the
+  //    display 'XX01' by hand takes boat 'XX01'. Grouping on the key alone put
+  //    those on two rows that both printed XX01, which is precisely the
   //    confusion the page exists to remove. No migration needed: they merge on
   //    what they print.
   const byDisplay = new Map();
@@ -108,7 +115,7 @@ export function aliasGroups(codeMap) {
     else byDisplay.set(key, code);
   }
 
-  // 3. A shared Riviera model only suggests a group, and only for codes nobody
+  // 3. A shared the manufacturer model only suggests a group, and only for codes nobody
   //    has assigned. Never merge across two different explicit assignments.
   const byModel = new Map();
   for (const [code, entry] of Object.entries(codeMap)) {
@@ -211,7 +218,7 @@ export function displayFor(code, resolved, codeMap = {}) {
 
 /**
  * Wrap a display code in this item's product wording.
- * 'SY22' + SGDRIVSY22 -> 'SY22 Garage Door'.
+ * 'XX03' + SGDRIVXX03 -> 'XX03 Garage Door'.
  */
 export function applyTemplate(inventoryId, displayCode) {
   const inv = String(inventoryId ?? '').toUpperCase();
@@ -222,8 +229,8 @@ export function applyTemplate(inventoryId, displayCode) {
 }
 
 /**
- * Full board label for a vessel-coded item — 'SY22 Garage Door',
- * 'Boarding Ladder 56SY'. Null when the item carries no vessel code.
+ * Full board label for a vessel-coded item — 'XX03 Garage Door',
+ * 'Boarding Ladder XX06'. Null when the item carries no vessel code.
  */
 export function labelFor(inventoryId, resolved, codeMap = {}) {
   const code = stellaCode(inventoryId);
@@ -292,7 +299,7 @@ export function detectNewCodes(rows, codeMap) {
       suggestion: {
         // What the item code itself says — always available.
         stella: code,
-        // What the ERP description says Riviera call it — often absent.
+        // What the ERP description says the manufacturer call it — often absent.
         riviera: v.riviera[0] ?? null,
       },
     }))
@@ -303,19 +310,19 @@ export function detectNewCodes(rows, codeMap) {
 // BOATS FOR THE CODES PAGE
 //
 // The display code IS the boat. That is the identity everyone actually uses —
-// the floor reads "56SY", not "SY23" — so it is the key, the first column, and
+// the floor reads "XX06", not "XX16" — so it is the key, the first column, and
 // the thing you edit. `boat` still stores it, but the two are kept equal: a row
 // whose display says one thing and whose grouping key says another was the main
-// source of confusion on the old page, where SY20 and 43SY sat on separate
+// source of confusion on the old page, where XX01 and XX11 sat on separate
 // lines despite printing the same code.
 //
 // Category comes from the item codes a boat carries, through the same prefix
-// rules the board uses. A boat usually has several — a 56SY has a lifter AND a
+// rules the board uses. A boat usually has several — a XX06 has a lifter AND a
 // boarding ladder — so there are two ways to look at it:
 //
 //   'boats'    one line per boat, tagged with its PRIMARY category
-//   'products' one line per boat per category, so the 56SY lifter and the
-//              56SY boarding ladder are separate rows
+//   'products' one line per boat per category, so the XX06 lifter and the
+//              XX06 boarding ladder are separate rows
 // ---------------------------------------------------------------------------
 
 // Which category speaks for a boat when it has several. Lifters first because
@@ -341,7 +348,45 @@ const categoryRank = (c) => {
  * @param {(inv:string)=>({category:string|null})} classify  from rules.js
  * @param {{mode:'boats'|'products'}} opts
  */
-export function boatRows(codeMap, classify, { mode = 'boats' } = {}) {
+/**
+ * What the latest export knows about each item code.
+ *
+ * The code map holds item codes and nothing else about them — it is a map of
+ * boats, not an order book. Two things on the codes page need more than that:
+ * the customer's order number, and the item's own description, which is the
+ * name a davit actually goes by.
+ *
+ * Optional throughout. With no rows this is empty and the page shows what it
+ * always showed.
+ *
+ * @param {Array<Object>} rows RawRow[] from the latest import
+ * @returns {Map<string, {description: string, orders: string[]}>}
+ */
+/** Customer order numbers seen for a set of item codes, deduped. */
+function ordersFor(items, facts) {
+  if (!facts) return [];
+  const out = new Set();
+  for (const i of items) for (const o of facts.get(i)?.orders ?? []) out.add(o);
+  return [...out].sort();
+}
+
+export function itemFacts(rows) {
+  const out = new Map();
+  for (const r of rows ?? []) {
+    const inv = String(r['Inventory ID'] ?? '').trim();
+    if (!inv) continue;
+    if (!out.has(inv)) out.set(inv, { description: '', orders: new Set() });
+    const f = out.get(inv);
+    const desc = String(r['Item Description'] ?? '').trim();
+    if (desc && !f.description) f.description = desc;
+    const order = String(r['Customer Order Nbr.'] ?? '').trim();
+    if (order) f.orders.add(order);
+  }
+  for (const f of out.values()) f.orders = [...f.orders].sort();
+  return out;
+}
+
+export function boatRows(codeMap, classify, { mode = 'boats', facts = null } = {}) {
   const groups = aliasGroups(codeMap);
 
   const built = groups.map((g) => {
@@ -380,21 +425,35 @@ export function boatRows(codeMap, classify, { mode = 'boats' } = {}) {
       categories,
       primaryCategory: categories[0] ?? null,
       itemCount: [...byCategory.values()].reduce((n, v) => n + v.length, 0),
+      orders: ordersFor(g.codes.flatMap((c) => codeMap[c]?.items ?? []), facts),
     };
   });
 
   if (mode === 'products') {
-    // A boat appears once per category it builds for, so the 56SY lifter and
-    // the 56SY boarding ladder are separate lines.
+    // A boat appears once per category it builds for, so the XX06 lifter and
+    // the XX06 boarding ladder are separate lines.
     return built
-      .flatMap((b) => (b.categories.length ? b.categories : [null]).map((category) => ({
-        ...b,
-        category,
-        items: category ? b.byCategory.get(category) : [],
-        codes: category
+      .flatMap((b) => (b.categories.length ? b.categories : [null]).map((category) => {
+        const codes = category
           ? [...new Set(b.byCategory.get(category).map((x) => x.code))].sort()
-          : b.codes,
-      })))
+          : b.codes;
+        // HULLS AND MODEL CODES BELONG TO THESE CODES, not to the boat. This
+        // narrowed the item codes and left the rest of the row alone, so a
+        // lifter line listed every hull the boat had ever been fitted to —
+        // including hulls that belong to a different product entirely.
+        const group = { codes };
+        return {
+          ...b,
+          category,
+          items: category ? b.byCategory.get(category) : [],
+          codes,
+          hulls: [...new Set(codes.flatMap((c) => codeMap[c]?.hull_prefix ?? []))].sort(),
+          riviera: [...new Set(codes.flatMap((c) => codeMap[c]?.riviera ?? []))].sort(),
+          model: modelFor(group, codeMap),
+          modelSet: codes.some((c) => String(codeMap[c]?.sheetModel ?? '').trim()),
+          orders: ordersFor((category ? b.byCategory.get(category) : []).map((x) => x.item), facts),
+        };
+      }))
       .sort((a, x) => categoryRank(a.category) - categoryRank(x.category)
         || a.display.localeCompare(x.display));
   }
