@@ -123,6 +123,25 @@ main { padding: 16px 22px 60px; max-width: 1720px; margin: 0 auto; }
 .c-riv.is-set { color: var(--white); }
 /* Kept off the printed sheet. Still here, still editable — dimmed, not gone. */
 .code-row.is-offsheet { opacity: .45; }
+/* Davits carry a description where every other line carries codes, so the
+   product column needs room a code column does not — the alternative was a
+   description stacked into a six-line column. */
+#davitSection .codes-head,
+#davitSection .code-row {
+  grid-template-columns: 100px 80px 80px minmax(260px, 1fr) 140px;
+}
+/* A description is prose, not a code: a bordered chip made it look like one and
+   boxed it in. */
+#davitSection .c-item {
+  border: none; padding: 0; background: none; color: var(--white);
+  font-family: inherit; font-size: 13px; white-space: normal;
+}
+@media (max-width: 1100px) {
+  #davitSection .codes-head, #davitSection .code-row {
+    grid-template-columns: 88px 70px 70px minmax(200px, 1fr) 128px;
+  }
+}
+
 .codes-cat-static {
   display: flex; align-items: baseline; gap: 10px;
   border-bottom: 2px solid var(--red-deep); color: var(--white);

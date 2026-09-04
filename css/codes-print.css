@@ -65,13 +65,13 @@
   font-size: 9pt; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
   margin: 10pt 0 3pt; border-bottom: 1pt solid #AF1F24; padding-bottom: 2pt;
 }
-#codesSheet .cs-davits col.c-disp { width: 17%; }
-#codesSheet .cs-davits col.c-prod { width: 83%; }
-
-#codesSheet col.c-disp { width: 17%; }
-#codesSheet col.c-riv  { width: 17%; }
-#codesSheet col.c-hull { width: 16%; }
-#codesSheet col.c-prod { width: 50%; }
+/* The code columns hold a handful of characters each and were sized as though
+   they held a sentence. Products holds several item codes, or a davit
+   description running to a line and a half, so it takes what they give up. */
+#codesSheet col.c-disp { width: 11%; }
+#codesSheet col.c-riv  { width: 11%; }
+#codesSheet col.c-hull { width: 10%; }
+#codesSheet col.c-prod { width: 68%; }
 
 /* Browsers drop background colours when printing unless asked not to; without
    this the banners print white on white and the sheet loses its structure. */
@@ -84,14 +84,22 @@
   body { background: #fff; }
   html, body { height: auto !important; min-height: 0 !important; }
 
-  /* Same lesson as the board: an off-canvas element is not out of flow for
-     paper, so the chrome has to be display:none rather than merely parked. */
-  header, #authView, #toast, .overlay, .provenance, .view-bar,
-  #warnings, .codes-head, #rows, main > .panel { display: none !important; }
+  /* STRUCTURAL, NOT A LIST OF NAMES. This named each block, so the davit
+     section — added later — printed on a second page, buttons and all. The
+     board's stylesheet had the same fault twice before it was made to hide
+     everything and name only what prints. Same fix here.
+
+     An off-canvas element is not out of flow for paper either, so parking a
+     thing is not enough: it has to be display:none. */
+  header, #authView, #toast, .overlay,
+  main > * { display: none !important; }
 
   main { padding: 0 !important; margin: 0 !important; max-width: none !important; }
 
-  #codesPrintRoot { display: block !important; }
+  /* The one thing that prints. Two selectors' worth of specificity so it
+     outranks `main > *` above — both carry !important, so this comes down to
+     specificity and a single id would lose. */
+  main > #codesPrintRoot { display: block !important; }
   #codesSheet {
     width: auto; min-height: 0; padding: 0; margin: 0; box-shadow: none;
   }
