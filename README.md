@@ -58,6 +58,7 @@ Normalising happens in the transform, once, downstream.
 | `js/adapters/xlsx.js` | Reads the export, validates its columns, stamps provenance. |
 | `js/print.js` | The A4 board layout, column balancing, and the measured auto-fit. |
 | `js/codes-print.js` | The vessel code cheat sheet — landscape A4, type-step auto-fit. |
+| `js/davits.js` | Which davit is fitted to which boat. Deliberately apart from the code map. |
 | `js/gantt.js` | Start/end bars, lane packing. Layout is a pure function; only the renderer touches the DOM. |
 | `js/store.js` | Firestore, with a localStorage fallback. |
 | `js/auth.js` | Sign-in and roles. |
@@ -285,6 +286,25 @@ Normalising happens in the transform, once, downstream.
   record carries the raw rows as well as the rendered board, so the second
   manager continues from the same export rather than being asked to upload it
   again. Local cache wins only when it is genuinely newer.
+- **Which davit goes on which boat is kept apart from the vessel code map.**
+  A davit is not a boat, and making these into vessel codes would put the
+  manufacturer's model codes into a map of Stella display codes and ask somebody
+  to resolve each one on the next import. `js/davits.js` reads the export and
+  answers one question. Most davits have no boat at all — only the ones built
+  for a specific hull say so in the item code.
+  It ACCUMULATES rather than being derived on the spot: an applied import keeps
+  only open rows, so a boat would drop off the sheet the moment its last order
+  closed, which is when somebody is most likely to look it up. A fitting does
+  not stop being true.
+- **A part number is internal work, whatever `Type` says.** The davit rope kits
+  are booked `Finished Good` with no customer behind them, so they read as
+  production and were then thrown away by the category rules as spares. They are
+  parts made in the factory. The item code knows — `PART_CODE_RE` — even when
+  the Type field does not, and this is the one place the lane rule deliberately
+  disagrees with the office's own sort.
+- **Water products are named from `Item Description` too**, for the same reason
+  as davits: one of them carries its own part code as a production description,
+  where the item description reads properly.
 - **A davit is named from `Item Description`, not the production order.**
   `Item Description` is the product's own name: across the whole 01/09 export —
   1216 rows, 203 item codes, completed and closed included — not one code

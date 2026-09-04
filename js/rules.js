@@ -273,10 +273,26 @@ export const LANE_LABEL = {
   internal: 'Internal Factory Jobs',
 };
 
+// A part number, as against a product code: the prefix, a zero, then digits.
+// SDC0nnn is a davit part; the davit itself is SDC450... with no leading zero.
+export const PART_CODE_RE = /^(SDC|SL|ST|SS)0\d/i;
+
 export function laneFor(row) {
   const val = (k) => String(row?.[k] ?? '').trim();
   if (val('Order Type').toUpperCase() === 'TM') return LANE.tm;
-  if (!val('Order Nbr.') && val('Type') === COMPONENT_TYPE) return LANE.internal;
+  // Nothing sold, and either the ERP calls it a component part or the item code
+  // is a part number.
+  //
+  // The second clause is there because `Type` is miskeyed on exactly the rows
+  // it matters for: the davit rope kits are booked Finished Good with no
+  // customer behind them, so they read as production work and were then thrown
+  // away by the category rules as spares. They are parts made in the factory,
+  // which is what the internal lane is for. The item code knows even when the
+  // Type field does not.
+  if (!val('Order Nbr.')
+      && (val('Type') === COMPONENT_TYPE || PART_CODE_RE.test(val('Inventory ID')))) {
+    return LANE.internal;
+  }
   return LANE.production;
 }
 

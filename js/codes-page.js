@@ -31,6 +31,7 @@ let resolved = null;
 let mode = 'boats';                 // 'boats' | 'products'
 const collapsed = new Set();
 let facts = null;   // item code -> { description, orders }
+let davits = [];    // boat -> davits, straight from the export
 
 (async function boot() {
   $('pageVersion').textContent = `v${VERSION}`;
@@ -82,6 +83,7 @@ let facts = null;   // item code -> { description, orders }
   if (Store.mode !== 'firestore') $('storeMode').style.color = 'var(--red-bright)';
   codeMap = await Store.loadCodes();
   facts = await loadFacts();
+  davits = await loadDavits();
 
   // The seed file is no longer deployed — Firestore is the source of truth. An
   // empty map here means a store that has never been seeded, not a page with
@@ -176,7 +178,7 @@ function renderSheet(rows) {
   root.hidden = false;
   root.classList.toggle('offstage', !sheetShown);
 
-  const fit = fitCodesSheet(host, rows, { mode });
+  const fit = fitCodesSheet(host, rows, { mode, davits });
 
   const status = $('sheetStatus');
   status.hidden = !sheetShown;
@@ -248,12 +250,6 @@ function boatRow(r) {
   if (r.modelSet) riv.title = `Set by hand. Found in the data: ${r.riviera.join(', ') || 'none'}`;
   row.append(riv);
   row.append(el('div', 'c-hull', r.hulls.join(', ') || '—'));
-
-  // The customer's own order number, from the latest export. Empty until one
-  // has been imported — the code map is a map of boats, not an order book.
-  const ord = el('div', 'c-order', r.orders.length ? r.orders.join(', ') : '—');
-  if (r.orders.length > 2) ord.title = r.orders.join('\n');
-  row.append(ord);
 
   // 4. Products. In boats mode a boat with several product lines shows them as
   //    chips; in products mode the row is already one category, so list items.
@@ -407,6 +403,16 @@ function toast(msg, ms = 3200) {
  * Best effort. This page is about the code map and works without any of it, so
  * a missing or unreadable import is an empty map rather than an error.
  */
+/**
+ * The davit reference list, as learned at import from whole export files.
+ *
+ * Not derived here from the rows to hand: those are the OPEN ones, so a boat
+ * would drop off the sheet the moment its last order closed.
+ */
+async function loadDavits() {
+  try { return await Store.loadDavits(); } catch { return []; }
+}
+
 async function loadFacts() {
   try {
     const cached = Store.cachedRows?.();

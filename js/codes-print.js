@@ -46,7 +46,7 @@ const el = (tag, cls, text) => {
  * @param {Array} rows   from boatRows()
  * @param {{mode:'boats'|'products', asOf}} opts
  */
-export function renderCodesSheet(host, rows, { mode = 'boats', asOf = todayDate() } = {}) {
+export function renderCodesSheet(host, rows, { mode = 'boats', asOf = todayDate(), davits = [] } = {}) {
   host.textContent = '';
 
   const head = el('div', 'cs-head');
@@ -97,6 +97,33 @@ export function renderCodesSheet(host, rows, { mode = 'boats', asOf = todayDate(
   }
   table.append(tbody);
   host.append(table);
+
+  // WHICH DAVIT GOES ON WHICH BOAT.
+  //
+  // Read straight from the export and kept apart from the code map on purpose
+  // — see davits.js. Most davits have no boat, so this is short, and it is left
+  // out entirely when the export has none.
+  if (davits.length) {
+    host.append(el('div', 'cs-subhead', 'Davits by boat'));
+    const dt = el('table', 'cs-table cs-davits');
+    const dg = el('colgroup');
+    for (const c of ['c-disp', 'c-prod']) dg.append(el('col', c));
+    dt.append(dg);
+    const dh = el('thead');
+    const dhr = el('tr');
+    dhr.append(el('th', null, 'Boat'), el('th', null, 'Davit'));
+    dh.append(dhr);
+    dt.append(dh);
+    const db = el('tbody');
+    for (const d of davits) {
+      const tr = el('tr');
+      tr.append(el('td', 'cs-disp', d.boat));
+      tr.append(el('td', 'cs-prod', d.davits.map((x) => x.description).join('  \u00b7  ')));
+      db.append(tr);
+    }
+    dt.append(db);
+    host.append(dt);
+  }
 
   return host;
 }

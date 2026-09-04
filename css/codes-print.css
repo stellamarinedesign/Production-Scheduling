@@ -60,6 +60,14 @@
 /* Four columns since the ERP codes came off: the sheet is for the floor, and
    the floor reads the display code, not what the ERP calls it. The 22% that
    column held goes to Products, which was the column running out of room. */
+/* The davit table is a second, shorter table under the first. */
+#codesSheet .cs-subhead {
+  font-size: 9pt; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+  margin: 10pt 0 3pt; border-bottom: 1pt solid #AF1F24; padding-bottom: 2pt;
+}
+#codesSheet .cs-davits col.c-disp { width: 17%; }
+#codesSheet .cs-davits col.c-prod { width: 83%; }
+
 #codesSheet col.c-disp { width: 17%; }
 #codesSheet col.c-riv  { width: 17%; }
 #codesSheet col.c-hull { width: 16%; }

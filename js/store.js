@@ -369,6 +369,24 @@ export const Store = {
       { managers: emails, updatedAt: new Date().toISOString() }, { merge: true });
   },
 
+  /** The davit reference list. See davits.js — it accumulates, it is not a view. */
+  async loadDavits() {
+    if (this.mode === 'local') return lsGet('davits', []);
+    try {
+      const { doc, getDoc } = this._fs;
+      const snap = await getDoc(doc(this._db, 'settings', 'davits'));
+      const list = snap.exists() ? snap.data()?.boats : null;
+      return Array.isArray(list) ? list : [];
+    } catch (e) { console.warn('[davits]', e.message); return []; }
+  },
+
+  async saveDavits(boats) {
+    if (this.mode === 'local') { lsSet('davits', boats); return; }
+    const { doc, setDoc } = this._fs;
+    await setDoc(doc(this._db, 'settings', 'davits'),
+      { boats, updatedAt: new Date().toISOString() }, { merge: true });
+  },
+
   async saveSettings(patch) {
     if (this.mode === 'local') { lsSet('settings', { ...lsGet('settings', {}), ...patch }); return; }
     const { doc, setDoc } = this._fs;

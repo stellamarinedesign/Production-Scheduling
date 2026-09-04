@@ -10,6 +10,7 @@ import { stellaCode, labelFor, existingBoats, acceptNewCode, applyTemplate } fro
 import { Auth, ROLE, friendlyAuthError, setManagers, managerCount } from './auth.js';
 import { VERSION } from './version.js';
 import { wireHelp } from './help.js';
+import { davitsByBoat, mergeDavits } from './davits.js';
 import { Store, packRows, unpackRows, isNewerImport } from './store.js';
 import { renderPrint, measure, fitToPage } from './print.js';
 import { renderGantt } from './gantt.js';
@@ -534,6 +535,15 @@ async function commitImport() {
   // so a save that was refused reported "could not read that file" — which
   // points at the spreadsheet and hides the fact that the board never reached
   // anybody else.
+  // Learn the davit fittings from the WHOLE file, before the closed rows are
+  // dropped. A fitting is a fact about a boat, not about this week's work.
+  try {
+    const merged = mergeDavits(await Store.loadDavits(), davitsByBoat(src.rows));
+    await Store.saveDavits(merged);
+  } catch (e) {
+    console.warn('[davits]', e.message);
+  }
+
   await publish(keep, 'shared with the other managers');
 }
 

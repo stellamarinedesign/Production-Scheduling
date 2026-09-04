@@ -121,7 +121,6 @@ main { padding: 16px 22px 60px; max-width: 1720px; margin: 0 auto; }
 
 /* A model code chosen by hand, as against every one the data carries. */
 .c-riv.is-set { color: var(--white); }
-.c-order { color: var(--text-dim); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; }
 
 .state .backlink {
   display: inline-block; margin-top: 14px; color: var(--red-bright);
@@ -1069,8 +1068,10 @@ button.linkish:disabled { opacity: .5; cursor: default; }
 .codes-head, .code-row {
   display: grid;
   /* Three buttons in the actions cell now — Model, Rename, Split. */
-  /* Stella | ERP codes | Model | Hull | Order | Products | actions */
-  grid-template-columns: 150px 165px 115px 105px 120px minmax(170px, 1fr) 198px;
+  /* Stella | ERP codes | Model | Hull | Products | actions
+     No order column: the customer's reference differs per order, so it changed
+     on every line and told nobody anything. */
+  grid-template-columns: 170px 185px 125px 115px minmax(190px, 1fr) 198px;
   gap: 14px; align-items: baseline; padding: 9px 10px;
 }
 .codes-head {

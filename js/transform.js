@@ -10,7 +10,7 @@
 
 import {
   CATEGORY_ORDER, BOARD_STATUSES, INTERNAL_CUSTOMER, HULL_RE,
-  LANE, laneFor, tmCategory, internalCategory,
+  LANE, laneFor, tmCategory, internalCategory, WATERMAKER_CATEGORIES,
   TM_CATEGORY_ORDER, INTERNAL_CATEGORY_ORDER, PRINT_CATEGORIES,
   VESSEL_IN_DESC_RE, CUSTOMER_SUFFIX_RE, CUSTOM_TEXT_RE, LABEL_OVERRIDES, COMPONENT_TYPE,
   EXCLUSION_ORDER, classify,
@@ -246,6 +246,13 @@ export function shortLabel({
   // text — see `customNameOptions`, which is where that decision lives.
   const custom = customNameOptions({ inventoryId, productionDescription, customer, descField });
   if (custom) return custom.chosen.label;
+
+  // Water products are named the same way and for the same reason: one of them
+  // carries its own part code as a production description, where the item
+  // description reads properly.
+  if (WATERMAKER_CATEGORIES.includes(classify(inv).category)) {
+    return text(itemDescription) || desc;
+  }
 
   // Davits are labelled by capacity + configuration, not by vessel, and that
   // description comes from `Item Description` rather than the production order.
