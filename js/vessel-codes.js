@@ -348,20 +348,6 @@ const categoryRank = (c) => {
  * @param {(inv:string)=>({category:string|null})} classify  from rules.js
  * @param {{mode:'boats'|'products'}} opts
  */
-/**
- * What the latest export knows about each item code.
- *
- * The code map holds item codes and nothing else about them — it is a map of
- * boats, not an order book. Two things on the codes page need more than that:
- * the customer's order number, and the item's own description, which is the
- * name a davit actually goes by.
- *
- * Optional throughout. With no rows this is empty and the page shows what it
- * always showed.
- *
- * @param {Array<Object>} rows RawRow[] from the latest import
- * @returns {Map<string, {description: string, orders: string[]}>}
- */
 /** Customer order numbers seen for a set of item codes, deduped. */
 function ordersFor(items, facts) {
   if (!facts) return [];
@@ -370,19 +356,67 @@ function ordersFor(items, facts) {
   return [...out].sort();
 }
 
+/**
+ * Hulls for a set of items, from the export where it is available.
+ *
+ * THE STORED MAP KEEPS HULLS AGAINST THE CODE, and a code can cover several
+ * products — so a hull belonging to one of them appeared against all of them.
+ * A seat box fitted to another boat's hull put that hull on the watertight
+ * door's line as well, which is a claim about the door that nothing in the data
+ * supports.
+ *
+ * Falls back to the code's stored hulls when there is no export to read, so a
+ * page with no import behind it still shows something, just less precisely.
+ */
+function hullsFor(items, codes, codeMap, facts) {
+  if (facts && items.length) {
+    const out = new Set();
+    let known = false;
+    for (const i of items) {
+      const h = facts.get(i)?.hulls;
+      if (!h) continue;
+      known = true;
+      for (const x of h) out.add(x);
+    }
+    if (known) return [...out].sort();
+  }
+  return [...new Set(codes.flatMap((c) => codeMap[c]?.hull_prefix ?? []))].sort();
+}
+
+/**
+ * What the latest export knows about each item code.
+ *
+ * The code map holds item codes and nothing else about them — it is a map of
+ * boats, not an order book. The codes page needs more: the customer's order
+ * number, the item's own description, and the hulls THIS item was fitted to.
+ *
+ * Optional throughout. With no rows this is empty and the page shows what it
+ * always showed.
+ *
+ * @param {Array<Object>} rows RawRow[] from the latest import
+ * @returns {Map<string, {description: string, orders: string[], hulls: string[]}>}
+ */
 export function itemFacts(rows) {
   const out = new Map();
   for (const r of rows ?? []) {
     const inv = String(r['Inventory ID'] ?? '').trim();
     if (!inv) continue;
-    if (!out.has(inv)) out.set(inv, { description: '', orders: new Set() });
+    if (!out.has(inv)) out.set(inv, { description: '', orders: new Set(), hulls: new Set() });
     const f = out.get(inv);
     const desc = String(r['Item Description'] ?? '').trim();
     if (desc && !f.description) f.description = desc;
     const order = String(r['Customer Order Nbr.'] ?? '').trim();
     if (order) f.orders.add(order);
+    // EVERY hull on the row, not just the first. "Used by 56SY/010, /011,
+    // 62SY/002" names two boats, and reading one of them is how a hull went
+    // missing from the line it belonged to.
+    const blob = `${r['Description'] ?? ''} ${r['Production Description'] ?? ''}`;
+    for (const m of blob.matchAll(/([A-Z0-9]{2,})\s*\/\s*[0-9]/gi)) f.hulls.add(m[1].toUpperCase());
   }
-  for (const f of out.values()) f.orders = [...f.orders].sort();
+  for (const f of out.values()) {
+    f.orders = [...f.orders].sort();
+    f.hulls = [...f.hulls].sort();
+  }
   return out;
 }
 
@@ -447,7 +481,8 @@ export function boatRows(codeMap, classify, { mode = 'boats', facts = null } = {
           category,
           items: category ? b.byCategory.get(category) : [],
           codes,
-          hulls: [...new Set(codes.flatMap((c) => codeMap[c]?.hull_prefix ?? []))].sort(),
+          hulls: hullsFor(category ? b.byCategory.get(category).map((x) => x.item) : [],
+            codes, codeMap, facts),
           riviera: [...new Set(codes.flatMap((c) => codeMap[c]?.riviera ?? []))].sort(),
           model: modelFor(group, codeMap),
           modelSet: codes.some((c) => String(codeMap[c]?.sheetModel ?? '').trim()),

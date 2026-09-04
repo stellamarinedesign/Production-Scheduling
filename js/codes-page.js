@@ -16,6 +16,7 @@ import { classify } from './rules.js';
 import { Auth, ROLE, setManagers } from './auth.js';
 import { VERSION } from './version.js';
 import { fitCodesSheet, TYPE_STEPS } from './codes-print.js';
+import { davitsByBoat } from './davits.js';
 import { wireHelp } from './help.js';
 
 const $ = (id) => document.getElementById(id);
@@ -103,7 +104,17 @@ let davits = [];    // boat -> davits, straight from the export
     if (f) reviewCodesFile(f);
   });
   $('previewSheet').addEventListener('click', () => togglePreview());
-  $('printSheet').addEventListener('click', () => window.print());
+  $('printSheet').addEventListener('click', () => {
+    // The sheet is only built while the preview is on, so this printed an empty
+    // page and looked broken. Build it first, then print — two frames, because
+    // the fit measures the laid-out sheet.
+    // `togglePreview` renders synchronously, so the sheet is in the DOM by the
+    // time this returns. No frame to wait for — and waiting on one was worse
+    // than useless, because requestAnimationFrame is throttled when the tab is
+    // not in front, which is exactly when a print dialog would never appear.
+    if (!sheetShown) togglePreview();
+    window.print();
+  });
   render();
 
   // A rename made on the board page, or by the other manager, lands here
@@ -410,7 +421,18 @@ function toast(msg, ms = 3200) {
  * would drop off the sheet the moment its last order closed.
  */
 async function loadDavits() {
-  try { return await Store.loadDavits(); } catch { return []; }
+  try {
+    const stored = await Store.loadDavits();
+    if (stored.length) return stored;
+    // NOTHING STORED YET. The list is learned at import, so a board imported
+    // before that existed has none — and the section then does not appear at
+    // all, which reads as broken rather than empty. Fall back to the rows to
+    // hand: less complete, since those are the open ones, but present.
+    const cached = Store.cachedRows?.();
+    if (cached?.rows?.length) return davitsByBoat(cached.rows);
+    const published = await Store.latestBoard();
+    return davitsByBoat(published?.rowsJson ? unpackRows(published.rowsJson) : []);
+  } catch (e) { console.warn('[davits]', e.message); return []; }
 }
 
 async function loadFacts() {
