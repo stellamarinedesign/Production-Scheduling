@@ -11,7 +11,8 @@
 // instead of the answer.
 
 import { Store, unpackRows } from './store.js';
-import { resolveDisplays, boatRows, itemFacts, factsFromStore } from './vessel-codes.js';
+import { resolveDisplays, boatRows, itemFacts, factsFromStore,
+         factsAreStale } from './vessel-codes.js';
 import { classify } from './rules.js';
 import { Auth, ROLE, setManagers } from './auth.js';
 import { VERSION } from './version.js';
@@ -531,12 +532,23 @@ async function loadFacts() {
     // closed — see `mergeItemFacts`. Falls back to the rows only when nothing
     // has been accumulated yet, so a board imported before this existed still
     // shows something.
-    const stored = factsFromStore(await Store.loadItemFacts());
-    if (stored.size) return stored;
+    const raw = await Store.loadItemFacts();
+    const stored = factsFromStore(raw);
+    if (stored.size && !factsAreStale(raw)) return stored;
+
     const cached = Store.cachedRows?.();
-    if (cached?.rows?.length) return itemFacts(cached.rows);
-    const published = await Store.latestBoard();
-    return itemFacts(published?.rowsJson ? unpackRows(published.rowsJson) : []);
+    const published = cached?.rows?.length ? null : await Store.latestBoard();
+    const fresh = itemFacts(cached?.rows?.length ? cached.rows
+      : (published?.rowsJson ? unpackRows(published.rowsJson) : []));
+    if (!stored.size) return fresh;
+
+    // STALE. The accumulated descriptions are still good — they were never in
+    // doubt — but hulls read by a rule we have replaced are not shown at all.
+    // They come from the rows to hand until the next import rebuilds the list;
+    // a product not among those rows falls back to its boat's hull family.
+    for (const [inv, f] of stored) f.hulls = fresh.get(inv)?.hulls ?? [];
+    for (const [inv, f] of fresh) if (!stored.has(inv)) stored.set(inv, f);
+    return stored;
   } catch (e) {
     console.warn('[facts]', e.message);
     return new Map();

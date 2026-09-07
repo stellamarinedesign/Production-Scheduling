@@ -496,6 +496,9 @@ export function mergeItemFacts(stored, fresh) {
   return out;
 }
 
+/** Were the stored hulls read by a rule we have since replaced? */
+export const factsAreStale = (obj) => Number(obj?.[FACTS_REV_KEY] ?? 0) !== HULL_RULE_REV;
+
 /** The stored facts object, as the Map the rest of this module expects. */
 export const factsFromStore = (obj) => new Map(Object.entries(obj ?? {})
   .filter(([inv]) => inv !== FACTS_REV_KEY)
