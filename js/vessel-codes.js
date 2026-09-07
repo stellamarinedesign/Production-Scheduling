@@ -374,7 +374,11 @@ function hullsFor(items, codes, codeMap, facts) {
     let known = false;
     for (const i of items) {
       const h = facts.get(i)?.hulls;
-      if (!h) continue;
+      // AN EMPTY LIST IS NOT KNOWLEDGE. `[]` is truthy, so a product the export
+      // mentions but never ties to a hull counted as "we know, and the answer
+      // is none" — which suppressed the fall-back below and printed a blank
+      // hull for products whose boat has a perfectly good hull family recorded.
+      if (!h?.length) continue;
       known = true;
       for (const x of h) out.add(x);
     }
@@ -382,6 +386,25 @@ function hullsFor(items, codes, codeMap, facts) {
   }
   return [...new Set(codes.flatMap((c) => codeMap[c]?.hull_prefix ?? []))].sort();
 }
+
+/**
+ * A hull reference inside a "Used by" clause: a code, a slash, a hull number.
+ *
+ * NO SHAPE RULE ON THE CODE. This used to insist on letters-digits-letters,
+ * which cannot express a family written digits-letter-digit — the match then
+ * started mid-token, and two whole families were stored under the same wrong
+ * two-character stub. Requiring a letter, to keep capacities out, silently drops
+ * an all-numeric family for the same reason: the rule described some of the
+ * codes rather than the thing that makes one a hull.
+ *
+ * So the code is whatever precedes the slash, and the HULL NUMBER decides.
+ * Group 2 matches only when it disqualifies the whole thing:
+ *   - digits with a letter hard against them are a model pair or a unit
+ *     (one product built for two models, or a capacity such as 450/500KG);
+ *   - digits followed by another /digits are a capacity run or a date.
+ * A hull number is followed by a space, a comma, a bracket or nothing.
+ */
+const HULL_RE = /\b([A-Z0-9]{2,10})\s*\/\s*[0-9]{1,4}(?![0-9])([A-Z]|\s*\/\s*[0-9])?/gi;
 
 /**
  * What the latest export knows about each item code.
@@ -408,18 +431,16 @@ export function itemFacts(rows) {
     const order = String(r['Customer Order Nbr.'] ?? '').trim();
     if (order) f.orders.add(order);
     // EVERY hull in the "Used by" clause, not just the first: "Used by
-    // 56SY/010, /011, 62SY/002" names two boats, and reading one of them is how
+    // XX01/010, /011, XX02/002" names two boats, and reading one of them is how
     // a hull went missing from the line it belonged to.
     //
-    // STILL ANCHORED ON "Used by". Scanning the whole cell for code/number
-    // instead reads product names as hulls — a rope kit described as
-    // "450/550/650/750kg" yielded four of them.
+    // Anchored on "Used by" still: outside that clause the same shape is hose
+    // sizes, due dates, project numbers and item codes.
     const blob = `${r['Description'] ?? ''} ${r['Production Description'] ?? ''}`;
     for (const clause of blob.matchAll(/Used\s*by\s*([^.;]*)/gi)) {
-      for (const m of clause[1].matchAll(/([A-Z]{0,4}[0-9]{1,4}[A-Z]{0,4})\s*\/\s*[0-9]/gi)) {
-        const hull = m[1].toUpperCase();
-        // A bare number before a slash is a capacity, not a hull code.
-        if (/[A-Z]/.test(hull)) f.hulls.add(hull);
+      for (const m of clause[1].matchAll(HULL_RE)) {
+        if (m[2]) continue;                  // a model pair, a unit, or a date
+        f.hulls.add(m[1].toUpperCase());
       }
     }
   }
@@ -429,6 +450,11 @@ export function itemFacts(rows) {
   }
   return out;
 }
+
+/** Bumped whenever the hull rule changes, so stored hulls are re-read. */
+export const HULL_RULE_REV = 2;
+/** Reserved key in the stored facts object. Never an item code. */
+export const FACTS_REV_KEY = '_hullRule';
 
 /**
  * Fold a fresh reading of the export into the stored one.
@@ -448,8 +474,15 @@ export function itemFacts(rows) {
  */
 export function mergeItemFacts(stored, fresh) {
   const out = {};
+  // Hulls accumulate and are never dropped automatically — except when the rule
+  // that read them has changed. The text they came from is not kept, so a stored
+  // hull cannot be re-checked; the only honest move is to drop them and read
+  // them again from this export. Descriptions are untouched, and the list
+  // rebuilds on the next import like it did the first time.
+  const stale = Number(stored?.[FACTS_REV_KEY] ?? 0) !== HULL_RULE_REV;
   for (const [inv, f] of Object.entries(stored ?? {})) {
-    out[inv] = { description: f?.description ?? '', hulls: [...(f?.hulls ?? [])] };
+    if (inv === FACTS_REV_KEY) continue;
+    out[inv] = { description: f?.description ?? '', hulls: stale ? [] : [...(f?.hulls ?? [])] };
   }
   for (const [inv, f] of (fresh ?? new Map()).entries()) {
     const now = out[inv] ?? { description: '', hulls: [] };
@@ -459,11 +492,13 @@ export function mergeItemFacts(stored, fresh) {
       hulls: [...new Set([...now.hulls, ...(f.hulls ?? [])])].sort(),
     };
   }
+  out[FACTS_REV_KEY] = HULL_RULE_REV;
   return out;
 }
 
 /** The stored facts object, as the Map the rest of this module expects. */
 export const factsFromStore = (obj) => new Map(Object.entries(obj ?? {})
+  .filter(([inv]) => inv !== FACTS_REV_KEY)
   .map(([inv, f]) => [inv, { description: f?.description ?? '', orders: [], hulls: f?.hulls ?? [] }]));
 
 export function boatRows(codeMap, classify, { mode = 'boats', facts = null } = {}) {
@@ -524,6 +559,12 @@ export function boatRows(codeMap, classify, { mode = 'boats', facts = null } = {
         // narrowed the item codes and left the rest of the row alone, so a
         // lifter line listed every hull the boat had ever been fitted to —
         // including hulls that belong to a different product entirely.
+        //
+        // The FALL-BACK is the exception, and takes the whole boat: a recorded
+        // hull family is a fact about the boat, not about one of its codes, and
+        // a boat's codes are not evenly filled in. Narrowing that too left a
+        // product blank whenever the family happened to be recorded against a
+        // sibling code. It only applies where the product says nothing itself.
         const group = { codes };
         return {
           ...b,
@@ -531,7 +572,7 @@ export function boatRows(codeMap, classify, { mode = 'boats', facts = null } = {
           items: category ? b.byCategory.get(category) : [],
           codes,
           hulls: hullsFor(category ? b.byCategory.get(category).map((x) => x.item) : [],
-            codes, codeMap, facts),
+            b.codes, codeMap, facts),
           riviera: [...new Set(codes.flatMap((c) => codeMap[c]?.riviera ?? []))].sort(),
           model: modelFor(group, codeMap),
           modelSet: codes.some((c) => String(codeMap[c]?.sheetModel ?? '').trim()),

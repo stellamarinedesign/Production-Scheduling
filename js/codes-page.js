@@ -531,8 +531,8 @@ async function loadFacts() {
     // closed — see `mergeItemFacts`. Falls back to the rows only when nothing
     // has been accumulated yet, so a board imported before this existed still
     // shows something.
-    const stored = await Store.loadItemFacts();
-    if (Object.keys(stored).length) return factsFromStore(stored);
+    const stored = factsFromStore(await Store.loadItemFacts());
+    if (stored.size) return stored;
     const cached = Store.cachedRows?.();
     if (cached?.rows?.length) return itemFacts(cached.rows);
     const published = await Store.latestBoard();
