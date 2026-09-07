@@ -563,11 +563,12 @@ export function boatRows(codeMap, classify, { mode = 'boats', facts = null } = {
         // lifter line listed every hull the boat had ever been fitted to —
         // including hulls that belong to a different product entirely.
         //
-        // The FALL-BACK is the exception, and takes the whole boat: a recorded
-        // hull family is a fact about the boat, not about one of its codes, and
-        // a boat's codes are not evenly filled in. Narrowing that too left a
-        // product blank whenever the family happened to be recorded against a
-        // sibling code. It only applies where the product says nothing itself.
+        // THE FALL-BACK NARROWS TOO. Widening it to the whole boat, to fill in a
+        // product whose own code had no family recorded, put a sibling
+        // product's hulls on the line instead — a door borrowed the hulls of
+        // the seat box beside it, which is this same bug wearing hull_prefix
+        // instead of item facts. A hull nobody can attribute to the line is
+        // worse on the floor than no hull at all, so a blank stays blank.
         const group = { codes };
         return {
           ...b,
@@ -575,7 +576,7 @@ export function boatRows(codeMap, classify, { mode = 'boats', facts = null } = {
           items: category ? b.byCategory.get(category) : [],
           codes,
           hulls: hullsFor(category ? b.byCategory.get(category).map((x) => x.item) : [],
-            b.codes, codeMap, facts),
+            codes, codeMap, facts),
           riviera: [...new Set(codes.flatMap((c) => codeMap[c]?.riviera ?? []))].sort(),
           model: modelFor(group, codeMap),
           modelSet: codes.some((c) => String(codeMap[c]?.sheetModel ?? '').trim()),
