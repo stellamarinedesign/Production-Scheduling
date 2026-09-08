@@ -2,7 +2,8 @@
 
 import { xlsxAdapter } from './adapters/index.js';
 import { buildBoard, byCategory, today, toAU, toDateOnly, jobTitle, CUSTOM_PREFIX,
-         isEmptyCustomName, snapshotOf, isPrintable, retainedRows } from './transform.js';
+         isEmptyCustomName, snapshotOf, isPrintable, retainedRows,
+         diffBoards } from './transform.js';
 import { CATEGORY_ORDER, PRINT_LAYOUT, EXCLUSION_ORDER, EXCLUSION_GROUP_LABEL,
          TM_CATEGORY_ORDER, INTERNAL_CATEGORY_ORDER, LANE_LABEL, WATERMAKER_CATEGORIES,
          SETTABLE_STATUSES } from './rules.js';
@@ -1736,6 +1737,9 @@ const IMPORT_DETAIL = {
   excluded:   { label: 'rows excluded', lane: null },
 };
 let importOpenDetail = null;
+// Most rows in an export are unchanged, so the list can be narrowed to the ones
+// that are not. Off by default: the full list is still the sanity check.
+let importChangedOnly = false;
 const importOpenConcerns = new Set();
 // Groups inside an opened count. Shut by default on the excluded list, which
 // runs to four figures — scrolling past 730 completed rows to reach the next
@@ -1813,7 +1817,11 @@ function renderImport() {
   stat('excluded', b.excluded.length, 'by status or category');
   box.append(grid);
 
-  if (importOpenDetail) box.append(importDetail(b, importOpenDetail));
+  // What this import actually changes, against the board already loaded.
+  const diff = diffBoards(state.source ? state.board : null, b);
+  box.append(importSummary(diff));
+
+  if (importOpenDetail) box.append(importDetail(b, importOpenDetail, diff));
 
   // --- concerns, itemised ---
   const concerns = importConcerns(b, staged.src);
@@ -1842,6 +1850,37 @@ function renderImport() {
   }
   box.append(acts);
   host.append(box);
+}
+
+/**
+ * One line on what changes, above the detail that proves it.
+ *
+ * The counts are the point: "152 unchanged" is what makes the other three
+ * numbers worth reading, and it is the number a flat list hides.
+ */
+function importSummary(diff) {
+  const wrap = el('div', 'import-diff');
+  if (diff.first) {
+    wrap.append(el('span', 'id-first',
+      'First import — nothing to compare against, so every row is new.'));
+    return wrap;
+  }
+  const { added, changed, same, leaving } = diff.counts;
+  wrap.append(el('b', null, 'Against the board you have now:'));
+  const part = (n, label, cls) => {
+    if (!n) return;
+    const x = el('span', `id-part${cls ? ` ${cls}` : ''}`);
+    x.append(el('b', null, String(n)), el('span', null, label));
+    wrap.append(x);
+  };
+  part(added, 'new', 'is-new');
+  part(changed, 'changed', 'is-changed');
+  part(same, 'unchanged', 'is-same');
+  part(leaving, 'leaving the board', 'is-leaving');
+  if (!added && !changed && !leaving) {
+    wrap.append(el('span', 'id-part is-same', 'nothing has moved since the last export'));
+  }
+  return wrap;
 }
 
 /** One collapsible concern: a heading, and every item under it with its fix. */
@@ -2039,7 +2078,7 @@ function appendGroup(wrap, key, title, n, body, { shutByDefault = false } = {}) 
 }
 
 /** The full contents of one count, so "69 production orders" can be checked. */
-function importDetail(b, key) {
+function importDetail(b, key, diff = null) {
   const wrap = el('div', 'import-detail');
   const cfg = IMPORT_DETAIL[key];
 
@@ -2069,10 +2108,23 @@ function importDetail(b, key) {
     return wrap;
   }
 
-  const jobs = key === 'production'
+  const all = key === 'production'
     ? (b.jobs ?? []).filter((j) => !j.completed)
     : (b[cfg.lane] ?? []).filter((j) => !j.completed);
-  wrap.append(el('h3', null, `Every ${cfg.label.replace(/s$/, '')} (${jobs.length})`));
+  const stateOf = (j) => (diff && !diff.first ? diff.state.get(j.prod_no) : null);
+  const movers = diff && !diff.first ? all.filter((j) => stateOf(j) !== 'same') : all;
+  const jobs = importChangedOnly ? movers : all;
+
+  const head = el('div', 'detail-head');
+  head.append(el('h3', null, `Every ${cfg.label.replace(/s$/, '')} (${jobs.length})`));
+  // Offered only when it would actually narrow something.
+  if (diff && !diff.first && movers.length < all.length) {
+    const only = el('button', `mini${importChangedOnly ? ' on' : ''}`,
+      importChangedOnly ? `Showing the ${movers.length} that moved` : 'Only what changed');
+    only.addEventListener('click', () => { importChangedOnly = !importChangedOnly; renderImport(); });
+    head.append(only);
+  }
+  wrap.append(head);
 
   const order = key === 'production' ? CATEGORY_ORDER
     : key === 'tm' ? TM_CATEGORY_ORDER : INTERNAL_CATEGORY_ORDER;
@@ -2086,16 +2138,46 @@ function importDetail(b, key) {
     if (!rows.length) continue;
     const t = el('div', 'flag-rows');
     for (const j of rows) {
-      const row = el('div', `flag-row${isPrintable(j) || key !== 'production' ? '' : ' is-offpaper'}`);
+      const st = stateOf(j);
+      const row = el('div', `flag-row${isPrintable(j) || key !== 'production' ? '' : ' is-offpaper'}`
+        + (st ? ` is-${st}` : ''));
       row.append(el('span', 'fr-key', j.prod_no));
       row.append(el('span', 'fr-main', jobTitle(j)));
       row.append(el('span', 'fr-detail', key === 'production'
         ? j.due_display
         : `${j.customer_display ?? ''}${j.age_display ? ` \u00b7 open ${j.age_display}` : ''}`));
-      row.append(el('span', 'fr-act', key === 'production' && !isPrintable(j) ? 'no print' : ''));
+      // The tag says WHAT moved, not merely that something did: a status and a
+      // due date want different reactions from whoever is reading this.
+      const act = el('span', 'fr-act');
+      if (st === 'new') act.append(el('span', 'fr-tag is-new', 'new'));
+      else if (st === 'changed') {
+        act.append(el('span', 'fr-tag is-changed', diff.changes.get(j.prod_no).join(', ')));
+      }
+      if (key === 'production' && !isPrintable(j)) act.append(el('span', 'fr-note', 'no print'));
+      row.append(act);
       t.append(row);
     }
     appendGroup(wrap, `${key}:${cat}`, cat, rows.length, t);
+  }
+
+  // On the board now and not in this export: closed upstream since the last
+  // one. Staging is the only moment the two lists exist side by side, so it is
+  // the only place this can be shown at all.
+  const going = (diff?.leaving ?? []).filter((j) => (j.lane ?? 'production') === cfg.lane);
+  if (going.length) {
+    const t = el('div', 'flag-rows');
+    for (const j of going) {
+      const row = el('div', 'flag-row is-leaving');
+      row.append(el('span', 'fr-key', j.prod_no));
+      row.append(el('span', 'fr-main', jobTitle(j)));
+      row.append(el('span', 'fr-detail', j.erp_status ?? ''));
+      const act = el('span', 'fr-act');
+      act.append(el('span', 'fr-tag is-leaving', 'leaving'));
+      row.append(act);
+      t.append(row);
+    }
+    appendGroup(wrap, `${key}:leaving`, 'Leaving the board', going.length, t,
+      { shutByDefault: true });
   }
   return wrap;
 }

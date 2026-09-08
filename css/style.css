@@ -725,6 +725,42 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 .flag-row .fr-detail { color: var(--text-dim); font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
 .flag-row .fr-act { display: flex; justify-content: flex-end; font-size: 11px; color: var(--text-dim); }
 .flag-row.is-offpaper .fr-main { color: var(--text-dim); }
+.flag-row .fr-note { color: var(--text-dim); }
+
+/* WHAT THIS IMPORT CHANGES.
+   Nine rows in ten say what they said last time, so those recede and the few
+   that moved are what the eye lands on. Greying the majority does more here
+   than colouring the minority would: the page is quiet, and the exceptions are
+   the only thing on it. */
+.flag-row.is-same { opacity: .42; }
+.flag-row.is-new { border-top-color: var(--red-deep); }
+.flag-row.is-leaving .fr-main { color: var(--text-dim); text-decoration: line-through; }
+.flag-row .fr-act { gap: 8px; }
+.fr-tag {
+  border-radius: 3px; padding: 1px 6px; font-size: 10px; line-height: 1.7;
+  white-space: nowrap; letter-spacing: .06em; text-transform: uppercase;
+}
+.fr-tag.is-new { background: var(--red-deep); color: var(--white); font-weight: 700; }
+/* The changed tag names the fields, so it reads as words rather than a label. */
+.fr-tag.is-changed {
+  border: 1px solid var(--line); color: var(--white);
+  letter-spacing: 0; text-transform: none;
+}
+.fr-tag.is-leaving { border: 1px solid var(--line); color: var(--text-dim); }
+
+/* One line of counts above the detail that proves them. */
+.import-diff {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px;
+  font-size: 13px; color: var(--text-dim); margin: 0 0 16px;
+}
+.import-diff > b { color: var(--white); }
+.import-diff .id-part { display: inline-flex; align-items: baseline; gap: 5px; }
+.import-diff .id-part b { color: var(--white); font-variant-numeric: tabular-nums; }
+.import-diff .id-part.is-new b { color: var(--red-bright); }
+.import-diff .id-first { color: var(--text-dim); }
+
+.detail-head { display: flex; align-items: baseline; gap: 12px; }
+.detail-head h3 { flex: 1; }
 
 .flag-bad { border-left-color: var(--red-bright); }
 .flag-warn { border-left-color: #C8912F; }

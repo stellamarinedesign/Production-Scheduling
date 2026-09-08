@@ -356,6 +356,86 @@ export function fromSnapshot(prodNo, ov) {
   };
 }
 
+// ---------------------------------------------------------------------------
+// WHAT THIS IMPORT ACTUALLY CHANGES
+//
+// An export is mostly a re-statement of the one before it: on a typical week
+// nine rows in ten say exactly what they said last time. Presented as one flat
+// list that is unreadable — the handful of rows worth a second look are
+// indistinguishable from the hundred that are not.
+//
+// So each row is compared against the board already loaded, keyed on the
+// production number. Only ERP fields are compared: a label somebody typed, a
+// hidden flag, a hand-set status are applied to BOTH boards from the same
+// override records, so a decision made here never reads as a change made
+// upstream.
+// ---------------------------------------------------------------------------
+
+/** The fields worth calling a change, and what to call it on screen. */
+export const DIFF_FIELDS = [
+  ['erp_status', 'status'],
+  ['end_date', 'end date'],
+  ['start_date', 'start date'],
+  ['qty', 'quantity'],
+  ['base_label', 'description'],
+  ['category', 'category'],
+  ['lane', 'lane'],
+  ['customer', 'customer'],
+  ['inventory_id', 'item code'],
+];
+
+const everyJob = (b) => [...(b?.jobs ?? []), ...(b?.tm ?? []), ...(b?.internal ?? [])];
+
+/**
+ * Compare a staged import against the board in hand.
+ *
+ * @param {Object|null} prev  the board currently loaded, or null on a first import
+ * @param {Object} next       the staged board
+ * @returns {{state: Map<string, 'new'|'changed'|'same'>,
+ *            changes: Map<string, string[]>, leaving: Array<Object>,
+ *            counts: {added: number, changed: number, same: number, leaving: number},
+ *            first: boolean}}
+ */
+export function diffBoards(prev, next) {
+  const before = new Map();
+  // A completed job revived from a snapshot is History, not an ERP row: it is
+  // not in the export and comparing against it would call every one of them
+  // "leaving" on every single import.
+  for (const j of everyJob(prev)) if (!j.from_snapshot) before.set(j.prod_no, j);
+
+  const state = new Map();
+  const changes = new Map();
+  const counts = { added: 0, changed: 0, same: 0, leaving: 0 };
+
+  for (const j of everyJob(next)) {
+    const was = before.get(j.prod_no);
+    if (!was) { state.set(j.prod_no, 'new'); counts.added += 1; continue; }
+    const moved = DIFF_FIELDS
+      .filter(([f]) => String(was[f] ?? '') !== String(j[f] ?? ''))
+      .map(([, label]) => label);
+    if (moved.length) {
+      state.set(j.prod_no, 'changed');
+      changes.set(j.prod_no, moved);
+      counts.changed += 1;
+    } else {
+      state.set(j.prod_no, 'same');
+      counts.same += 1;
+    }
+  }
+
+  // On the board now, not in this export: closed upstream since the last one.
+  // Worth seeing before applying, because it is the only moment the two lists
+  // exist side by side.
+  const arriving = new Set(everyJob(next).map((j) => j.prod_no));
+  const leaving = [...before.values()]
+    .filter((j) => !arriving.has(j.prod_no) && !j.completed);
+  counts.leaving = leaving.length;
+
+  // Nothing to compare against. Everything is new, which is true and useless,
+  // so the caller says "first import" instead of lighting up every row.
+  return { state, changes, leaving, counts, first: before.size === 0 };
+}
+
 /** What is kept about a job when it is completed, so History can outlive the export. */
 export const snapshotOf = (j) => ({
   lane: j.lane ?? 'production',
