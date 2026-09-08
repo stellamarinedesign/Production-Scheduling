@@ -6,7 +6,7 @@ import { buildBoard, byCategory, today, toAU, toDateOnly, jobTitle, CUSTOM_PREFI
          diffBoards } from './transform.js';
 import { CATEGORY_ORDER, PRINT_LAYOUT, EXCLUSION_ORDER, EXCLUSION_GROUP_LABEL,
          TM_CATEGORY_ORDER, INTERNAL_CATEGORY_ORDER, LANE_LABEL, WATERMAKER_CATEGORIES,
-         SETTABLE_STATUSES } from './rules.js';
+         SETTABLE_STATUSES, ERP_CLOSER } from './rules.js';
 import { stellaCode, labelFor, existingBoats, acceptNewCode, applyTemplate } from './vessel-codes.js';
 import { Auth, ROLE, friendlyAuthError, setManagers, managerCount } from './auth.js';
 import { VERSION } from './version.js';
@@ -507,6 +507,14 @@ async function commitImport() {
   if (!staged) return;
   const { src } = staged;
 
+  // THE ONE MOMENT BOTH LISTS EXIST. `retainedRows` drops closed rows before
+  // buildBoard ever sees them, so a job the ERP has finished does not even
+  // reach the excluded list - it simply stops being anywhere. Captured here,
+  // on the way past, and written to History below.
+  const leaving = state.source
+    ? diffBoards(state.board, staged.board, src.rows).leaving
+    : [];
+
   // The open order book, not the whole file. See `retainedRows`: carrying the
   // 1047 closed rows in the 01/09 export pushed the import record past
   // Firestore's 1 MiB document limit, so the write was refused and the upload
@@ -548,6 +556,32 @@ async function commitImport() {
     await Store.saveItemFacts(mergeItemFacts(await Store.loadItemFacts(), itemFacts(src.rows)));
   } catch (e) {
     console.warn('[reference]', e.message);
+  }
+
+  // Work that came off the board goes to History rather than nowhere.
+  //
+  // It rides the same completion record a person makes by hand, because it is
+  // the same kind of fact and History already knows how to render one. What it
+  // carries that a hand-made one does not is WHY: the ERP's own closing status,
+  // so a cancelled job is never filed as a finished one. Reopen puts it back.
+  if (leaving.length) {
+    try {
+      const snaps = Object.fromEntries(leaving.map((j) => [j.prod_no, {
+        ...snapshotOf(j),
+        closed_status: j.leaving_status,
+        closed_why: j.leaving_why,
+      }]));
+      await Store.setCompleted(leaving.map((j) => j.prod_no), true, ERP_CLOSER, snaps);
+      state.overrides = await Store.loadOverrides();
+      rebuild();
+      toast(`${leaving.length} job${leaving.length === 1 ? '' : 's'} came off the board `
+        + '- all of them are in History.', 6000);
+    } catch (e) {
+      // Worth saying out loud: silence here is exactly the disappearance this
+      // is here to prevent.
+      toast(`${leaving.length} jobs left the board and could not be saved to `
+        + `History - ${e.message}`, 8000);
+    }
   }
 
   await publish(keep, 'shared with the other managers');
@@ -1295,7 +1329,11 @@ function renderHistory(lane = 'production') {
       for (const j of rows) {
         const row = el('div', 'hist-row');
         row.append(el('span', 'prod', j.prod_no));
-        row.append(el('span', 'label', jobTitle(j)));
+        const label = el('span', 'label', jobTitle(j));
+        // A job the ERP closed reads differently from one somebody ticked, and
+        // History is the wrong place to blur the two.
+        if (j.closed_why) label.append(el('span', 'hist-why', j.closed_why));
+        row.append(label);
         row.append(el('span', 'due', lane === 'production' ? j.due_display : (j.opened_display ?? '')));
         const when = j.completed_at ? new Date(j.completed_at) : null;
         const stamp = el('span', 'when', when
@@ -1818,7 +1856,7 @@ function renderImport() {
   box.append(grid);
 
   // What this import actually changes, against the board already loaded.
-  const diff = diffBoards(state.source ? state.board : null, b);
+  const diff = diffBoards(state.source ? state.board : null, b, staged.src.rows);
   box.append(importSummary(diff));
 
   if (importOpenDetail) box.append(importDetail(b, importOpenDetail, diff));
@@ -2170,14 +2208,15 @@ function importDetail(b, key, diff = null) {
       const row = el('div', 'flag-row is-leaving');
       row.append(el('span', 'fr-key', j.prod_no));
       row.append(el('span', 'fr-main', jobTitle(j)));
-      row.append(el('span', 'fr-detail', j.erp_status ?? ''));
+      // WHY, not just that. "Completed" and "cancelled" are the same event to
+      // the board and very different events to a person reading this.
+      row.append(el('span', 'fr-detail', j.leaving_why ?? ''));
       const act = el('span', 'fr-act');
       act.append(el('span', 'fr-tag is-leaving', 'leaving'));
       row.append(act);
       t.append(row);
     }
-    appendGroup(wrap, `${key}:leaving`, 'Leaving the board', going.length, t,
-      { shutByDefault: true });
+    appendGroup(wrap, `${key}:leaving`, 'Leaving the board', going.length, t);
   }
   return wrap;
 }

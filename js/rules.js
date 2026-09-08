@@ -127,6 +127,22 @@ export const PRINT_CATEGORIES = [...PRINT_LAYOUT.narrow, ...PRINT_LAYOUT.full];
 // excluded by the ERP saved filter, but re-check in case that filter is edited.
 export const BOARD_STATUSES = new Set(['Planned', 'Released', 'In Process', 'On Hold']);
 
+// The other side of the same coin: what the ERP moves a job to when it comes
+// off the board. Spelled the way the ERP spells it, one L and all - matching a
+// data source is not a typo to be corrected.
+export const CLOSED_STATUSES = new Set(['Completed', 'Closed', 'Canceled']);
+
+// A job leaving the board is not necessarily a job that got finished, and
+// History should not claim otherwise.
+export const CLOSED_LABEL = {
+  Completed: 'completed in the ERP',
+  Closed: 'closed in the ERP',
+  Canceled: 'cancelled in the ERP',
+};
+
+// Whose name goes on a completion nobody here made.
+export const ERP_CLOSER = 'the ERP';
+
 // What a manager may set a job to by hand, in the order the work runs.
 //
 // The same four the ERP uses, deliberately: the point of a manual status is to

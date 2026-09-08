@@ -9,7 +9,7 @@
 // missing from the board, the excluded list says why.
 
 import {
-  CATEGORY_ORDER, BOARD_STATUSES, INTERNAL_CUSTOMER, HULL_RE,
+  CATEGORY_ORDER, BOARD_STATUSES, CLOSED_LABEL, ERP_CLOSER, INTERNAL_CUSTOMER, HULL_RE,
   LANE, laneFor, tmCategory, internalCategory, WATERMAKER_CATEGORIES,
   TM_CATEGORY_ORDER, INTERNAL_CATEGORY_ORDER, PRINT_CATEGORIES,
   VESSEL_IN_DESC_RE, CUSTOMER_SUFFIX_RE, CUSTOM_TEXT_RE, LABEL_OVERRIDES, COMPONENT_TYPE,
@@ -334,6 +334,9 @@ export function fromSnapshot(prodNo, ov) {
   return {
     prod_no: prodNo,
     from_snapshot: true,
+    // Set when the ERP closed it rather than a person marking it done here.
+    closed_status: snap.closed_status ?? null,
+    closed_why: snap.closed_why ?? null,
     lane: snap.lane ?? 'production',
     category: snap.category ?? 'Uncategorised',
     label: snap.label ?? prodNo,
@@ -386,17 +389,26 @@ export const DIFF_FIELDS = [
 
 const everyJob = (b) => [...(b?.jobs ?? []), ...(b?.tm ?? []), ...(b?.internal ?? [])];
 
+/** Why a job is coming off the board, in the words of the thing that did it. */
+const leavingWhy = (status) => {
+  if (!status) return 'not in this export at all';
+  return CLOSED_LABEL[status] ?? `now "${status}" in the ERP`;
+};
+
 /**
  * Compare a staged import against the board in hand.
  *
  * @param {Object|null} prev  the board currently loaded, or null on a first import
  * @param {Object} next       the staged board
+ * @param {Array<Object>} [rows]  the WHOLE file, closed rows included. `next` is
+ *   built from the retained rows only, so without this a job that the ERP has
+ *   completed and one that has vanished from the export look identical.
  * @returns {{state: Map<string, 'new'|'changed'|'same'>,
  *            changes: Map<string, string[]>, leaving: Array<Object>,
  *            counts: {added: number, changed: number, same: number, leaving: number},
  *            first: boolean}}
  */
-export function diffBoards(prev, next) {
+export function diffBoards(prev, next, rows = null) {
   const before = new Map();
   // A completed job revived from a snapshot is History, not an ERP row: it is
   // not in the export and comparing against it would call every one of them
@@ -427,14 +439,40 @@ export function diffBoards(prev, next) {
   // Worth seeing before applying, because it is the only moment the two lists
   // exist side by side.
   const arriving = new Set(everyJob(next).map((j) => j.prod_no));
+  // What the file says became of each one. First mention wins: a production
+  // number is one job, and the export repeats it a row per component.
+  const closing = new Map();
+  for (const r of rows ?? []) {
+    const p = text(r['Production Nbr.']);
+    if (p && !closing.has(p)) closing.set(p, text(r['Status']));
+  }
   const leaving = [...before.values()]
-    .filter((j) => !arriving.has(j.prod_no) && !j.completed);
+    .filter((j) => !arriving.has(j.prod_no) && !j.completed)
+    .map((j) => {
+      const status = closing.get(j.prod_no) || null;
+      return { ...j, leaving_status: status, leaving_why: leavingWhy(status) };
+    });
   counts.leaving = leaving.length;
 
   // Nothing to compare against. Everything is new, which is true and useless,
   // so the caller says "first import" instead of lighting up every row.
   return { state, changes, leaving, counts, first: before.size === 0 };
 }
+
+/**
+ * A completion the ERP made, not a person.
+ *
+ * IT EXPIRES THE MOMENT THE ROW COMES BACK, exactly as a hand-set status does
+ * when the export disagrees with it. Every job built here comes from a retained
+ * row, so it is open right now: if the ERP closed it and has since re-opened
+ * it, the ERP has changed its mind and the closure it made is about a fact that
+ * no longer holds. A completion somebody TICKED is a different thing entirely -
+ * that is a decision about the floor, it outranks the export, and it stands.
+ *
+ * Without this, a job the ERP closed and re-opened would sit in History for
+ * good, off the board, and nobody would think to look for it there.
+ */
+const stillComplete = (ov) => Boolean(ov?.completed) && ov?.completedBy !== ERP_CLOSER;
 
 /** What is kept about a job when it is completed, so History can outlive the export. */
 export const snapshotOf = (j) => ({
@@ -591,7 +629,7 @@ function sideJob(r, lane, { overrides, asOf }) {
       && toISO(startDate) === toISO(endDate)),
     hidden: Boolean(ov.hidden),
     hidden_reason: ov.hiddenReason ?? null,
-    completed: Boolean(ov.completed),
+    completed: stillComplete(ov),
     completed_at: ov.completedAt ?? null,
     completed_by: ov.completedBy ?? null,
     progress: ov.completed ? 1 : (typeof ov.progress === 'number' ? ov.progress : null),
@@ -769,7 +807,7 @@ export function buildBoard(rows, opts = {}) {
       //
       // Hiding was the nearest existing tool and it is the wrong one: hidden
       // means "not on this print", completed means "finished, for good".
-      completed: Boolean(ov.completed),
+      completed: stillComplete(ov),
       completed_at: ov.completedAt ?? null,
       completed_by: ov.completedBy ?? null,
       // 0..1. No UI sets this yet; a completed job reads as done so the bar is
