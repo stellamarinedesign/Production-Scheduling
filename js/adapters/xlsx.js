@@ -4,7 +4,7 @@
 // Nothing below this line knows about files, and nothing above it knows about
 // SheetJS. See DATA_SOURCE_ARCHITECTURE.md §2-§3.
 
-import { REQUIRED_COLUMNS } from '../rules.js';
+import { REQUIRED_COLUMNS, keepColumns } from '../rules.js';
 
 // SheetJS, no build step. Pinned — a silent major-version bump here would
 // change how dates and blank cells arrive.
@@ -27,9 +27,12 @@ async function sheetjs() {
  *
  * @returns {string[]} warnings, empty when the sheet is complete
  */
-export function validateColumns(rows) {
+export function validateColumns(rows, headings = null) {
   if (!rows.length) return ['That sheet has no rows.'];
-  const present = new Set(Object.keys(rows[0]));
+  // The headings as the FILE had them. Rows reaching here have already been
+  // narrowed to the columns the board keeps, so a missing required column and
+  // a deliberately dropped one would otherwise look identical.
+  const present = new Set(headings ?? Object.keys(rows[0]));
   const missing = REQUIRED_COLUMNS.filter((c) => !present.has(c));
   const warnings = [];
   if (missing.length) {
@@ -129,9 +132,9 @@ export const xlsxAdapter = {
 
     // defval: null so a blank cell arrives as a key with a null value rather
     // than vanishing from the row object entirely.
-    let rows;
+    let raw;
     try {
-      rows = XLSX.utils.sheet_to_json(normaliseRefs(XLSX, sheet), { defval: null });
+      raw = XLSX.utils.sheet_to_json(normaliseRefs(XLSX, sheet), { defval: null });
     } catch (e) {
       throw new Error(
         `Could not read the '${name}' sheet of ${file.name} — ${e.message}. `
@@ -139,6 +142,12 @@ export const xlsxAdapter = {
         + `re-saving it from Excel usually fixes it.`,
       );
     }
+
+    // NARROWED HERE AND NOWHERE ELSE, before the rows are returned to a single
+    // caller. Everything downstream - the transform, the cache, the published
+    // record - sees only the columns the board keeps. See KEPT_COLUMNS.
+    const headings = raw.length ? Object.keys(raw[0]) : [];
+    const rows = keepColumns(raw);
 
     return {
       rows,
@@ -150,7 +159,7 @@ export const xlsxAdapter = {
       // someone ran the export, not when these rows reached the board, and a
       // re-upload of an old file would silently claim to be fresh.
       retrievedAt: new Date().toISOString(),
-      warnings: validateColumns(rows),
+      warnings: validateColumns(rows, headings),
     };
   },
 };

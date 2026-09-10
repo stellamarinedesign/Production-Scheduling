@@ -192,6 +192,51 @@ export const REQUIRED_COLUMNS = [
   'Order Nbr.', 'Type', 'Qty. to Produce', 'Description', 'Internal Notes',
 ];
 
+// ---------------------------------------------------------------------------
+// WHAT IS ALLOWED THROUGH THE DOOR
+//
+// An ALLOW-LIST, not a block-list, applied at the adapter before a single row
+// reaches anything else. A block-list is only ever as current as the last time
+// somebody read the export's column headings; this is correct by default and
+// wrong only on purpose.
+//
+// The export carries 33 columns. The board reads 17. The other 16 used to
+// travel with them all the way into the published import record and into every
+// device's local cache, because the sheet reader returns whatever the sheet
+// has and the packer serialises whatever it is handed.
+//
+// Some of that is commercial: one column is the value of work in progress, and
+// another names the staff member who raised the order. Neither is read
+// anywhere in this app, and both were being written to the database and to
+// browser storage on every import, for nothing.
+//
+// A column the board does not read is a column it should not hold: not parsed,
+// not stored, not cached, not published, not sent anywhere. Adding a name here
+// is the deliberate act of deciding to keep it, and it should be as considered
+// as adding a field to any other record.
+// ---------------------------------------------------------------------------
+export const KEPT_COLUMNS = [
+  ...REQUIRED_COLUMNS,
+  // Read, but the board still draws without them.
+  'Created Date',        // how long a job has been open
+  'Project',             // shown against T&M and internal jobs
+];
+
+/**
+ * A row carrying the allowed columns and nothing else.
+ *
+ * Applied ONCE, at the adapter, to everything that arrives - so there is a
+ * single place to check that this holds, and no path around it. A column that
+ * is absent from the file stays absent rather than becoming a null: the
+ * difference between "the ERP sent nothing" and "the ERP sent an empty cell"
+ * is worth keeping.
+ */
+export const keepColumns = (rows) => (rows ?? []).map((r) => {
+  const out = {};
+  for (const c of KEPT_COLUMNS) if (c in r) out[c] = r[c];
+  return out;
+});
+
 // 'Used by 00SY/001' out of any free-text field.
 export const HULL_RE = /used\s*by\s*([A-Z0-9]+\s*\/\s*[A-Z0-9]+)/i;
 
