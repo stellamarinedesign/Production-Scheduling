@@ -59,6 +59,23 @@ const state = {
 // boot
 // ---------------------------------------------------------------------------
 
+/**
+ * Say what boot is doing, or take the notice away.
+ *
+ * Boot is a handful of network round trips and on a slow connection they add
+ * up. An empty page during that is indistinguishable from a broken one - which
+ * is precisely how it was being read - so the shell always says something.
+ *
+ * @param {string|false} what  a step to show, or false when the board is up
+ */
+function booting(what) {
+  const box = document.getElementById('booting');
+  if (!box) return;
+  if (what === false) { box.remove(); return; }
+  const line = document.getElementById('bootWhat');
+  if (line) line.textContent = what;
+}
+
 (async function boot() {
   wireAuth();
 
@@ -144,7 +161,9 @@ async function start(st) {
   // always FLOOR, whoever signed in. Load the list, then ask again.
   if (!storeReady) {
     storeReady = true;
+    booting('Connecting');
     await Store.init();
+    booting('Checking your access');
     setManagers(await Store.loadManagers());
   }
   st = { ...st, role: Auth.refreshRole() };
@@ -175,12 +194,23 @@ async function start(st) {
     if (await offerBootstrap(st.email)) return;   // claimed; start() re-ran
   }
 
-  if (st.role === ROLE.FLOOR) { await startFloor(); return; }
+  if (st.role === ROLE.FLOOR) { await startFloor(); booting(false); return; }
 
-  state.settings = await Store.loadSettings();
-  state.codeMap = await Store.loadCodes();
-  state.overrides = await Store.loadOverrides();
-  state.itemOverrides = await Store.loadItemOverrides();
+  // FOUR READS, ONE WAIT. These are independent of each other and were awaited
+  // in a chain, so the browser paid the round trip four times in a row before
+  // anything could be drawn. On a desk that is a blink; on a phone it is most
+  // of the delay before the page stops looking broken.
+  booting('Loading settings and vessel codes');
+  const [settings, codeMap, overrides, itemOverrides] = await Promise.all([
+    Store.loadSettings(),
+    Store.loadCodes(),
+    Store.loadOverrides(),
+    Store.loadItemOverrides(),
+  ]);
+  state.settings = settings;
+  state.codeMap = codeMap;
+  state.overrides = overrides;
+  state.itemOverrides = itemOverrides;
 
   $('horizon').value = state.settings.horizonWeeks;
   $('horizonVal').textContent = `${state.settings.horizonWeeks} weeks`;
@@ -196,9 +226,12 @@ async function start(st) {
   wireHelp();
   wireUpload();
   wireControls();
+  wireRowTaps();
   wireOverlays();
 
+  booting('Loading the board');
   await loadLastBoard();
+  booting(false);
 
   // The shell is up whether or not there is a board: the tab bar is how you
   // reach the Import tab, and the Import tab is where you go when there is
@@ -650,6 +683,27 @@ async function publish(rows, what) {
 // ---------------------------------------------------------------------------
 // controls
 // ---------------------------------------------------------------------------
+
+/**
+ * On a narrow screen a row's controls are folded away; tapping the row opens
+ * them.
+ *
+ * Delegated from the document so it survives every re-render without any
+ * wiring in the render paths, and harmless on a desktop: the CSS that hides
+ * the controls is behind a media query, so the class it toggles does nothing
+ * at a width where they are already visible.
+ */
+function wireRowTaps() {
+  document.addEventListener('click', (e) => {
+    const row = e.target.closest('.job, .lane-row');
+    if (!row || row.classList.contains('col-head')) return;
+    // A control inside the row is the thing being used, not the row itself -
+    // otherwise opening the status select would also collapse what it sits in.
+    if (e.target.closest('button, select, input, textarea, a, label')) return;
+    if (!row.querySelector('.acts button')) return;
+    row.classList.toggle('is-open');
+  });
+}
 
 function wireControls() {
   const horizon = $('horizon');

@@ -8,7 +8,7 @@
 <link rel="apple-touch-icon" href="assets/logo.png">
 <title>Production Board — Stella Marine</title>
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="css/style.css?v=2026-09-11.1">
+<link rel="stylesheet" href="css/style.css?v=2026-09-14.1">
 </head>
 <body>
 
@@ -55,6 +55,15 @@
 </header>
 
 <main>
+
+  <!-- SOMETHING, RATHER THAN BLACK.
+       Boot is several network round trips, and on a phone they can take long
+       enough that an empty page reads as a broken one. This says what is
+       happening and is removed the moment the board is drawn. -->
+  <div id="booting" class="booting">
+    <span class="boot-dot"></span>
+    <span id="bootWhat">Starting</span>
+  </div>
 
   <!-- Where this board came from. Always visible: with an uploaded file it
        guards against a stale export; with a live source it would guard against
@@ -389,6 +398,6 @@
 
 </div><!-- /#appShell -->
 
-<script type="module" src="js/app.js?v=2026-09-11.1"></script>
+<script type="module" src="js/app.js?v=2026-09-14.1"></script>
 </body>
 </html>

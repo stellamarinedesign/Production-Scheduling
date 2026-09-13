@@ -47,9 +47,14 @@ export async function getFirebase() {
   if (!isConfigured()) { _failed = 'Firebase not configured'; return null; }
 
   try {
-    const { initializeApp } = await import(`${SDK}/firebase-app.js`);
-    const fs = await import(`${SDK}/firebase-firestore.js`);
-    const fa = await import(`${SDK}/firebase-auth.js`);
+    // THREE FETCHES, NOT THREE ROUND TRIPS. These were awaited one after the
+    // other, so a phone on a slow connection paid the latency three times over
+    // before the first line of application code ran.
+    const [{ initializeApp }, fs, fa] = await Promise.all([
+      import(`${SDK}/firebase-app.js`),
+      import(`${SDK}/firebase-firestore.js`),
+      import(`${SDK}/firebase-auth.js`),
+    ]);
     const app = initializeApp(firebaseConfig);
 
     if (APPCHECK_SITE_KEY) {
@@ -64,7 +69,25 @@ export async function getFirebase() {
       }
     }
 
-    _fb = { app, db: fs.getFirestore(app), auth: fa.getAuth(app), fs, fa };
+    // LONG-POLLING DETECTION, ON PURPOSE.
+    //
+    // Firestore's default transport is a streaming WebChannel. Plenty of mobile
+    // carriers, captive portals and corporate proxies mangle or block it, and
+    // the SDK's response is to wait for its own timeout before falling back to
+    // long-polling. That wait is tens of seconds, during which every read is
+    // simply pending — which is exactly the "blank screen for about a minute,
+    // then everything appears at once" that the workshop sees on a phone.
+    //
+    // `experimentalAutoDetectLongPolling` makes the SDK probe up front and pick
+    // the transport that works, rather than discovering the hard way. It costs
+    // nothing on a network where the stream is fine.
+    _fb = {
+      app,
+      db: fs.initializeFirestore(app, { experimentalAutoDetectLongPolling: true }),
+      auth: fa.getAuth(app),
+      fs,
+      fa,
+    };
     return _fb;
   } catch (e) {
     _failed = e.message;

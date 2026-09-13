@@ -1197,3 +1197,125 @@ button.linkish:disabled { opacity: .5; cursor: default; }
   .codes-head { display: none; }
   .code-row { grid-template-columns: 1fr 1fr; gap: 6px 14px; }
 }
+
+/* ===================================================================
+   NARROW SCREENS
+   =================================================================== */
+
+/* Something on screen while boot does its round trips. */
+.booting {
+  display: flex; align-items: center; gap: 10px;
+  padding: 22px 2px; color: var(--text-dim); font-size: 13.5px;
+}
+.boot-dot {
+  width: 9px; height: 9px; border-radius: 50%; background: var(--red-bright);
+  animation: boot-pulse 1.1s ease-in-out infinite;
+}
+@keyframes boot-pulse { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .boot-dot { animation: none; opacity: .7; } }
+
+/* THE TAB STRIP SCROLLS RATHER THAN WRAPPING.
+   Wrapping it onto two rows pushes the board down the page and reads as two
+   groups of tabs rather than one. Scrolling keeps it one strip and one line,
+   at the cost of the last tab being off the edge - which the fade says. */
+@media (max-width: 760px) {
+  .tabs {
+    flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
+    scrollbar-width: none; -webkit-overflow-scrolling: touch;
+    /* Room for the fade, so the last tab is not sitting under it. */
+    padding-right: 18px;
+    /* The fade is the only cue that there is more; without it a cut-off tab
+       looks like a layout fault rather than an invitation to swipe. */
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { flex: 0 0 auto; }
+  /* The spacer exists to push Print to the right on a wide screen. In a
+     scrolling strip it would push it out of reach instead. */
+  .tab-spacer { display: none; }
+}
+
+/* A ROW BECOMES A CARD, AND ITS BUTTONS FOLD AWAY.
+   Five columns do not fit on a phone and shrinking them makes every one of
+   them useless. So the row stacks, and the controls - which are the widest
+   part and the least often wanted - hide until the row is tapped. */
+@media (max-width: 760px) {
+  .job, .job.is-full, .board-col .job,
+  .lane-row {
+    grid-template-columns: 1fr auto;
+    gap: 2px 10px;
+    align-items: baseline;
+    padding: 10px;
+  }
+
+  /* The title spans the width and leads. Everything else is a detail under it. */
+  .job .label, .lane-row .label { grid-column: 1 / -1; order: 1; font-size: 15px; }
+  .job .prod, .lane-row .prod { order: 2; font-size: 12px; }
+  .job .due, .job .po, .job .status,
+  .lane-row .who, .lane-row .age, .lane-row .st { order: 3; font-size: 12px; }
+  .job .due, .lane-row .age { justify-self: end; }
+
+  /* Hidden until the card is opened. Not display:none on the container - the
+     buttons inside must stay focusable once it is open. */
+  .job .acts, .lane-row .acts {
+    grid-column: 1 / -1; order: 4;
+    display: none; justify-content: flex-start; flex-wrap: wrap;
+    gap: 8px; padding-top: 10px; margin-top: 8px;
+    border-top: 1px solid var(--line);
+  }
+  .job.is-open .acts, .lane-row.is-open .acts { display: flex; }
+
+  /* A card that can be opened says so, quietly.
+     Keyed off the buttons actually being there rather than a class, so no
+     render path has to remember to set one and the floor view - which has no
+     controls at all - gets no caret and no cursor. */
+  .job:has(.acts button), .lane-row:has(.acts button) {
+    cursor: pointer; position: relative;
+  }
+  .job:has(.acts button)::after, .lane-row:has(.acts button)::after {
+    content: '\25be'; position: absolute; top: 10px; right: 10px;
+    color: var(--text-dim); font-size: 11px; transition: transform .12s ease;
+  }
+  .job.is-open::after, .lane-row.is-open::after { transform: rotate(180deg); }
+
+  /* Column headings label columns that no longer exist. */
+  .job.col-head, .lane-head { display: none; }
+
+  /* Thumbs, not mouse pointers. */
+  .job .acts button, .lane-row .acts button { min-height: 40px; padding: 0 14px; }
+  .job .acts select, .lane-row .acts select { min-height: 40px; }
+
+  /* PAPER IS PAPER. An A4 preview is 794px wide because A4 is; reflowing it
+     would make it a preview of something that will never be printed. So the
+     box it sits in scrolls, and the page itself stays put - which is what was
+     dragging every other view sideways. */
+  #printRoot, #codesPrintRoot { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  /* A GANTT CHART IS A WIDE THING, AND SHOULD STAY ONE.
+     Twelve weeks compressed into 160px is not a smaller chart, it is an
+     unreadable one - every bar becomes the same three-pixel smudge and the
+     whole point, which is comparing when things run, is gone. Same reasoning
+     as the paper above: do not reflow something whose meaning IS its width.
+
+     So it scrolls sideways inside its own box, and the label column is pinned
+     so you can always see which job a bar belongs to while you scroll. */
+  #gantt {
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+  }
+  .gantt {
+    --g-label: 116px;
+    min-width: 720px;          /* about a fortnight per screen, legibly */
+  }
+  .g-label {
+    position: sticky; left: 0; z-index: 2;
+    background: var(--black-night); padding-right: 8px;
+  }
+  .g-banner .g-label { background: var(--black-night); }
+  /* The pinned column needs an edge, or bars appear to slide under text. */
+  .g-row .g-label::after {
+    content: ''; position: absolute; top: 0; bottom: 0; right: 0;
+    width: 1px; background: var(--line);
+  }
+}
