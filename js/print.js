@@ -123,20 +123,23 @@ export const followUpOrder = (jobs) => [...(jobs ?? [])]
   .sort((a, b) => (b.age_days ?? -1) - (a.age_days ?? -1));
 
 /**
- * @param {HTMLElement} host
- * @param {{jobs: Array, title: string, asOf: string, itemLabel: string,
- *          total?: number}} opts
+ * Group into the same categories the tab shows, in the same order.
+ *
+ * A category the order does not name still gets a group rather than being
+ * dropped - the same rule the on-screen list follows, and the reason a new
+ * category appearing in an export is visible instead of silently missing.
  */
-export function renderLanePrint(host, { jobs, title, asOf, itemLabel, total = null }) {
-  host.textContent = '';
+function laneGroups(jobs, order) {
+  const byCat = new Map((order ?? []).map((c) => [c, []]));
+  for (const j of jobs) {
+    if (!byCat.has(j.category)) byCat.set(j.category, []);
+    byCat.get(j.category).push(j);
+  }
+  return [...byCat.entries()].filter(([, list]) => list.length);
+}
 
-  const head = el('div', 'doc-head');
-  head.append(el('div', 'doc-title', title));
-  const shown = total && total > jobs.length ? `${jobs.length} of ${total}  \u00b7  ` : '';
-  head.append(el('div', 'doc-range', `${shown}as of:  ${asOf}`));
-  host.append(head);
-
-  const wrap = el('div', 'full');
+/** One category's table: the lane columns, under a banner naming the category. */
+function laneTable(category, jobs, itemLabel) {
   const table = el('table');
   table.dataset.full = '1';
 
@@ -147,7 +150,7 @@ export function renderLanePrint(host, { jobs, title, asOf, itemLabel, total = nu
 
   const thead = el('thead');
   const banner = el('tr');
-  const bcell = el('th', 'banner', title.toUpperCase());
+  const bcell = el('th', 'banner', String(category).toUpperCase());
   bcell.colSpan = 5;
   banner.append(bcell);
   const hr = el('tr');
@@ -169,8 +172,28 @@ export function renderLanePrint(host, { jobs, title, asOf, itemLabel, total = nu
     tbody.append(tr);
   }
   table.append(tbody);
-  wrap.append(table);
-  host.append(wrap);
+  return table;
+}
+
+/**
+ * @param {HTMLElement} host
+ * @param {{jobs: Array, title: string, asOf: string, itemLabel: string,
+ *          order?: string[], total?: number}} opts
+ */
+export function renderLanePrint(host, { jobs, title, asOf, itemLabel, order = null, total = null }) {
+  host.textContent = '';
+
+  const head = el('div', 'doc-head');
+  head.append(el('div', 'doc-title', title));
+  const shown = total && total > jobs.length ? `${jobs.length} of ${total}  \u00b7  ` : '';
+  head.append(el('div', 'doc-range', `${shown}as of:  ${asOf}`));
+  host.append(head);
+
+  for (const [category, list] of laneGroups(jobs, order)) {
+    const wrap = el('div', 'full');
+    wrap.append(laneTable(category, list, itemLabel));
+    host.append(wrap);
+  }
 
   if (total && total > jobs.length) {
     host.append(el('div', 'hold-note',
@@ -190,11 +213,14 @@ export function renderLanePrint(host, { jobs, title, asOf, itemLabel, total = nu
  * blindly: height is near enough linear in row count, so one proportional jump
  * lands close and the walk afterwards is a row or two.
  */
-export function fitLaneToPage(host, allJobs, { title, asOf, itemLabel, minRows = 5 } = {}) {
+export function fitLaneToPage(host, allJobs, { title, asOf, itemLabel, order = null, minRows = 5 } = {}) {
+  // Longest-open first decides WHICH rows survive a trim; the grouping decides
+  // where they sit once they have. Sorting inside each category falls out of
+  // it, because the groups are built from an already-sorted list.
   const ordered = followUpOrder(allJobs);
   const total = ordered.length;
   const draw = (n) => {
-    renderLanePrint(host, { jobs: ordered.slice(0, n), title, asOf, itemLabel, total });
+    renderLanePrint(host, { jobs: ordered.slice(0, n), title, asOf, itemLabel, order, total });
     return measure(host);
   };
 

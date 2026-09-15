@@ -788,9 +788,11 @@ const SHEET_FOR_TAB = { edit: 'production', internal: 'internal', tm: 'tm' };
 const SHEET = {
   production: { btn: 'sheetBoard', label: 'Print board' },
   internal: { btn: 'sheetInternal', label: 'Print internal jobs',
-    title: 'Internal factory jobs', itemLabel: 'Item' },
+    title: 'Internal factory jobs', itemLabel: 'Item',
+    order: INTERNAL_CATEGORY_ORDER },
   tm: { btn: 'sheetTm', label: 'Print T&M jobs',
-    title: 'Time & Materials jobs', itemLabel: 'For' },
+    title: 'Time & Materials jobs', itemLabel: 'For',
+    order: TM_CATEGORY_ORDER },
 };
 
 function showTab(which) {
@@ -844,6 +846,8 @@ function renderPrintSheet() {
       title: SHEET[lane].title,
       asOf: toAU(toDateOnly(state.board.meta.as_of)),
       itemLabel: SHEET[lane].itemLabel,
+      // The same categories the tab groups by, in the same order.
+      order: SHEET[lane].order,
     });
   }
   renderFitStatus();
