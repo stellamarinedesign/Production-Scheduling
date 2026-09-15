@@ -1241,43 +1241,82 @@ button.linkish:disabled { opacity: .5; cursor: default; }
    them useless. So the row stacks, and the controls - which are the widest
    part and the least often wanted - hide until the row is tapped. */
 @media (max-width: 760px) {
+  /* THREE COLUMNS, PLACED EXPLICITLY.
+     Left is what the job IS and reads longest, so it gets the flexible track
+     and wraps inside it. Middle is the two short facts, right-aligned to each
+     other so they read as a pair. Right is the caret, its own column spanning
+     both rows.
+
+     Every cell is placed by hand rather than left to auto-flow. Flow order got
+     this wrong in a way that looked deliberate: the date ended up below the
+     order number instead of beside it, and the name ran under the caret. */
   .job, .job.is-full, .board-col .job,
   .lane-row {
-    grid-template-columns: 1fr auto;
-    gap: 2px 10px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    gap: 3px 12px;
     align-items: baseline;
-    padding: 10px;
+    padding: 11px 10px;
+  }
+  .job:has(.acts button), .lane-row:has(.acts button) {
+    grid-template-columns: minmax(0, 1fr) auto 26px;
   }
 
-  /* The title spans the width and leads. Everything else is a detail under it. */
-  .job .label, .lane-row .label { grid-column: 1 / -1; order: 1; font-size: 15px; }
-  .job .prod, .lane-row .prod { order: 2; font-size: 12px; }
-  .job .due, .job .po, .job .status,
-  .lane-row .who, .lane-row .age, .lane-row .st { order: 3; font-size: 12px; }
-  .job .due, .lane-row .age { justify-self: end; }
+  /* Left column: the name leads, the production number sits under it. */
+  .job .label, .lane-row .label {
+    grid-column: 1; grid-row: 1;
+    font-size: 15px; line-height: 1.35;
+    /* Wraps inside its own column instead of running under the date. */
+    white-space: normal; overflow-wrap: anywhere;
+  }
+  .job .prod, .lane-row .prod { grid-column: 1; grid-row: 2; font-size: 12px; }
 
-  /* Hidden until the card is opened. Not display:none on the container - the
-     buttons inside must stay focusable once it is open. */
+  /* Middle column: the date stays at the top, its partner directly beneath,
+     the two right-aligned with each other. */
+  .job .due, .lane-row .age {
+    grid-column: 2; grid-row: 1; justify-self: end; font-size: 12.5px;
+  }
+  .job .po, .lane-row .who {
+    grid-column: 2; grid-row: 2; justify-self: end; font-size: 12px;
+  }
+  /* A customer name can run long; it must not squeeze the job name. */
+  .lane-row .who { max-width: 40vw; }
+
+  /* Right column: the caret, on its own, across both rows.
+
+     SWAPPED, NOT ROTATED. Rotating one glyph is the tidier-looking CSS and it
+     did not survive contact: the transform computed to identity on this
+     pseudo-element in both states, while an identical probe elsewhere on the
+     same page rotated fine. Two glyphs need no transform, cannot be defeated
+     by a motion setting, and are what every other collapsible in this app
+     already does - which is the consistency wanted here in the first place. */
+  .job:has(.acts button)::after, .lane-row:has(.acts button)::after {
+    content: '\25b8';                      /* right, when shut */
+    grid-column: 3; grid-row: 1 / span 2;
+    align-self: center; justify-self: center;
+    color: var(--text-dim); font-size: 16px; line-height: 1;
+  }
+  /* THE SAME :has() ON PURPOSE. `:has(.acts button)` takes the specificity of
+     its argument, so the shut rule scores higher than a plain `.is-open` and
+     quietly won every time - the caret stayed pointing right with the row
+     open. Matching the shape of the selector is what settles it, and it is
+     also true: there is no caret to turn unless there are buttons. */
+  .job.is-open:has(.acts button)::after,
+  .lane-row.is-open:has(.acts button)::after {
+    content: '\25be';                      /* down, when open */
+    color: var(--white);
+  }
+  .job:has(.acts button), .lane-row:has(.acts button) { cursor: pointer; }
+
+  /* The controls, folded away until the row is tapped, and right-aligned so
+     they line up under the caret they came from. */
   .job .acts, .lane-row .acts {
-    grid-column: 1 / -1; order: 4;
-    display: none; justify-content: flex-start; flex-wrap: wrap;
-    gap: 8px; padding-top: 10px; margin-top: 8px;
+    grid-column: 1 / -1; grid-row: 3;
+    display: none; justify-content: flex-end; flex-wrap: wrap;
+    gap: 8px; padding-top: 11px; margin-top: 9px;
     border-top: 1px solid var(--line);
   }
   .job.is-open .acts, .lane-row.is-open .acts { display: flex; }
-
-  /* A card that can be opened says so, quietly.
-     Keyed off the buttons actually being there rather than a class, so no
-     render path has to remember to set one and the floor view - which has no
-     controls at all - gets no caret and no cursor. */
-  .job:has(.acts button), .lane-row:has(.acts button) {
-    cursor: pointer; position: relative;
-  }
-  .job:has(.acts button)::after, .lane-row:has(.acts button)::after {
-    content: '\25be'; position: absolute; top: 10px; right: 10px;
-    color: var(--text-dim); font-size: 11px; transition: transform .12s ease;
-  }
-  .job.is-open::after, .lane-row.is-open::after { transform: rotate(180deg); }
 
   /* Column headings label columns that no longer exist. */
   .job.col-head, .lane-head { display: none; }
