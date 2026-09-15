@@ -97,6 +97,130 @@ function categoryTable(category, jobs, { full = false } = {}) {
   return table;
 }
 
+
+// ---------------------------------------------------------------------------
+// THE FOLLOW-UP SHEETS
+//
+// Internal factory jobs and T&M, printed as a plain full-width list. They are
+// not the board and should not pretend to be: the board is a schedule, laid
+// out in two columns by category because the floor reads it category-first.
+// These are a list to walk down and chase, so one column, one row per job.
+//
+// NO DUE DATES, DELIBERATELY. The end dates on these rows are ERP defaults
+// that mean nothing - the same reason they are kept off the Gantt. What they
+// do have is an OPEN date, which is real, so the sheet leads on how long each
+// job has been sitting and orders by it. That is what a follow-up list is for.
+// ---------------------------------------------------------------------------
+
+/**
+ * Longest-open first.
+ *
+ * It decides which rows survive the trim as well as the reading order: when
+ * the sheet has to lose rows to fit a page, the ones it drops are the newest,
+ * which are the least in need of chasing.
+ */
+export const followUpOrder = (jobs) => [...(jobs ?? [])]
+  .sort((a, b) => (b.age_days ?? -1) - (a.age_days ?? -1));
+
+/**
+ * @param {HTMLElement} host
+ * @param {{jobs: Array, title: string, asOf: string, itemLabel: string,
+ *          total?: number}} opts
+ */
+export function renderLanePrint(host, { jobs, title, asOf, itemLabel, total = null }) {
+  host.textContent = '';
+
+  const head = el('div', 'doc-head');
+  head.append(el('div', 'doc-title', title));
+  const shown = total && total > jobs.length ? `${jobs.length} of ${total}  \u00b7  ` : '';
+  head.append(el('div', 'doc-range', `${shown}as of:  ${asOf}`));
+  host.append(head);
+
+  const wrap = el('div', 'full');
+  const table = el('table');
+  table.dataset.full = '1';
+
+  const colgroup = el('colgroup');
+  ['c-prod', '', 'c-for', 'c-open', 'c-status']
+    .forEach((c) => colgroup.append(el('col', c)));
+  table.append(colgroup);
+
+  const thead = el('thead');
+  const banner = el('tr');
+  const bcell = el('th', 'banner', title.toUpperCase());
+  bcell.colSpan = 5;
+  banner.append(bcell);
+  const hr = el('tr');
+  hr.append(el('th', null, 'Prod Nbr'), el('th', null, 'Job'),
+    el('th', null, itemLabel), el('th', 'c-open', 'Open'),
+    el('th', 'c-status', 'Status'));
+  thead.append(banner, hr);
+  table.append(thead);
+
+  const tbody = el('tbody');
+  for (const j of jobs) {
+    const tr = el('tr');
+    if (j.on_hold) tr.className = 'on-hold';
+    tr.append(el('td', null, j.prod_no));
+    tr.append(el('td', 'vessel', j.on_hold ? `${jobTitle(j)}  [ON HOLD]` : jobTitle(j)));
+    tr.append(el('td', null, j.customer_display ?? ''));
+    tr.append(el('td', 'c-open', j.age_display ?? ''));
+    tr.append(el('td', 'c-status', j.status ?? ''));
+    tbody.append(tr);
+  }
+  table.append(tbody);
+  wrap.append(table);
+  host.append(wrap);
+
+  if (total && total > jobs.length) {
+    host.append(el('div', 'hold-note',
+      `${total - jobs.length} more not shown - trimmed to fit one page, newest first.`));
+  }
+  return host;
+}
+
+/**
+ * Trim a follow-up list until it fits one page.
+ *
+ * The board shrinks by HORIZON because a board is a window on the near future.
+ * These lists have no meaningful future to narrow, so they shrink by row count
+ * instead, dropping from the newest end - see `followUpOrder`.
+ *
+ * The first guess comes from the measured overflow rather than stepping
+ * blindly: height is near enough linear in row count, so one proportional jump
+ * lands close and the walk afterwards is a row or two.
+ */
+export function fitLaneToPage(host, allJobs, { title, asOf, itemLabel, minRows = 5 } = {}) {
+  const ordered = followUpOrder(allJobs);
+  const total = ordered.length;
+  const draw = (n) => {
+    renderLanePrint(host, { jobs: ordered.slice(0, n), title, asOf, itemLabel, total });
+    return measure(host);
+  };
+
+  let rows = total;
+  let m = draw(rows);
+  // Unmeasurable means off-canvas. Trimming on that would cut the sheet for a
+  // reason that says more about the layout than the page - same trap as the
+  // board's auto-fit.
+  if (!m.measured) return { jobs: ordered, rows, total, ...m, trimmedFrom: null };
+
+  if (!m.fits && m.height > 0) {
+    rows = Math.max(minRows, Math.floor(rows * (m.limit / m.height)));
+    m = draw(rows);
+  }
+  while (!m.fits && rows > minRows) { rows -= 1; m = draw(rows); }
+  // A jump that overshot leaves room back; take it while it still fits.
+  while (m.fits && rows < total) {
+    const next = draw(rows + 1);
+    if (!next.fits) { m = draw(rows); break; }
+    rows += 1; m = next;
+  }
+
+  return { jobs: ordered.slice(0, rows), rows, total, ...m,
+           trimmedFrom: rows < total ? total : null };
+}
+
 /**
  * Render the printed board into a container.
  * @param {HTMLElement} host   the element to fill (cleared first)

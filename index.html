@@ -8,7 +8,7 @@
 <link rel="apple-touch-icon" href="assets/logo.png">
 <title>Production Board — Stella Marine</title>
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="css/style.css?v=2026-09-15.1">
+<link rel="stylesheet" href="css/style.css?v=2026-09-15.2">
 </head>
 <body>
 
@@ -179,6 +179,15 @@
         <label for="autoFit">Fit to one page</label>
         <div class="ctrl-row">
           <button class="mini" id="autoFit" aria-pressed="true">Auto-fit on</button>
+        </div>
+      </div>
+
+      <div class="ctrl">
+        <label for="sheetBoard">Which sheet</label>
+        <div class="ctrl-row" id="sheetPick">
+          <button class="mini on" id="sheetBoard" aria-pressed="true">Board</button>
+          <button class="mini" id="sheetInternal" aria-pressed="false">Internal</button>
+          <button class="mini" id="sheetTm" aria-pressed="false">T&amp;M</button>
         </div>
       </div>
 
@@ -398,6 +407,6 @@
 
 </div><!-- /#appShell -->
 
-<script type="module" src="js/app.js?v=2026-09-15.1"></script>
+<script type="module" src="js/app.js?v=2026-09-15.2"></script>
 </body>
 </html>

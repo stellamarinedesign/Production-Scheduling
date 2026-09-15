@@ -14,7 +14,8 @@ import { wireHelp } from './help.js';
 import { davitsByBoat, mergeDavits } from './davits.js';
 import { itemFacts, mergeItemFacts } from './vessel-codes.js';
 import { Store, packRows, unpackRows, isNewerImport } from './store.js';
-import { renderPrint, measure, fitToPage } from './print.js';
+import { renderPrint, measure, fitToPage,
+         renderLanePrint, fitLaneToPage } from './print.js';
 import { renderGantt } from './gantt.js';
 import { balanceColumns } from './print.js';
 
@@ -51,6 +52,9 @@ const state = {
   // the opposite, and live in Firestore so every manager sees the same board.
   gantt: loadGanttPrefs(),
   settings: { horizonWeeks: 12, maxStock: null, autoFit: true },
+  // Which list the Print tab is previewing. Follows the tab you came from, so
+  // the print button prints what you were just looking at.
+  printLane: 'production',
   board: null,
   fit: null,
 };
@@ -761,6 +765,9 @@ function wireControls() {
   ganttToggle('ganttPacked', 'packed');
   ganttToggle('ganttAll', 'all');
   $('printBtn').addEventListener('click', () => { showTab('print'); window.print(); });
+  for (const [key, cfg] of Object.entries(SHEET)) {
+    $(cfg.btn).addEventListener('click', () => setPrintLane(key));
+  }
 }
 
 function setAutoFit(on, { save = true, render = true } = {}) {
@@ -775,7 +782,22 @@ function setAutoFit(on, { save = true, render = true } = {}) {
 
 const TABS = ['edit', 'gantt', 'internal', 'tm', 'print'];
 
+/** The print sheet each content tab corresponds to. Gantt has no sheet. */
+const SHEET_FOR_TAB = { edit: 'production', internal: 'internal', tm: 'tm' };
+
+const SHEET = {
+  production: { btn: 'sheetBoard', label: 'Print board' },
+  internal: { btn: 'sheetInternal', label: 'Print internal jobs',
+    title: 'Internal factory jobs', itemLabel: 'Item' },
+  tm: { btn: 'sheetTm', label: 'Print T&M jobs',
+    title: 'Time & Materials jobs', itemLabel: 'For' },
+};
+
 function showTab(which) {
+  // ARRIVING AT PRINT SHOULD PRINT WHAT YOU WERE READING. Print is its own tab,
+  // so by the time you are in it the lane you cared about is behind you unless
+  // something remembers it.
+  if (SHEET_FOR_TAB[which]) setPrintLane(SHEET_FOR_TAB[which], { render: false });
   state.tab = which;
   for (const t of TABS) {
     const cap = t[0].toUpperCase() + t.slice(1);
@@ -786,6 +808,50 @@ function showTab(which) {
   // measures itself to fit the page. Neither can do that while off-canvas, so
   // both are drawn on arrival rather than on rebuild.
   if (which === 'gantt') renderGanttView();
+  // The print host cannot be measured while it is off-canvas, so the sheet is
+  // drawn on arrival rather than on rebuild.
+  if (which === 'print') renderPrintSheet();
+}
+
+/**
+ * Draw whichever sheet is selected into the print host.
+ *
+ * The board's own fit is computed in `rebuild` regardless, because the HORIZON
+ * changes the board on screen as well as on paper. This only decides what the
+ * preview shows and what the button will send to the printer.
+ */
+function renderPrintSheet() {
+  if (!state.rows || state.importPage) return;
+  const host = $('printPreview');
+  const lane = state.printLane;
+
+  for (const [key, cfg] of Object.entries(SHEET)) {
+    const b = $(cfg.btn);
+    b.classList.toggle('on', key === lane);
+    b.setAttribute('aria-pressed', String(key === lane));
+  }
+  $('printBtn').textContent = SHEET[lane].label;
+  // The horizon is a property of the board; these lists have no future to
+  // narrow, so the control would be answering a question they do not ask.
+  $('horizon').closest('.ctrl').hidden = lane !== 'production';
+
+  if (lane === 'production') {
+    renderPrint(host, state.board);
+    state.laneFit = null;
+  } else {
+    const jobs = (state.board[lane] ?? []).filter((j) => !j.completed && !j.hidden);
+    state.laneFit = fitLaneToPage(host, jobs, {
+      title: SHEET[lane].title,
+      asOf: toAU(toDateOnly(state.board.meta.as_of)),
+      itemLabel: SHEET[lane].itemLabel,
+    });
+  }
+  renderFitStatus();
+}
+
+function setPrintLane(lane, { render = true } = {}) {
+  state.printLane = lane;
+  if (render && state.tab === 'print') renderPrintSheet();
 }
 
 /**
@@ -851,6 +917,9 @@ function rebuild() {
   renderProvenance();
   renderWarnings();
   renderBoard();
+  // The board's fit is always computed above; this replaces the preview with a
+  // follow-up list when that is what is selected.
+  if (state.tab === 'print' && state.printLane !== 'production') renderPrintSheet();
   renderFitStatus();
   renderGanttView();
   renderLane('internal');
@@ -1508,9 +1577,27 @@ async function confirmComplete() {
 }
 
 function renderFitStatus() {
-  const f = state.fit;
   const box = $('fitStatus');
   box.textContent = '';
+
+  // A follow-up list is measured by rows, not by weeks, so it gets its own
+  // line rather than one phrased around a horizon it does not have.
+  if (state.laneFit) {
+    const l = state.laneFit;
+    box.classList.toggle('trimmed', Boolean(l.trimmedFrom));
+    box.append(el('b', null, `${l.rows} of ${l.total} jobs`));
+    box.append(el('span', null, '\u00b7'));
+    if (!l.measured) box.append(el('span', null, 'could not measure the sheet'));
+    else if (l.trimmedFrom) {
+      box.append(el('span', null, 'trimmed to hold one page \u2014 the '));
+      box.append(el('b', null, `${l.total - l.rows} newest`));
+      box.append(el('span', null, ' are off the sheet, longest-open first'));
+    } else if (l.fits) box.append(el('span', null, 'all of them, on one page'));
+    else box.append(el('span', null, `${l.pages} pages`));
+    return;
+  }
+
+  const f = state.fit;
   box.classList.toggle('trimmed', Boolean(f.trimmedFrom));
 
   const range = state.board.meta.horizon_end

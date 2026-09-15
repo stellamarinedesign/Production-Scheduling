@@ -531,6 +531,14 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
   #printRoot { overflow: hidden; }
 }
 
+/* The follow-up sheets: one full-width table, so the columns are set here
+   rather than borrowed from the board's narrow two-column tables. */
+#printPreview col.c-for { width: 20%; }
+#printPreview col.c-open { width: 11%; }
+#printPreview col.c-status { width: 12%; }
+#printPreview td.c-open, #printPreview th.c-open,
+#printPreview td.c-status, #printPreview th.c-status { white-space: nowrap; }
+
 /* ---------- tabs ---------- */
 .tabs { display: flex; gap: 8px; margin: 4px 0 14px; border-bottom: 1px solid var(--line); }
 .tab {
@@ -1218,7 +1226,7 @@ button.linkish:disabled { opacity: .5; cursor: default; }
    Wrapping it onto two rows pushes the board down the page and reads as two
    groups of tabs rather than one. Scrolling keeps it one strip and one line,
    at the cost of the last tab being off the edge - which the fade says. */
-@media (max-width: 760px) {
+@media screen and (max-width: 760px) {
   .tabs {
     flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden;
     scrollbar-width: none; -webkit-overflow-scrolling: touch;
@@ -1240,7 +1248,7 @@ button.linkish:disabled { opacity: .5; cursor: default; }
    Five columns do not fit on a phone and shrinking them makes every one of
    them useless. So the row stacks, and the controls - which are the widest
    part and the least often wanted - hide until the row is tapped. */
-@media (max-width: 760px) {
+@media screen and (max-width: 760px) {
   /* THREE COLUMNS, PLACED EXPLICITLY.
      Left is what the job IS and reads longest, so it gets the flexible track
      and wraps inside it. Middle is the two short facts, right-aligned to each
