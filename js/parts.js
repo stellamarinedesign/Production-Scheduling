@@ -467,7 +467,7 @@ export function search(index, query, { limit = 50 } = {}) {
 
   // A CODE IS MATCHED AS A CODE, before the tokeniser gets near it. The
   // tokeniser takes "sch40" apart into "sch" and "40" because that is what a
-  // description needs - and would do the same to "sdc0217", which is not a
+  // description needs - and would do the same to "szz0123", which is not a
   // description. One word, starting with s, with a digit or bracket in it: try
   // it against the codes first, exact then prefix then anywhere, in code order.
   // If nothing has that code, it was a word after all and the search below
