@@ -384,8 +384,14 @@ function partCard(e) {
     copy.title = 'Copy the code and description as one line';
     copy.addEventListener('click', async () => {
       const line = eff.desc ? `${p.id} - ${eff.desc}` : p.id;
-      try { await navigator.clipboard.writeText(line); toast(`Copied: ${line}`); }
-      catch { toast('Could not copy — highlight it and copy by hand.', 5000); }
+      try {
+        await navigator.clipboard.writeText(line);
+        flash(copy, 'Copy', '\u2713 Copied', 'ok');
+        toast(`Copied: ${line}`);
+      } catch {
+        flash(copy, 'Copy', '\u2717 Not copied', 'bad');
+        toast('Could not copy — highlight it and copy by hand.', 5000);
+      }
     });
     acts.append(copy);
     if (Auth.canEditParts) {
@@ -497,8 +503,14 @@ function wireFix() {
     const list = fixList(overrides, partsById);
     const text = list.map((o) => `${o.partId}  ${o.field === 'desc' ? 'Description' : 'Bin'}\n`
       + `  ERP says:  ${o.current ?? o.baseline}\n  Should be: ${o.value}\n  Why: ${o.reason}`).join('\n\n');
-    try { await navigator.clipboard.writeText(text); toast(`${list.length} corrections copied.`); }
-    catch { toast('Could not copy.', 5000); }
+    try {
+      await navigator.clipboard.writeText(text);
+      flash($('copyFix'), 'Copy list', '\u2713 Copied', 'ok');
+      toast(`${list.length} corrections copied.`);
+    } catch {
+      flash($('copyFix'), 'Copy list', '\u2717 Not copied', 'bad');
+      toast('Could not copy.', 5000);
+    }
   });
   $('csvFix').addEventListener('click', () => {
     const list = fixList(overrides, partsById);
@@ -850,6 +862,22 @@ async function commitImport() {
 }
 
 // ---------------------------------------------------------------------------
+/**
+ * Say it on the button. A toast at the foot of the page is easy to miss, and
+ * a copy that says nothing where the finger is looks like a copy that
+ * failed. The button reads "✓ Copied" for a moment and goes back to itself.
+ */
+function flash(btn, label, text, cls, ms = 1600) {
+  btn.textContent = text;
+  btn.classList.add(cls);
+  btn.disabled = true;
+  setTimeout(() => {
+    btn.textContent = label;
+    btn.classList.remove(cls);
+    btn.disabled = false;
+  }, ms);
+}
+
 function toast(msg, ms = 3200) {
   const t = $('toast');
   t.textContent = msg;

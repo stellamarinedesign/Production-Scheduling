@@ -218,6 +218,9 @@ button.mini {
 }
 button.mini:hover { border-color: var(--red-bright); }
 button.mini.on { background: var(--red-deep); border-color: var(--red-bright); }
+/* A moment of "it worked" or "it did not" on the button itself. */
+button.mini.ok, button.mini.ok:disabled { border-color: #5fb85f; color: #9be09b; opacity: 1; }
+button.mini.bad, button.mini.bad:disabled { border-color: var(--red-bright); color: var(--red-bright); opacity: 1; }
 
 /* ---------- warning panels ---------- */
 .panel {
