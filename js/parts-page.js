@@ -202,6 +202,12 @@ function wireSearch() {
   // it would drop the scroll position and every chunk loaded so far.
   $('results').addEventListener('click', (e) => {
     if (e.target.closest('button, a, input')) return;
+    // A drag that ends with text highlighted is a highlight, not a tap. The
+    // card stays as it is — redrawing it would throw the selection away —
+    // and the text can be copied. A plain click collapses any selection
+    // before this runs, so it still opens the card.
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed && sel.toString().trim()) return;
     const card = e.target.closest('.part');
     if (!card) return;
     const id = card.dataset.id;
@@ -371,10 +377,15 @@ function partCard(e) {
     const ml = metaLine(p);
     if (ml) body.append(el('div', 'part-meta-line', ml));
     const acts = el('div', 'part-acts');
-    const copy = el('button', 'mini', 'Copy code');
+    // Code and description on one line, the way it is written into an email
+    // or a drawing note. The description is the one on screen — corrected,
+    // if it has been.
+    const copy = el('button', 'mini', 'Copy');
+    copy.title = 'Copy the code and description as one line';
     copy.addEventListener('click', async () => {
-      try { await navigator.clipboard.writeText(p.id); toast(`${p.id} copied.`); }
-      catch { toast('Could not copy — select it and copy by hand.', 5000); }
+      const line = eff.desc ? `${p.id} - ${eff.desc}` : p.id;
+      try { await navigator.clipboard.writeText(line); toast(`Copied: ${line}`); }
+      catch { toast('Could not copy — highlight it and copy by hand.', 5000); }
     });
     acts.append(copy);
     if (Auth.canEditParts) {

@@ -52,6 +52,17 @@ export const HELP = [
         ],
       },
       {
+        q: 'How do I copy from the list?',
+        a: [
+          'Open a part and press Copy: it puts the code and the description on '
+          + 'one line, "CODE - description", ready for an email or a drawing note. '
+          + 'The description is the one on screen, corrected if it has been.',
+          'Anything else, highlight as usual and copy. A drag that ends with text '
+          + 'highlighted is treated as a highlight, not a tap, so it neither opens '
+          + 'nor closes the card.',
+        ],
+      },
+      {
         q: 'Can I have it as a spreadsheet?',
         a: [
           'Download Excel, above the results, gives the whole list as the old '
