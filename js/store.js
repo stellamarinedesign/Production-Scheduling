@@ -340,18 +340,108 @@ export const Store = {
    * In local mode there is no Firestore and no sign-in either, so the single
    * user of a local board is the manager by definition.
    */
-  async loadManagers() {
-    if (this.mode === 'local') return ['*'];
+  async loadManagers() { return (await this.loadAccess()).managers; },
+
+  /**
+   * Both access lists in one read. `engineers` is optional in the document:
+   * a project that has never named one simply has none.
+   */
+  async loadAccess() {
+    if (this.mode === 'local') return { managers: ['*'], engineers: [] };
     try {
       const { doc, getDoc } = this._fs;
       const snap = await getDoc(doc(this._db, 'settings', 'access'));
-      const list = snap.exists() ? snap.data()?.managers : null;
-      return Array.isArray(list) ? list : [];
+      const d = snap.exists() ? snap.data() : {};
+      return {
+        managers: Array.isArray(d?.managers) ? d.managers : [],
+        engineers: Array.isArray(d?.engineers) ? d.engineers : [],
+      };
     } catch (e) {
       // Fail closed and loudly: an unreadable list must not promote anybody.
       console.error('[access]', e.message);
-      return [];
+      return { managers: [], engineers: [] };
     }
+  },
+
+  // ---- parts ---------------------------------------------------------------
+  //
+  // ONE DOCUMENT FOR THE WHOLE LIST. Search runs in the browser, so every page
+  // load needs every part anyway, and ~1,900 documents would be ~1,900 reads
+  // for no benefit. The list is a JSON string inside the document rather than
+  // an array of maps: it is under the size limit by a wide margin and it keeps
+  // Firestore from indexing two thousand entries nobody will ever query.
+  //
+  // `previous` is a copy of `current` from before the last import — the one
+  // step of undo for a wrong file.
+
+  async loadParts() {
+    if (this.mode === 'local') return lsGet('parts', null);
+    try {
+      const { doc, getDoc } = this._fs;
+      const snap = await getDoc(doc(this._db, 'parts', 'current'));
+      return snap.exists() ? snap.data() : null;
+    } catch (e) { console.warn('[parts]', e.message); return null; }
+  },
+
+  async saveParts(record) {
+    if (this.mode === 'local') {
+      const cur = lsGet('parts', null);
+      if (cur) lsSet('partsPrevious', cur);
+      lsSet('parts', record);
+      return;
+    }
+    const { doc, getDoc, setDoc } = this._fs;
+    const cur = await getDoc(doc(this._db, 'parts', 'current'));
+    if (cur.exists()) await setDoc(doc(this._db, 'parts', 'previous'), cur.data());
+    await setDoc(doc(this._db, 'parts', 'current'), record);
+  },
+
+  async loadPartOverrides() {
+    if (this.mode === 'local') return lsGet('partOverrides', {});
+    const { collection, getDocs } = this._fs;
+    const snap = await getDocs(collection(this._db, 'partOverrides'));
+    const out = {};
+    snap.forEach((d) => { out[d.id] = d.data(); });
+    return out;
+  },
+
+  async setPartOverride(key, data) {
+    if (this.mode === 'local') {
+      const all = lsGet('partOverrides', {});
+      all[key] = { ...(all[key] ?? {}), ...data };
+      lsSet('partOverrides', all);
+      return;
+    }
+    const { doc, setDoc } = this._fs;
+    await setDoc(doc(this._db, 'partOverrides', key), data, { merge: true });
+  },
+
+  /** Several at once — an import touches every live correction. */
+  async setPartOverrides(map) {
+    for (const [key, data] of Object.entries(map ?? {})) await this.setPartOverride(key, data);
+  },
+
+  async deletePartOverride(key) {
+    if (this.mode === 'local') {
+      const all = lsGet('partOverrides', {});
+      delete all[key];
+      lsSet('partOverrides', all);
+      return;
+    }
+    const { doc, deleteDoc } = this._fs;
+    await deleteDoc(doc(this._db, 'partOverrides', key));
+  },
+
+  /** What each import did. Append-only, like the board's own import history. */
+  async logPartImport(summary) {
+    if (this.mode === 'local') {
+      const all = lsGet('partImports', []);
+      all.unshift(summary);
+      lsSet('partImports', all.slice(0, 50));
+      return;
+    }
+    const { collection, addDoc } = this._fs;
+    await addDoc(collection(this._db, 'partImports'), summary);
   },
 
   /**

@@ -13,7 +13,8 @@ const SHEETJS_URL = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs';
 export const SHEET_PREFERENCE = ['ALL RECORDS', 'Data'];
 
 let _xlsx = null;
-async function sheetjs() {
+/** One SheetJS for every adapter, loaded on first use. */
+export async function sheetjs() {
   if (!_xlsx) _xlsx = await import(/* @vite-ignore */ SHEETJS_URL);
   return _xlsx;
 }

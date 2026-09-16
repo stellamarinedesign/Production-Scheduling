@@ -8,7 +8,7 @@ import { CATEGORY_ORDER, PRINT_LAYOUT, EXCLUSION_ORDER, EXCLUSION_GROUP_LABEL,
          TM_CATEGORY_ORDER, INTERNAL_CATEGORY_ORDER, LANE_LABEL, WATERMAKER_CATEGORIES,
          SETTABLE_STATUSES, ERP_CLOSER } from './rules.js';
 import { stellaCode, labelFor, existingBoats, acceptNewCode, applyTemplate } from './vessel-codes.js';
-import { Auth, ROLE, friendlyAuthError, setManagers, managerCount } from './auth.js';
+import { Auth, ROLE, friendlyAuthError, setManagers, setEngineers, managerCount } from './auth.js';
 import { VERSION } from './version.js';
 import { wireHelp } from './help.js';
 import { davitsByBoat, mergeDavits } from './davits.js';
@@ -168,19 +168,22 @@ async function start(st) {
     booting('Connecting');
     await Store.init();
     booting('Checking your access');
-    setManagers(await Store.loadManagers());
+    const access = await Store.loadAccess();
+    setManagers(access.managers);
+    setEngineers(access.engineers);
   }
   st = { ...st, role: Auth.refreshRole() };
 
   // Role decides what is drawn. The Firestore rules decide what is allowed —
   // hiding a button is not security, it is tidiness.
   document.body.classList.toggle('role-floor', st.role === ROLE.FLOOR);
+  document.body.classList.toggle('role-engineer', st.role === ROLE.ENGINEER);
   document.body.classList.toggle('role-manager', st.role === ROLE.MANAGER);
 
   const who = $('whoami');
   who.textContent = st.mode === 'local' ? 'Local mode' : (st.email ?? '');
   const chip = el('span', `role ${st.role === ROLE.MANAGER ? 'manager' : ''}`,
-    st.role === ROLE.MANAGER ? 'MANAGER' : 'FLOOR');
+    st.role === ROLE.MANAGER ? 'MANAGER' : st.role === ROLE.ENGINEER ? 'ENGINEER' : 'FLOOR');
   who.append(chip);
   $('signOut').hidden = st.mode === 'local';
 
@@ -199,6 +202,7 @@ async function start(st) {
   }
 
   if (st.role === ROLE.FLOOR) { await startFloor(); booting(false); return; }
+  if (st.role === ROLE.ENGINEER) { $('engineerHome').hidden = false; booting(false); return; }
 
   // FOUR READS, ONE WAIT. These are independent of each other and were awaited
   // in a chain, so the browser paid the round trip four times in a row before

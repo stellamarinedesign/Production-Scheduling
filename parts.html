@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0E0A0A">
+<link rel="icon" type="image/png" href="assets/logo.png">
+<title>Parts — Stella Marine</title>
+<link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="css/style.css?v=2026-09-16.1">
+</head>
+<body class="parts-page">
+
+<header>
+  <img class="logo" src="assets/logo.svg" alt="Stella Marine">
+  <h1 class="brand-head">Parts</h1>
+  <span class="sub">Stella Marine</span>
+  <span class="spacer"></span>
+  <nav>
+    <a href="./" class="not-engineer">Board</a>
+    <a href="vessel-codes" class="staff-only">Vessel codes</a>
+    <a href="parts" aria-current="page">Parts</a>
+    <button class="navlink" id="helpBtn" title="Explanations, in one place">Help</button>
+  </nav>
+  <span class="who" id="whoami"></span>
+  <button class="mini" id="signOut" hidden>Sign out</button>
+</header>
+
+<main>
+  <div class="provenance" id="provenance">
+    <span>ERP data exported <b id="partsAsOf">—</b></span>
+    <span class="stale-note" id="partsStale" hidden></span>
+    <span class="spacer" style="margin-left:auto"></span>
+    <span id="storeMode"></span>
+    <span id="pageVersion" title="Which build is on screen. If this is not the version you were told to expect, the browser is holding an old copy — reload with Ctrl+Shift+R."></span>
+  </div>
+
+  <div id="booting" class="booting">
+    <span class="boot-dot"></span>
+    <span id="bootWhat">Starting</span>
+  </div>
+
+  <div class="state" id="partsDenied" hidden></div>
+
+  <div class="state" id="partsEmpty" hidden>
+    <strong>No part list loaded yet</strong>
+    The list comes from the ERP's Stock Items export. A manager loads it on the
+    Import tab; from then on it is here for everyone.
+  </div>
+
+  <div class="tabs" id="partsTabs" hidden>
+    <button class="tab" id="ptSearchBtn" aria-current="page">Search</button>
+    <button class="tab staff-only" id="ptFixBtn">Corrections</button>
+    <button class="tab manager-only" id="ptImportBtn">Import</button>
+  </div>
+
+  <!-- ============ SEARCH ============ -->
+  <section id="ptSearch" hidden>
+    <div class="search-bar">
+      <input type="search" id="q" placeholder="Code, or the description as you remember it"
+             autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="search">
+    </div>
+    <div class="pills" id="familyPills"></div>
+    <div class="pills pills-bin">
+      <button class="pill on" data-bin="all" aria-pressed="true">All</button>
+      <button class="pill" data-bin="with" aria-pressed="false">With bin</button>
+      <button class="pill" data-bin="without" aria-pressed="false">No bin</button>
+      <span class="spacer"></span>
+      <button class="pill" id="binFirst" aria-pressed="false" title="Parts with a bin location first">Bin first</button>
+    </div>
+    <div class="results-meta" id="resultsMeta"></div>
+    <div id="results"></div>
+  </section>
+
+  <!-- ============ CORRECTIONS ============ -->
+  <section id="ptFix" hidden>
+    <div class="view-bar">
+      <span class="hint">What the ERP needs changed. The app shows the corrected value until the next export agrees.</span>
+      <span class="spacer"></span>
+      <button class="mini" id="copyFix" title="Copy the list as text">Copy list</button>
+      <button class="mini" id="csvFix" title="Download the list as a spreadsheet">Download CSV</button>
+      <button class="mini" id="loadFix" title="Load corrections from a JSON file on this machine">Load file…</button>
+      <input type="file" id="fixFile" accept=".json,application/json" hidden>
+    </div>
+    <div id="fixLoad" class="import-review" hidden></div>
+    <div id="reviewQueue"></div>
+    <div id="fixList"></div>
+  </section>
+
+  <!-- ============ IMPORT ============ -->
+  <section id="ptImport" hidden>
+    <div id="dropZone">
+      <strong>Drop the Stock Items export here</strong>
+      <div class="hint">
+        <code>Stock Items YYYYMMDD.xlsx</code> — or click to choose a file.<br>
+        Only the code, description and bin are read. Prices and everything else never leave this browser.
+      </div>
+      <input type="file" id="partsFile" accept=".xlsx,.xls" hidden>
+    </div>
+    <div id="partsReview" class="import-review" hidden></div>
+    <div id="partsAfter" hidden></div>
+  </section>
+
+  <!-- ============ CORRECT ============ -->
+  <div class="overlay" id="correctOverlay">
+    <div class="box">
+      <h3 id="coTitle">Correct a part</h3>
+      <div class="lede" id="coLede"></div>
+      <div class="form-row">
+        <label>Which field</label>
+        <div class="ctrl-row">
+          <button class="mini on" id="coDesc" data-field="desc" aria-pressed="true">Description</button>
+          <button class="mini" id="coBin" data-field="bin" aria-pressed="false">Bin</button>
+        </div>
+      </div>
+      <div class="form-row">
+        <label>ERP currently says</label>
+        <div class="readonly" id="coCurrent"></div>
+      </div>
+      <div class="form-row">
+        <label for="coValue">Should be</label>
+        <input type="text" id="coValue" autocomplete="off">
+      </div>
+      <div class="form-row">
+        <label for="coReason">Why <span class="hint">(the person fixing the ERP reads this)</span></label>
+        <input type="text" id="coReason" autocomplete="off" placeholder="e.g. measured the bar, it is 101.6 not 104">
+      </div>
+      <div class="form-err" id="coErr"></div>
+      <div class="actions">
+        <button class="ghost" id="coCancel">Cancel</button>
+        <button class="primary" id="coSave">Save correction</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="overlay" id="helpOverlay">
+    <div class="box wide">
+      <h3>Help</h3>
+      <div id="helpBody"></div>
+      <div class="actions"><button class="ghost" id="helpClose">Close</button></div>
+    </div>
+  </div>
+
+  <div id="toast" hidden></div>
+</main>
+
+<script type="module" src="js/parts-page.js?v=2026-09-16.1"></script>
+</body>
+</html>

@@ -8,7 +8,7 @@
 <link rel="apple-touch-icon" href="assets/logo.png">
 <title>Production Board — Stella Marine</title>
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="css/style.css?v=2026-09-15.3">
+<link rel="stylesheet" href="css/style.css?v=2026-09-16.1">
 </head>
 <body>
 
@@ -46,8 +46,9 @@
        its own because there is nothing to link to or come back to. -->
   <nav>
     <button class="navlink manager-only" id="importNav">Import</button>
-    <button class="navlink" id="boardNav" aria-current="page">Board</button>
-    <a href="vessel-codes" class="manager-only">Vessel codes</a>
+    <button class="navlink not-engineer" id="boardNav" aria-current="page">Board</button>
+    <a href="vessel-codes" class="staff-only">Vessel codes</a>
+    <a href="parts">Parts</a>
     <button class="navlink" id="helpBtn" title="Explanations, in one place">Help</button>
   </nav>
   <span class="who" id="whoami"></span>
@@ -198,6 +199,18 @@
       <div id="printRoot"><div id="printPreview"></div></div>
     </section>
 
+  </div>
+
+  <!-- An engineer's account is for the reference pages. The board is not
+       hidden from them by accident: it is the production schedule, and its
+       audience is the production manager and the floor. -->
+  <div class="state" id="engineerHome" hidden>
+    <strong>Vessel codes and parts</strong>
+    This account is set up for the reference pages, not the production board.
+    <div class="engineer-links">
+      <a class="backlink" href="vessel-codes">Vessel codes</a>
+      <a class="backlink" href="parts">Parts</a>
+    </div>
   </div>
 
   <div class="state" id="floorEmpty" hidden>
@@ -407,6 +420,6 @@
 
 </div><!-- /#appShell -->
 
-<script type="module" src="js/app.js?v=2026-09-15.3"></script>
+<script type="module" src="js/app.js?v=2026-09-16.1"></script>
 </body>
 </html>

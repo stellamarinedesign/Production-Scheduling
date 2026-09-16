@@ -1366,3 +1366,126 @@ button.linkish:disabled { opacity: .5; cursor: default; }
     width: 1px; background: var(--line);
   }
 }
+
+/* ===================================================================
+   ROLES ACROSS PAGES
+   A floor account sees the board and the part search. An engineer sees the
+   reference pages and never the board. A manager sees everything. These are
+   what is DRAWN; the Firestore rules decide what is allowed.
+   =================================================================== */
+body.role-floor .staff-only,
+body.role-engineer .manager-only,
+body.role-engineer .not-engineer { display: none !important; }
+
+/* ===================================================================
+   PARTS
+   Mobile first: this page is used on a phone in the workshop more than
+   anywhere else.
+   =================================================================== */
+.parts-page main { max-width: 980px; }
+.stale-note { color: var(--red-bright); font-size: 12.5px; margin-left: 10px; }
+
+/* The search box stays put while the list scrolls under it. */
+.search-bar {
+  position: sticky; top: 0; z-index: 5;
+  background: var(--black-night); padding: 8px 0 6px;
+}
+.search-bar input {
+  width: 100%; box-sizing: border-box; padding: 12px 14px; font-size: 16px;
+  background: var(--band); color: var(--white);
+  border: 1.5px solid var(--line); border-radius: 10px; outline: none;
+}
+.search-bar input:focus { border-color: var(--red-bright); }
+
+/* Pills, one strip, scrolls sideways on a phone rather than wrapping. */
+.pills {
+  display: flex; gap: 6px; align-items: center; padding: 6px 0;
+  overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+}
+.pills::-webkit-scrollbar { display: none; }
+.pill {
+  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px;
+  background: none; border: 1.5px solid var(--line); border-radius: 999px;
+  color: var(--text-dim); font: inherit; font-size: 12.5px; font-weight: 700;
+  padding: 6px 12px; cursor: pointer; white-space: nowrap; min-height: 34px;
+}
+.pill:hover { border-color: var(--red-bright); color: var(--white); }
+.pill.on { background: var(--red-deep); border-color: var(--red-bright); color: var(--white); }
+.pill .pill-n { font-weight: 400; opacity: .75; font-size: 11.5px; }
+.results-meta { color: var(--text-dim); font-size: 12.5px; padding: 6px 2px 8px; }
+
+/* A result: code, description, bin. Tap to open. */
+.part {
+  border-top: 1px solid var(--line); padding: 10px 8px; cursor: pointer;
+}
+.part:hover { background: rgba(255,255,255,.03); }
+.part-head {
+  display: grid; grid-template-columns: 96px minmax(0, 1fr) auto;
+  gap: 4px 12px; align-items: baseline;
+}
+.part-code { font-family: ui-monospace, Consolas, monospace; font-size: 14px; color: var(--white); font-weight: 700; }
+.part-desc { color: var(--white); font-size: 14px; overflow-wrap: anywhere; }
+.part-bin { justify-self: end; }
+.bin-chip {
+  display: inline-block; font-family: ui-monospace, Consolas, monospace; font-size: 12px;
+  padding: 2px 8px; border-radius: 4px; border: 1px solid var(--line); color: var(--white);
+  white-space: nowrap;
+}
+.bin-chip.none { color: var(--text-dim); border-style: dashed; font-family: inherit; font-size: 11.5px; }
+/* No bin location: still there, still findable, just quieter. */
+.part.no-bin .part-desc, .part.no-bin .part-code { color: var(--text-dim); }
+.part-badge {
+  display: inline-block; margin-left: 8px; padding: 1px 6px; border-radius: 3px;
+  font-size: 10px; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap;
+  background: var(--red-deep); color: var(--white); vertical-align: middle;
+}
+.part-badge.review { background: #C8912F; color: #1a1200; }
+.part-body { padding: 10px 0 2px 108px; }
+.part-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
+.part-acts button { min-height: 36px; }
+.part-note { font-size: 12.5px; color: var(--white); margin-top: 6px; line-height: 1.5; }
+.part-note .dim, .dim { color: var(--text-dim); }
+.mono { font-family: ui-monospace, Consolas, monospace; }
+.strong { color: var(--white); font-weight: 600; }
+
+/* The fix list and the review queue. */
+#ptFix h3, #partsAfter h3 { margin: 18px 0 8px; font-size: 15px; }
+.fix-table { border-top: 1px solid var(--line); }
+.fix-row {
+  display: grid; grid-template-columns: 90px 86px 1.2fr 1.2fr 1.4fr 84px;
+  gap: 10px; padding: 8px 6px; border-bottom: 1px solid var(--line); font-size: 13px;
+  align-items: baseline;
+}
+.fix-head { font-size: 10.5px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; color: var(--text-dim); }
+.fix-row.review {
+  display: block; padding: 10px 12px; margin-bottom: 10px;
+  border: 1px solid #C8912F; border-radius: 8px;
+}
+.fix-row.review .fix-key { font-weight: 700; color: var(--white); margin-bottom: 4px; }
+.fix-row.review .fix-why { color: #e9c27a; margin-bottom: 4px; }
+.fix-row.review .fix-vals { font-size: 12.5px; margin-bottom: 4px; }
+.fix-row.review .fix-acts { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.import-group { margin: 10px 0; }
+.import-group summary { cursor: pointer; color: var(--white); font-weight: 700; padding: 6px 0; }
+.import-err, .import-warn { padding: 10px 12px; margin: 8px 0; border-left-width: 4px; }
+
+/* The correct dialog's rows. */
+.form-row { margin: 12px 0; }
+.form-row label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+.form-row input[type=text] {
+  width: 100%; box-sizing: border-box; padding: 10px 12px; font: inherit; font-size: 15px;
+  background: var(--band); color: var(--white); border: 1.5px solid var(--line); border-radius: 8px;
+}
+.form-row .readonly { padding: 8px 12px; background: var(--band); border-radius: 8px; color: var(--text-dim); }
+.form-err { color: var(--red-bright); font-size: 12.5px; min-height: 18px; }
+
+@media screen and (max-width: 760px) {
+  .part-head { grid-template-columns: minmax(0, 1fr) auto; }
+  .part-code { grid-column: 1; grid-row: 1; }
+  .part-bin { grid-column: 2; grid-row: 1; }
+  .part-desc { grid-column: 1 / -1; grid-row: 2; }
+  .part-body { padding-left: 0; }
+  .fix-row { grid-template-columns: 1fr 1fr; }
+  .fix-head { display: none; }
+  .fix-row > span:nth-child(5) { grid-column: 1 / -1; }
+}

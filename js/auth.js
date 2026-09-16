@@ -18,13 +18,24 @@
 // gets the floor view rather than the run of the board. That is the same
 // fail-closed default as before, now covering the not-yet-loaded case too.
 let managerEmails = [];
+let engineerEmails = [];
+
+const tidy = (emails) => (emails ?? []).map((e) => String(e).trim().toLowerCase()).filter(Boolean);
 
 /**
  * @param {string[]} emails from Firestore `settings/access`.
  */
-export function setManagers(emails) {
-  managerEmails = (emails ?? []).map((e) => String(e).trim().toLowerCase()).filter(Boolean);
-}
+export function setManagers(emails) { managerEmails = tidy(emails); }
+
+/**
+ * ENGINEERS see the reference pages — vessel codes and parts — and never the
+ * board. The board is the production schedule and its audience is the
+ * production manager and the floor; drafting needs the codes and the parts
+ * and has no business with what is due when. A separate list rather than a
+ * flag on the manager one, so adding an engineer can never accidentally add
+ * a manager.
+ */
+export function setEngineers(emails) { engineerEmails = tidy(emails); }
 
 export const managerCount = () => managerEmails.length;
 
@@ -34,11 +45,14 @@ export const managerCount = () => managerEmails.length;
  * DOWN to floor rather than up to manager means a new account added in the
  * console can never accidentally arrive with edit rights.
  */
-export const ROLE = { MANAGER: 'manager', FLOOR: 'floor', NONE: 'none' };
+export const ROLE = { MANAGER: 'manager', ENGINEER: 'engineer', FLOOR: 'floor', NONE: 'none' };
 
 export function roleFor(email) {
   if (!email) return ROLE.NONE;
-  return managerEmails.includes(email.trim().toLowerCase()) ? ROLE.MANAGER : ROLE.FLOOR;
+  const e = email.trim().toLowerCase();
+  if (managerEmails.includes(e)) return ROLE.MANAGER;
+  if (engineerEmails.includes(e)) return ROLE.ENGINEER;
+  return ROLE.FLOOR;
 }
 
 export const Auth = {
@@ -123,7 +137,14 @@ export const Auth = {
   },
 
   get isManager() { return this.role === ROLE.MANAGER; },
+  get isEngineer() { return this.role === ROLE.ENGINEER; },
   get isFloor() { return this.role === ROLE.FLOOR; },
+  /** The reference pages: vessel codes, parts. Managers and engineers. */
+  get isStaff() { return this.role === ROLE.MANAGER || this.role === ROLE.ENGINEER; },
+  /** Who may make a part correction. Same set: drafting is who notices them. */
+  get canEditParts() { return this.isStaff; },
+  /** Who may import a stock export. The person who can also fix the ERP. */
+  get canImportParts() { return this.role === ROLE.MANAGER; },
 };
 
 /** Firebase's error codes are not sentences. Make them ones. */

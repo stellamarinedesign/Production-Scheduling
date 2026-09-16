@@ -19,6 +19,66 @@ const el = (tag, cls, text) => {
 
 export const HELP = [
   {
+    title: 'Parts',
+    topics: [
+      {
+        q: 'Where does the part list come from?',
+        a: [
+          'The ERP\'s Stock Items export, loaded by a manager on the Import tab. Only '
+          + 'three things are read from it: the code, the description and the bin. '
+          + 'Prices and everything else are dropped before the file is even parsed into '
+          + 'the app, and are never stored.',
+          'Only part families are kept — the codes the workshop builds from. Finished '
+          + 'products, services and air-con lines are not parts and are left out.',
+        ],
+      },
+      {
+        q: 'How do I search?',
+        a: [
+          'Type the description as you remember it, in any order. "m12 25 stainless" '
+          + 'finds a part labelled "M12 x 25mm SHCS 316 S/S". Sizes work with or '
+          + 'without mm; "s/s", "ss" and "stainless" are the same word; a typo of a '
+          + 'letter or two still finds it.',
+          'Numbers must match exactly — 25 does not find 250 — because a size is a '
+          + 'size. Typing a code, or the start of one, lists the codes first.',
+        ],
+      },
+      {
+        q: 'What does "No bin set" mean?',
+        a: [
+          'The ERP has no bin location for that part, or has the warehouse default in '
+          + 'the bin field, which is not a location. Either way there is nowhere to '
+          + 'send someone. Those parts are greyed so the ones with a real bin stand '
+          + 'out; "With bin" and "No bin" filter to one or the other.',
+        ],
+      },
+      {
+        q: 'What is a correction?',
+        a: [
+          'The ERP cannot be edited from here, and the people who notice a wrong '
+          + 'description are usually not the people who can fix it. A correction is '
+          + 'the value that SHOULD be there, with a reason. The app shows it from then '
+          + 'on, and the Corrections tab is the list for the person who can change the '
+          + 'ERP — with copy and download.',
+          'It is temporary by design. Every new export is checked against every live '
+          + 'correction: if the ERP now says the corrected value, it resolves itself; '
+          + 'if the ERP still says the old thing, it stays and counts the export; if '
+          + 'the ERP says something ELSE, it is put up for a decision, because the '
+          + 'importer should not be guessing which value is right.',
+        ],
+      },
+      {
+        q: 'Who can do what?',
+        a: [
+          'Anyone signed in can search. Managers and engineers can make corrections '
+          + 'and decide reviews. Managers import the export — they are the people who '
+          + 'can also fix the ERP, so the list they see after an import is their own '
+          + 'to-do list.',
+        ],
+      },
+    ],
+  },
+  {
     title: 'Vessel codes',
     topics: [
       {
