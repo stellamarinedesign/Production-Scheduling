@@ -197,14 +197,16 @@ function wireSearch() {
     $('binFirst').setAttribute('aria-pressed', String(filters.binFirst));
     renderResults();
   });
-  // Tap a card to open it; controls inside are their own thing.
+  // Tap a card to open it; controls inside are their own thing. Only that
+  // card is redrawn: the list may be two thousand rows deep, and rebuilding
+  // it would drop the scroll position and every chunk loaded so far.
   $('results').addEventListener('click', (e) => {
     if (e.target.closest('button, a, input')) return;
     const card = e.target.closest('.part');
     if (!card) return;
     const id = card.dataset.id;
     if (open.has(id)) open.delete(id); else open.add(id);
-    renderResults();
+    redrawCard(id);
   });
   // The whole list as the old drafting workbook. Not the filtered view: the
   // sheet is the thing people keep, and a filter is the thing of the moment.
@@ -251,29 +253,27 @@ function renderResults() {
   const host = $('results');
   const meta = $('resultsMeta');
   host.textContent = '';
+  listing = { entries: [], shown: 0 };
   if (!parts.length) { meta.textContent = ''; $('resultsHead').hidden = true; return; }
 
   const q = clean($('q').value);
   let entries;
   if (q) {
-    const { hits, total } = search(index, q, { limit: 200 });
+    const { hits, total } = search(index, q, { limit: Infinity });
     entries = hits.map((h) => h.entry);
     if (filters.family) entries = entries.filter((e) => e.family === filters.family);
     if (filters.bin === 'with') entries = entries.filter((e) => hasBin(e.eff.bin));
     if (filters.bin === 'without') entries = entries.filter((e) => !hasBin(e.eff.bin));
-    const shown = entries.slice(0, 50);
     meta.textContent = total
-      ? `${shown.length < entries.length ? `Top ${shown.length} of ` : ''}${entries.length} match${entries.length === 1 ? '' : 'es'}`
+      ? `${entries.length} match${entries.length === 1 ? '' : 'es'}`
       : 'Nothing matches — try fewer words, or just the size.';
-    entries = shown;
   } else {
     entries = browse(index, filters);
     meta.textContent = `${entries.length} part${entries.length === 1 ? '' : 's'}`
       + `${filters.family ? ` in ${filters.family}` : ''}${filters.bin !== 'all' ? ` · ${filters.bin === 'with' ? 'with a bin' : 'without a bin'}` : ''}`;
-    entries = entries.slice(0, 200);
   }
 
-  // The code column fits the longest code on screen: a phone-width column
+  // The code column fits the longest code in the list: a phone-width column
   // ran twenty-character model codes into their descriptions, and a column
   // wide enough for those wasted the row for the six-character majority.
   // Monospace at 14px is under 8.6px a character in every font the page can
@@ -282,9 +282,63 @@ function renderResults() {
   $('ptSearch').style.setProperty('--code-w', `${Math.round(longest * 8.6 + 6)}px`);
   $('resultsHead').hidden = !entries.length;
 
+  listing = { entries, shown: 0 };
+  appendChunk();
+}
+
+// ---- the list, in chunks ----------------------------------------------------
+//
+// The whole list is on offer — scrolling all of it was one of the things the
+// spreadsheet was good for — but two thousand cards built in one go is a
+// second of nothing on a phone. So the first chunk is built at once and the
+// rest as the end of the list comes into view, well before it is reached.
+const CHUNK = 200;
+let listing = { entries: [], shown: 0 };
+const moreObserver = new IntersectionObserver((hits) => {
+  if (hits.some((h) => h.isIntersecting)) appendChunk();
+}, { rootMargin: '800px 0px' });
+// Belt and braces: a scroll that brings the end within reach builds the next
+// chunk too, for a webview whose observer is late or missing.
+window.addEventListener('scroll', () => {
+  const s = $('moreSentinel');
+  if (s && s.getBoundingClientRect().top < innerHeight + 800) appendChunk();
+}, { passive: true });
+
+function appendChunk() {
+  const host = $('results');
+  const old = $('moreSentinel');
+  if (old) { moreObserver.unobserve(old); old.remove(); }
+  const next = listing.entries.slice(listing.shown, listing.shown + CHUNK);
   const frag = document.createDocumentFragment();
-  for (const e of entries) frag.append(partCard(e));
+  for (const e of next) frag.append(partCard(e));
+  listing.shown += next.length;
   host.append(frag);
+  const left = listing.entries.length - listing.shown;
+  if (left > 0) {
+    const s = el('div', 'more-sentinel', `${left} more — keep scrolling`);
+    s.id = 'moreSentinel';
+    s.addEventListener('click', appendChunk);   // a browser with no observer still gets there
+    host.append(s);
+    moreObserver.observe(s);
+  }
+}
+
+/** Redraw one card in place, from the entry the list holds for it. */
+function redrawCard(id) {
+  const card = $('results').querySelector(`.part[data-id="${CSS.escape(id)}"]`);
+  const entry = listing.entries.find((e) => e.part.id === id);
+  if (card && entry) card.replaceWith(partCard(entry));
+}
+
+/**
+ * After a correction the index has been rebuilt, so the list's entries are
+ * stale. Swap every entry for its new self — order, scroll position and the
+ * chunks on screen all stay — and redraw the cards that actually changed.
+ */
+function refreshEntries(changedIds) {
+  const byId = new Map(index.map((e) => [e.part.id, e]));
+  listing.entries = listing.entries.map((e) => byId.get(e.part.id) ?? e);
+  for (const id of changedIds) redrawCard(id);
 }
 
 function partCard(e) {
@@ -416,7 +470,7 @@ async function saveCorrect() {
     overrides = await Store.loadPartOverrides();
     index = buildIndex(parts, overrides);
     closeCorrect();
-    renderResults();
+    refreshEntries([part.id]);
     renderFix();
     toast(`${part.id} corrected here. It is on the list for the ERP.`);
   } catch (e) {
@@ -531,7 +585,7 @@ async function decide(o, action, value = null) {
     await Store.setPartOverride(overrideKey(o.partId, o.field), next);
     overrides = await Store.loadPartOverrides();
     index = buildIndex(parts, overrides);
-    renderResults();
+    refreshEntries([o.partId]);
     renderFix();
     toast(action === 'accept' ? `${o.partId}: ERP accepted.` : `${o.partId}: correction kept.`);
   } catch (e) {
@@ -600,7 +654,7 @@ async function reviewFixFile(file) {
       overrides = await Store.loadPartOverrides();
       index = buildIndex(parts, overrides);
       host.hidden = true;
-      renderResults();
+      refreshEntries(Object.values(toWrite).map((o) => o.partId));
       renderFix();
       toast(`${Object.keys(toWrite).length} corrections loaded.`);
     } catch (e) { apply.disabled = false; toast(`Could not save — ${e.message}`, 8000); }
