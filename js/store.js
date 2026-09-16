@@ -26,7 +26,7 @@ const lsGet = (k, fallback) => {
   try { const v = localStorage.getItem(LS_PREFIX + k); return v ? JSON.parse(v) : fallback; }
   catch { return fallback; }
 };
-/** Firestore doc ids cannot contain '/'; item codes like SRLRIV505/24 can. */
+/** Firestore doc ids cannot contain '/'; item codes like SRLRIVXX04/24 can. */
 const encodeItemId = (id) => String(id).replace(/\//g, '__');
 
 const lsSet = (k, v) => { try { localStorage.setItem(LS_PREFIX + k, JSON.stringify(v)); } catch {} };
