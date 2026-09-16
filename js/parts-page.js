@@ -12,11 +12,13 @@ import { Auth, ROLE, setManagers, setEngineers } from './auth.js';
 import { VERSION } from './version.js';
 import { wireHelp } from './help.js';
 import { readStockExport } from './adapters/stock.js';
+import { downloadWorkbook } from './adapters/drafting-xlsx.js';
 import {
   transformParts, validateStockExport, diffParts, unknownFamilies,
   buildIndex, search, browse, familyCounts, familyOf, hasBin, effective,
   createOverride, reconcile, resolveReview, overrideKey, isActive, clean,
-  fixList, fixListCsv, ageInDays, STALE_DAYS, FAMILIES,
+  fixList, fixListCsv, ageInDays, STALE_DAYS, FAMILIES, META_FIELDS, metaLine,
+  draftingSheets, workbookName,
 } from './parts.js';
 
 const $ = (id) => document.getElementById(id);
@@ -117,6 +119,9 @@ async function loadAll() {
 function renderAll() {
   renderProvenance();
   $('partsEmpty').hidden = Boolean(parts.length) || role === ROLE.NONE;
+  // A list loaded before type, unit and source were kept has none of them.
+  // Only the importer can do anything about that, so the note is on their tab.
+  $('partsReimport').hidden = !(parts.length && !parts.some((p) => META_FIELDS.some((f) => f in p)));
   renderPills();
   renderResults();
   renderFix();
@@ -201,6 +206,23 @@ function wireSearch() {
     if (open.has(id)) open.delete(id); else open.add(id);
     renderResults();
   });
+  // The whole list as the old drafting workbook. Not the filtered view: the
+  // sheet is the thing people keep, and a filter is the thing of the moment.
+  $('xlsxAll').addEventListener('click', async () => {
+    const btn = $('xlsxAll');
+    if (!parts.length) { toast('Nothing to download yet.'); return; }
+    btn.disabled = true;
+    btn.textContent = 'Building…';
+    try {
+      await downloadWorkbook(draftingSheets(parts, overrides, { exportDate: record?.exportDate }), workbookName());
+      toast('Workbook downloaded — one tab per family, corrections applied.');
+    } catch (e) {
+      toast(e.message, 8000);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Download Excel';
+    }
+  });
 }
 
 function renderPills() {
@@ -229,7 +251,7 @@ function renderResults() {
   const host = $('results');
   const meta = $('resultsMeta');
   host.textContent = '';
-  if (!parts.length) { meta.textContent = ''; return; }
+  if (!parts.length) { meta.textContent = ''; $('resultsHead').hidden = true; return; }
 
   const q = clean($('q').value);
   let entries;
@@ -242,7 +264,7 @@ function renderResults() {
     const shown = entries.slice(0, 50);
     meta.textContent = total
       ? `${shown.length < entries.length ? `Top ${shown.length} of ` : ''}${entries.length} match${entries.length === 1 ? '' : 'es'}`
-      : 'Nothing matches — try fewer words, or the size without "mm".';
+      : 'Nothing matches — try fewer words, or just the size.';
     entries = shown;
   } else {
     entries = browse(index, filters);
@@ -250,6 +272,15 @@ function renderResults() {
       + `${filters.family ? ` in ${filters.family}` : ''}${filters.bin !== 'all' ? ` · ${filters.bin === 'with' ? 'with a bin' : 'without a bin'}` : ''}`;
     entries = entries.slice(0, 200);
   }
+
+  // The code column fits the longest code on screen: a phone-width column
+  // ran twenty-character model codes into their descriptions, and a column
+  // wide enough for those wasted the row for the six-character majority.
+  // Monospace at 14px is under 8.6px a character in every font the page can
+  // land on; the stylesheet clips with an ellipsis if one is wider.
+  const longest = entries.reduce((n, e) => Math.max(n, e.part.id.length), 7);
+  $('ptSearch').style.setProperty('--code-w', `${Math.round(longest * 8.6 + 6)}px`);
+  $('resultsHead').hidden = !entries.length;
 
   const frag = document.createDocumentFragment();
   for (const e of entries) frag.append(partCard(e));
@@ -268,6 +299,13 @@ function partCard(e) {
   const d = el('span', 'part-desc', eff.desc || '(no description)');
   if (eff.descOv) d.append(badge(eff.descOv));
   head.append(d);
+  // Type, source, unit: columns of their own on a desktop; on a phone the
+  // stylesheet hides these and shows the one-line version in the open card.
+  for (const f of ['type', 'source', 'unit']) {
+    const m = el('span', 'part-meta', p[f] ?? '');
+    m.title = p[f] ?? '';
+    head.append(m);
+  }
   const binWrap = el('span', 'part-bin');
   binWrap.append(el('span', `bin-chip${hasBin(eff.bin) ? '' : ' none'}`, hasBin(eff.bin) ? eff.bin : 'No bin set'));
   if (eff.binOv) binWrap.append(badge(eff.binOv));
@@ -276,6 +314,8 @@ function partCard(e) {
 
   if (isOpen) {
     const body = el('div', 'part-body');
+    const ml = metaLine(p);
+    if (ml) body.append(el('div', 'part-meta-line', ml));
     const acts = el('div', 'part-acts');
     const copy = el('button', 'mini', 'Copy code');
     copy.addEventListener('click', async () => {
@@ -640,6 +680,7 @@ async function stageImport(file) {
   stat(d.removed.length, 'codes gone');
   stat(d.descChanged.length, 'descriptions changed');
   stat(d.binChanged.length, 'bins changed');
+  if (d.metaChanged.length) stat(d.metaChanged.length, 'type, unit or source changed');
   host.append(grid);
 
   for (const m of warnings) host.append(el('div', 'flag flag-warn import-warn', m));
@@ -660,6 +701,7 @@ async function stageImport(file) {
     ['Codes gone', d.removed.map((id) => [id, partsById.get(id)?.desc ?? ''])],
     ['Descriptions changed', d.descChanged.map((c) => [c.id, `${c.from}  →  ${c.to}`])],
     ['Bins changed', d.binChanged.map((c) => [c.id, `${c.from || '(blank)'}  →  ${c.to || '(blank)'}`])],
+    ['Type, unit or source changed', d.metaChanged.map((c) => [c.id, `${c.from || '(blank)'}  →  ${c.to || '(blank)'}`])],
     ['Fixed in the ERP', notices.resolved.map((o) => [o.partId, `${o.field}: "${o.value}"`])],
     ['Need a decision', notices.review.map((o) => [o.partId, o.reviewReason === 'missing_from_export' ? 'gone from the export' : `ERP now says "${o.observed}"`])],
   ];

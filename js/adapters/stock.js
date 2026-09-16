@@ -2,7 +2,7 @@
 //
 // Same boundary as the production adapter: this is the only place that
 // knows the file is a spreadsheet. It hands back plain rows, already cut down
-// to the three columns the app keeps, plus what the Parameters sheet says
+// to the six columns the app keeps, plus what the Parameters sheet says
 // about when and how the export was run.
 //
 // THE NARROWING HAPPENS HERE, before anything is returned. The export carries
@@ -54,7 +54,7 @@ export async function readStockExport(file) {
     : [];
   const headings = raw.length ? Object.keys(raw[0]) : [];
 
-  // Three columns through the door. Not a copy with things deleted — a new
+  // Six columns through the door. Not a copy with things deleted — a new
   // object holding only what is allowed, so nothing can ride along.
   const rows = raw.map((r) => {
     const out = {};

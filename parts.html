@@ -7,7 +7,7 @@
 <link rel="icon" type="image/png" href="assets/logo.png">
 <title>Parts — Stella Marine</title>
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="css/style.css?v=2026-09-16.1">
+<link rel="stylesheet" href="css/style.css?v=2026-09-16.2">
 </head>
 <body class="parts-page">
 
@@ -57,7 +57,7 @@
   <!-- ============ SEARCH ============ -->
   <section id="ptSearch" hidden>
     <div class="search-bar">
-      <input type="search" id="q" placeholder="Code, or the description as you remember it"
+      <input type="search" id="q" placeholder="Code or description"
              autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="search">
     </div>
     <div class="pills" id="familyPills"></div>
@@ -68,7 +68,14 @@
       <span class="spacer"></span>
       <button class="pill" id="binFirst" aria-pressed="false" title="Parts with a bin location first">Bin first</button>
     </div>
-    <div class="results-meta" id="resultsMeta"></div>
+    <div class="results-bar">
+      <span class="results-meta" id="resultsMeta"></span>
+      <span class="spacer"></span>
+      <button class="mini" id="xlsxAll" title="The whole list as a workbook — one tab per family, like the old drafting sheet">Download Excel</button>
+    </div>
+    <div class="results-head" id="resultsHead" hidden>
+      <span>Code</span><span>Description</span><span>Type</span><span>Source</span><span>Unit</span><span>Bin</span>
+    </div>
     <div id="results"></div>
   </section>
 
@@ -89,11 +96,15 @@
 
   <!-- ============ IMPORT ============ -->
   <section id="ptImport" hidden>
+    <div class="flag-note" id="partsReimport" hidden>
+      The list on this page was loaded before type, unit and source were kept.
+      Import the export again to fill them in — nothing else changes.
+    </div>
     <div id="dropZone">
       <strong>Drop the Stock Items export here</strong>
       <div class="hint">
         <code>Stock Items YYYYMMDD.xlsx</code> — or click to choose a file.<br>
-        Only the code, description and bin are read. Prices and everything else never leave this browser.
+        Only the code, description, type, unit, source and bin are read. Prices and everything else never leave this browser.
       </div>
       <input type="file" id="partsFile" accept=".xlsx,.xls" hidden>
     </div>
@@ -144,6 +155,6 @@
   <div id="toast" hidden></div>
 </main>
 
-<script type="module" src="js/parts-page.js?v=2026-09-16.1"></script>
+<script type="module" src="js/parts-page.js?v=2026-09-16.2"></script>
 </body>
 </html>

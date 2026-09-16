@@ -24,12 +24,14 @@ export const HELP = [
       {
         q: 'Where does the part list come from?',
         a: [
-          'The ERP\'s Stock Items export, loaded by a manager on the Import tab. Only '
-          + 'three things are read from it: the code, the description and the bin. '
-          + 'Prices and everything else are dropped before the file is even parsed into '
-          + 'the app, and are never stored.',
+          'The ERP\'s Stock Items export, loaded by a manager on the Import tab. Six '
+          + 'things are read from it: the code, the description, the type, the unit, '
+          + 'the source and the bin. Prices and everything else are dropped before the '
+          + 'file is even parsed into the app, and are never stored.',
           'Only part families are kept — the codes the workshop builds from. Finished '
-          + 'products, services and air-con lines are not parts and are left out.',
+          + 'products, services and air-con lines are not parts and are left out. On a '
+          + 'phone the type, source and unit show once a part is opened; on a desktop '
+          + 'they are columns.',
         ],
       },
       {
@@ -39,8 +41,24 @@ export const HELP = [
           + 'finds a part labelled "M12 x 25mm SHCS 316 S/S". Sizes work with or '
           + 'without mm; "s/s", "ss" and "stainless" are the same word; a typo of a '
           + 'letter or two still finds it.',
-          'Numbers must match exactly — 25 does not find 250 — because a size is a '
-          + 'size. Typing a code, or the start of one, lists the codes first.',
+          'Inches and millimetres are the same size. 1", 1 inch, 1in and 25.4mm all '
+          + 'find each other, however the ERP wrote it — 1 1/2" and 1.5" and 38.1mm '
+          + 'too. A fraction on its own, like 3/8, is taken as inches as well as '
+          + 'looked for as written. 24V, 24VDC and 24 volt are one thing; so are '
+          + '90 deg and 90°.',
+          'Numbers must match exactly — 25 does not find 250, and 25 does not find '
+          + '25.4 — because a size is a size. Typing a code, or the start of one, '
+          + 'lists the codes first.',
+        ],
+      },
+      {
+        q: 'Can I have it as a spreadsheet?',
+        a: [
+          'Download Excel, above the results, gives the whole list as the old '
+          + 'drafting workbook: every part on one tab, then a tab per family, with '
+          + 'the ERP\'s column headings. Descriptions and bins are the corrected '
+          + 'values, and the Notes column says where a value is a correction and what '
+          + 'the ERP has instead. Prices are not in it.',
         ],
       },
       {
