@@ -211,8 +211,29 @@ function wireSearch() {
     const card = e.target.closest('.part');
     if (!card) return;
     const id = card.dataset.id;
-    if (open.has(id)) open.delete(id); else open.add(id);
+    if (open.has(id)) {
+      open.delete(id);
+      redrawCard(id);
+      return;
+    }
+    // One open at a time: opening a card closes whichever was open, so the
+    // list does not fill with cards that each need closing by hand. When the
+    // one closing sits above, the page shrinks by its body and the tapped
+    // card would jump up the screen — scroll by the same amount so it stays
+    // under the finger.
+    const tappedTop = card.getBoundingClientRect().top;
+    let shift = 0;
+    for (const other of [...open]) {
+      open.delete(other);
+      const was = cardEl(other);
+      if (!was) continue;
+      const before = was.getBoundingClientRect();
+      redrawCard(other);
+      if (before.top < tappedTop) shift += before.height - (cardEl(other)?.getBoundingClientRect().height ?? 0);
+    }
+    open.add(id);
     redrawCard(id);
+    if (shift) window.scrollBy(0, -shift);
   });
   // The whole list as the old drafting workbook. Not the filtered view: the
   // sheet is the thing people keep, and a filter is the thing of the moment.
@@ -329,9 +350,12 @@ function appendChunk() {
   }
 }
 
+/** The card on screen for a code, if it is on screen. */
+const cardEl = (id) => $('results').querySelector(`.part[data-id="${CSS.escape(id)}"]`);
+
 /** Redraw one card in place, from the entry the list holds for it. */
 function redrawCard(id) {
-  const card = $('results').querySelector(`.part[data-id="${CSS.escape(id)}"]`);
+  const card = cardEl(id);
   const entry = listing.entries.find((e) => e.part.id === id);
   if (card && entry) card.replaceWith(partCard(entry));
 }
