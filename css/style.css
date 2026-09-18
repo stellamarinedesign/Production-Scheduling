@@ -849,22 +849,27 @@ header .who .role.manager { border-color: var(--red-deep); color: var(--red-brig
 .scope-opt .inline .mini { padding: 9px 14px; }
 
 /* ---------- role: floor ----------
-   The floor sees the printed sheet and nothing else. This is presentation, not
-   security — the Firestore rules deny floor accounts every write regardless. */
+   The floor sees the current orders as the manager's table, cut to the printed
+   columns, and nothing else. This is presentation, not security — the
+   Firestore rules deny floor accounts every write regardless. */
 body.role-floor .controls,
 body.role-floor .tabs,
 body.role-floor #warnings,
 body.role-floor #dropZone,
-body.role-floor #tabEdit,
 body.role-floor .fit-status,
 body.role-floor .manager-only,
 body.role-floor .job .acts { display: none !important; }
 
 body.role-floor #boardWrap { display: block; }
-body.role-floor #tabPrint.offstage {
-  position: static; left: auto; visibility: visible;
+
+/* Three tracks — production number, vessel, due — because the floor's rows
+   have three cells (see jobRow). Desktop only: on a phone every row is the
+   same two-column card regardless of role. */
+@media screen and (min-width: 761px) {
+  body.role-floor .job { grid-template-columns: 76px minmax(150px, 1fr) 92px; }
+  body.role-floor .board-col .job { grid-template-columns: 66px minmax(90px, 1fr) 82px; }
+  body.role-floor .job.is-full { grid-template-columns: 76px minmax(200px, 1fr) 96px; }
 }
-body.role-floor #printPreview { box-shadow: 0 6px 30px rgba(0,0,0,.55); }
 
 table.codes select {
   font-size: 12.5px; padding: 5px 8px; border-width: 1.5px; max-width: 130px;

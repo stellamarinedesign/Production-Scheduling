@@ -8,7 +8,7 @@
 <link rel="apple-touch-icon" href="assets/logo.png">
 <title>Production Board — Stella Marine</title>
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="css/style.css?v=2026-09-17.3">
+<link rel="stylesheet" href="css/style.css?v=2026-09-18.1">
 </head>
 <body>
 
@@ -113,11 +113,11 @@
 
     <section id="tabEdit">
       <div class="view-bar">
-        <button class="mini" id="completePastDue">Complete past due…</button>
+        <button class="mini manager-only" id="completePastDue">Complete past due…</button>
         <button class="mini" id="collapseAll">Collapse all</button>
         <span class="spacer"></span>
         <span class="hint" id="boardCount"></span>
-        <button class="mini quiet" id="historyEdit" data-lane="production">History</button>
+        <button class="mini quiet manager-only" id="historyEdit" data-lane="production">History</button>
       </div>
       <div id="board"></div>
       <div id="historyProduction" class="history-panel" hidden></div>
@@ -420,6 +420,6 @@
 
 </div><!-- /#appShell -->
 
-<script type="module" src="js/app.js?v=2026-09-17.3"></script>
+<script type="module" src="js/app.js?v=2026-09-18.1"></script>
 </body>
 </html>

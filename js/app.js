@@ -436,8 +436,19 @@ async function startFloor() {
   $('provenance').hidden = false;
   $('boardWrap').hidden = false;
   renderProvenance();
-  renderPrint($('printPreview'), state.board);
-  showTab('print');
+  // The version stamp is how a stale copy is told apart from a missing fix,
+  // and the floor's phones are where stale copies live.
+  $('provVersion').textContent = `v${VERSION}`;
+  $('provStore').textContent = Store.mode === 'firestore' ? 'Read from Firestore' : 'Local only';
+  // The same table the manager reads, cut to the printed columns: production
+  // number, vessel, due date. It used to be the print preview — a picture of
+  // an A4 page, which on a phone is a picture of an A4 page. Only the current
+  // orders for now; the other lanes stay behind the manager's tabs.
+  wireHelp();
+  wireRowTaps();
+  wireCollapseAll();
+  renderBoard();
+  showTab('edit');
 }
 
 function wireAuth() {
@@ -701,6 +712,16 @@ async function publish(rows, what) {
  * the controls is behind a media query, so the class it toggles does nothing
  * at a width where they are already visible.
  */
+/** Collapse all / expand all. Its own function because the floor path wires it too. */
+function wireCollapseAll() {
+  $('collapseAll').addEventListener('click', () => {
+    if (collapsed.size) collapsed.clear();
+    else for (const c of CATEGORY_ORDER) collapsed.add(c);
+    saveCollapsed(collapsed);
+    renderBoard();
+  });
+}
+
 function wireRowTaps() {
   document.addEventListener('click', (e) => {
     const row = e.target.closest('.job, .lane-row');
@@ -746,12 +767,7 @@ function wireControls() {
   $('completePastDue').addEventListener('click', () =>
     openCompleteDialog(state.board.warnings.pastDue ?? []));
 
-  $('collapseAll').addEventListener('click', () => {
-    if (collapsed.size) collapsed.clear();
-    else for (const c of CATEGORY_ORDER) collapsed.add(c);
-    saveCollapsed(collapsed);
-    renderBoard();
-  });
+  wireCollapseAll();
 
   const ganttToggle = (id, key) => {
     const paint = () => {
@@ -1156,7 +1172,12 @@ function renderWarnings() {
 function renderBoard() {
   const host = $('board');
   host.textContent = '';
-  const groups = byCategory(state.board.jobs, { includeHidden: true });
+  // The manager sees hidden jobs greyed, so they can be brought back. The
+  // floor sees what the printed sheet shows — not hidden, not finished.
+  const jobs = Auth.isManager
+    ? state.board.jobs
+    : state.board.jobs.filter((j) => !j.hidden && !j.completed);
+  const groups = byCategory(jobs, { includeHidden: Auth.isManager });
 
   const counts = Object.fromEntries(
     CATEGORY_ORDER.map((c) => [c, (groups.get(c) ?? []).length]));
@@ -1236,11 +1257,17 @@ function categoryBlock(cat, jobs, { full = false } = {}) {
   if (isShut) return block;
 
   const body = el('div', 'cat-body');
+  // The header has exactly the cells the rows have — the floor's rows carry
+  // the three printed columns, the manager's carry PO, status and actions as
+  // well — because a header cell with no column under it walks the rest of
+  // the headings one track off the data they label.
+  const manager = Auth.isManager;
   const hdr = el('div', `job col-head${full ? ' is-full' : ''}`);
-  hdr.append(el('span', null, 'Prod Nbr'), el('span', null, 'PO'),
-    el('span', null, 'Vessel'), el('span', null, 'Due'));
-  if (full) hdr.append(el('span', null, 'Status'));
-  hdr.append(el('span', null, ''));
+  hdr.append(el('span', null, 'Prod Nbr'));
+  if (manager) hdr.append(el('span', null, 'PO'));
+  hdr.append(el('span', null, 'Vessel'), el('span', null, 'Due'));
+  if (full && manager) hdr.append(el('span', null, 'Status'));
+  if (manager) hdr.append(el('span', null, ''));
   body.append(hdr);
   for (const j of jobs) body.append(jobRow(j, { full }));
   block.append(body);
@@ -1292,27 +1319,32 @@ function jobRow(j, { full = false } = {}) {
   const row = el('div', `job${j.on_hold ? ' on-hold' : ''}${j.hidden ? ' is-hidden' : ''}`
     + `${full ? ' is-full' : ''}`);
 
+  // THE FLOOR'S ROW IS THE PRINTED ROW: production number, vessel, due date.
+  // The PO, the status, the edit markers and the actions are the manager's
+  // working notes, left out of the markup rather than hidden \u2014 a hidden grid
+  // item is removed from flow and everything after it shifts a column left.
+  const manager = Auth.isManager;
+
   row.append(el('span', 'prod', j.prod_no));
 
   // the manufacturer's PO sits next to the production number because that is the pair
   // the manager reads together when checking an order against the manufacturer. It is
   // manager-view only and never reaches the printed board.
-  row.append(el('span', 'po', j.customer_po ?? ''));
+  if (manager) row.append(el('span', 'po', j.customer_po ?? ''));
 
   const label = el('span', 'label', jobTitle(j));
-  if (j.label !== j.base_label) label.append(el('span', 'edited', 'EDITED'));
-  else if (j.item_override) label.append(el('span', 'pinned', 'ITEM'));
+  if (manager && j.label !== j.base_label) label.append(el('span', 'edited', 'EDITED'));
+  else if (manager && j.item_override) label.append(el('span', 'pinned', 'ITEM'));
   row.append(label);
 
   row.append(el('span', `due${j.is_stock ? ' stock' : ''}`, j.due_display));
-  // Status only in the full-width block. Left out of the markup rather than
-  // hidden: a hidden grid item is removed from flow and everything after it
-  // shifts a column left.
-  if (full) {
+  // Status only in the full-width block, and only for the manager.
+  if (full && manager) {
     const st = el('span', `status${j.status_manual ? ' is-manual' : ''}`, j.status);
     if (j.status_manual) st.title = `Set by hand \u2014 the ERP says ${j.erp_status}`;
     row.append(st);
   }
+  if (!manager) return row;
 
   const acts = el('span', 'acts');
   const edit = el('button', 'mini', 'Label');
