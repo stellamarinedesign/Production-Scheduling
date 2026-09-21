@@ -64,6 +64,12 @@ export const CATEGORY_RULES = [
   ['SDC',                'Davits',                     null],
   ['SBL',                'Ladders and Chairs',         null],
   ['SHC',                'Ladders and Chairs',         null],
+  // Land-based watermakers are STLB - the frame, and the units with the
+  // flow/volts suffix - and they begin with STL. Below the launcher rule they
+  // printed as launchers: a watermaker frame sat in the launchers column of
+  // the sheet for a fortnight before anybody asked why. Pinned above it, they
+  // are water products and `classify` splits them like every other ST code.
+  ['STLB',               WATER,                        null],
   ['STL',                'Launchers, Doors & Chocks',  null],
   ['SGD',                'Launchers, Doors & Chocks',  null],
   ['SWD',                'Launchers, Doors & Chocks',  null],
@@ -372,14 +378,30 @@ export const tmCategory = (row) =>
   String(row?.['Order Nbr.'] ?? '').trim() ? TM_CATEGORY.customer : TM_CATEGORY.internal;
 
 // Internal jobs are sub-assemblies, so the item code IS informative — it is the
-// part number of the thing being made. Product line by prefix.
+// part number of the thing being made. Product line by prefix, one group per
+// board category. FIRST MATCH WINS, as above: STLB (land-based watermaker
+// parts), STL (launcher parts) and STC (chock parts) all begin with ST and sit
+// above the plain ST rule, which used to catch them as watermaker parts.
 export const INTERNAL_CATEGORY_RULES = [
-  ['SDC', 'Davit parts'],
-  ['SL',  'Cylinder lifter parts'],
-  ['ST',  'Watermaker parts'],
-  ['SS',  'Watermaker parts'],
+  ['SDC',  'Davit parts'],
+  ['SRL',  'Rotary lifter parts'],
+  ['SL',   'Cylinder lifter parts'],
+  ['SBL',  'Ladder & chair parts'],
+  ['SHC',  'Ladder & chair parts'],
+  ['STLB', 'Watermaker parts'],
+  ['STL',  'Launcher, door & chock parts'],
+  ['STC',  'Launcher, door & chock parts'],
+  ['SGD',  'Launcher, door & chock parts'],
+  ['SWD',  'Launcher, door & chock parts'],
+  ['ST',   'Watermaker parts'],
+  ['SS',   'Watermaker parts'],
 ];
-export const INTERNAL_CATEGORY_ORDER = ['Cylinder lifter parts', 'Watermaker parts', 'Davit parts', 'Other parts'];
+// The follow-up sheet and the tab group in this order. The two big groups
+// first, the small ones after, and anything the rules do not name last.
+export const INTERNAL_CATEGORY_ORDER = [
+  'Cylinder lifter parts', 'Watermaker parts', 'Davit parts', 'Rotary lifter parts',
+  'Launcher, door & chock parts', 'Ladder & chair parts', 'Other parts',
+];
 
 export function internalCategory(inventoryId) {
   const inv = String(inventoryId ?? '').trim().toUpperCase();
