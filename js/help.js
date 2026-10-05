@@ -39,22 +39,29 @@ export const HELP = [
       {
         q: 'How do I search?',
         a: [
-          'Type the description as you remember it, in any order. "m12 25 stainless" '
-          + 'finds a part labelled "M12 x 25mm SHCS 316 S/S". Sizes work with or '
-          + 'without mm; "s/s", "ss" and "stainless" are the same word; a typo of a '
-          + 'letter or two still finds it.',
-          'Inches and millimetres are the same size. 1", 1 inch, 1in and 25.4mm all '
-          + 'find each other, however the ERP wrote it — 1 1/2" and 1.5" and 38.1mm '
-          + 'too. A fraction on its own, like 3/8, is taken as inches as well as '
-          + 'looked for as written. 24V, 24VDC and 24 volt are one thing; so are '
-          + '90 deg and 90°.',
-          'Numbers must match exactly — 25 does not find 250, and 25 does not find '
-          + '25.4 — because a size is a size. Typing a code, or the start of one, '
-          + 'lists the codes first.',
+          'Type the description as you remember it. "m12 25 stainless" finds a part '
+          + 'labelled "M12 x 25mm SHCS 316 S/S". Every word you type has to be '
+          + 'there; "s/s", "ss" and "stainless" are the same word. A word can be '
+          + 'typed short, and a typo of a letter or two still finds it.',
+          'A bare number is millimetres, with or without "mm". Inches and '
+          + 'millimetres are the same size: 1", 1 inch, 1in and 25.4mm all find each '
+          + 'other, and so do 1 1/2", 1.5" and 38.1mm. A fraction like 3/8 is inches '
+          + 'whether or not it has the mark.',
+          'Numbers must match exactly \u2014 25 does not find 250, and 25 does not '
+          + 'find 25.4 \u2014 because a size is a size. A number with another unit '
+          + 'is a quantity, not a size: 5 finds a 5mm plate before a 5kg spool, 6 '
+          + 'never finds a 6m length, and 40 does not find Schedule 40. Ask for the '
+          + 'quantity and it is found however it was written: 24V, 24VDC and 24 volt; '
+          + 'Sch 40, Schd 40 and Schedule 40.',
           'Sizes typed together count together. "50 x 50 x 3" wants two fifties and '
           + 'a three, and the parts where those sit side by side, in that order, come '
-          + 'first. If nothing has all of it, the nearest are listed and the line '
-          + 'above the list says so.',
+          + 'first. Equal answers are listed in size order. If nothing has all of '
+          + 'it, the nearest are listed and the line above the list says so.',
+          'Typing a code, or the start of one, lists the codes first. With no '
+          + 'search, the list is in code order; "By description" puts it in size '
+          + 'order instead.',
+          'The same search runs in the material ordering app, so what works in one '
+          + 'works in the other.',
         ],
       },
       {

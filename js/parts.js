@@ -22,6 +22,8 @@
 // NO REAL CODES, CUSTOMER NAMES OR PART NAMES IN THIS FILE. It ships to anyone
 // who opens the app. Examples use made-up codes.
 
+import { createSearch, DEFAULT_SYNONYMS, MM_PER_INCH, mmOf, editDistance, naturalCompare } from './search-core.js';
+
 // ---------------------------------------------------------------------------
 // WHAT COMES IN
 // ---------------------------------------------------------------------------
@@ -368,191 +370,52 @@ export function withdrawOverride(o, { by = null, now = new Date() } = {}) {
 
 // ---------------------------------------------------------------------------
 // SEARCH
+//
+// The engine is search-core.js, shared verbatim with the material ordering
+// app so the two behave the same: what a size is, what counts as a match, how
+// answers are ranked. What is here is only what is particular to parts - the
+// vocabulary, what a part code looks like, and the fact that a corrected part
+// should still be found by the wording the ERP has.
 // ---------------------------------------------------------------------------
 
 /**
  * Words that mean the same thing on a part label. If any member appears, the
- * part is indexed under all of them, so "stainless" finds "S/S" and "csk"
- * finds "Countersunk". One table, so it can be extended without reading the
- * tokeniser.
+ * part is found by all of them, so "stainless" finds "S/S" and "csk" finds
+ * "Countersunk". Whole words only. One table, so it can be extended without
+ * reading the engine; spellings of a UNIT (volts, litres, schedule, degrees)
+ * do not belong here - the engine makes those one way already.
  */
 export const SYNONYMS = [
-  ['s/s', 'ss', 'stainless', 's/steel'],
-  ['shcs', 'socket head cap screw', 'socket head'],
-  ['csk', 'countersunk'],
-  ['aluminium', 'aluminum', 'alum'],
-  ['nyloc', 'nylock'],
-  ['sch', 'schd', 'schedule'],
-  ['o-ring', 'oring', 'o ring'],
-  ['deg', 'degree', 'degrees'],
-  ['dia', 'diam', 'diameter'],
+  ...DEFAULT_SYNONYMS,
 ];
 
-/**
- * An inch, in every way the ERP writes one: 1", 1”, 1'', 1', 1in, 1in., 1inch,
- * 3/8", 1 1/2", 1.5", and 1 ¼” once the fraction is spelt out. Groups: whole,
- * numerator, denominator, decimal. Word-based units want a letter NOT to
- * follow, because "inlet" is not an inch; the marks need nothing after them.
- */
-const INCH_UNIT = String.raw`(?:"|''|'|in\.?(?![a-z])|inch(?:es)?(?![a-z]))`;
-const INCH_RE = new RegExp(
-  String.raw`(?:(\d+)\s+)?(\d+)\s*/\s*(\d+)\s*${INCH_UNIT}|(\d+(?:\.\d+)?)\s*${INCH_UNIT}`, 'g');
+const engine = createSearch({ synonyms: SYNONYMS });
 
-export const MM_PER_INCH = 25.4;
-
-/**
- * Inches as millimetres, to three places. That is precision, not tolerance:
- * enough to absorb float noise (1/2" is 12.700000000000001 in a computer),
- * not enough to make 25 and 25.4 the same size. They are not — the workshop
- * stocks both.
- */
-export const mmOf = (inches) => String(Math.round(inches * MM_PER_INCH * 1000) / 1000);
-const inchesOf = (whole, num, den, dec) =>
-  dec !== undefined ? Number(dec) : (whole ? Number(whole) : 0) + Number(num) / Number(den);
+export { MM_PER_INCH, mmOf, editDistance };
+/** The first pass: lowercase, one kind of space, typography made plain. */
+export const prep = engine.prep;
+/** A description or a query, made one way. See search-core.js. */
+export const normalise = engine.normalise;
+/** Tokens: words, numbers and quantities. */
+export const tokenise = engine.tokenise;
+/** The query as the terms that each have to be found. */
+export const queryTerms = engine.tokenise;
 
 /**
- * The first pass, shared by everything that reads a description or a query:
- * lowercase, one kind of space, and the ERP's typography turned into the
- * plain characters the rules below look for — curly quotes into straight
- * ones, × into x, ¼ into 1/4, ° into "deg".
+ * Does this look like a part code rather than a description? One word,
+ * starting with s and a letter, with a digit or bracket in it. Tried against
+ * the codes first; if no part has it, it was a word after all and is searched
+ * as one.
  */
-export function prep(text) {
-  return String(text ?? '')
-    .toLowerCase()
-    .replace(/[\u201c\u201d\u2033]/g, '"')
-    .replace(/[\u2018\u2019\u2032]/g, "'")
-    .replace(/[\u00d7\u2715]/g, ' x ')
-    .replace(/\u00b0/g, ' deg ')
-    .replace(/[\u2013\u2014]/g, ' ')
-    .replace(/\u00bc/g, ' 1/4').replace(/\u00bd/g, ' 1/2').replace(/\u00be/g, ' 3/4')
-    .replace(/\u215b/g, ' 1/8').replace(/\u215c/g, ' 3/8').replace(/\u215d/g, ' 5/8').replace(/\u215e/g, ' 7/8')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-/**
- * Lowercase, and take apart the things a person types differently from the
- * way the ERP has them written.
- */
-export function normalise(text) {
-  let s = prep(text);
-  // A dimension separator becomes a space: 100mmx100mmx3mm, m10x 50, 10x50,
-  // 1"(25.4mm) x 1.6mm.
-  s = s.replace(/(\d|mm|"|\))\s*x\s*(?=\d)/g, '$1 ');
-  // ...and the word-glued form: 1/2tubex1/2bsp, 3/8 tubex1/4 bspt.
-  s = s.replace(/([a-z]{3,})x(?=\d)/g, '$1 ');
-  // Units the ERP spells several ways, made one way, so a search in any of
-  // them finds all of them. Volts: 24v, 24vdc, 24 volt -> 24v. Metres: 3mtr,
-  // 10 metres, 30m -> 3m, 10m, 30m. Cable: 20mmsq, 32mm sq -> 20 sqmm. And
-  // dc24v, which is one word to the ERP and two to everyone else.
-  s = s.replace(/(\d)\s*(?:vdc|vac|volts?)\b/g, '$1v');
-  s = s.replace(/(\d)\s*(?:mtrs?|metres?|meters?)\b/g, '$1m');
-  s = s.replace(/(\d)\s*mm\s*(?:sq\b|\u00b2)/g, '$1 sqmm');
-  s = s.replace(/\b(ac|dc)(?=\d)/g, '$1 ');
-  // A number's mm is noise ("25mm", "25 mm" and "25" are the same ask).
-  // Metres are not: "6m" stays, because "6" alone means something else.
-  s = s.replace(/(\d)\s*mm\b/g, '$1');
-  // Grade glued to stainless: 316ss, 316s/s.
-  s = s.replace(/(\d)(ss|s\/s)\b/g, '$1 $2');
-  // A size glued to a word, either way round: 1/2tube, 1/2bsp, sch40, gen4.
-  // Two letters or more after a digit, so 6m, 24v and 2.4m are left alone;
-  // three or more before one, so m10, m12 and lg2 are.
-  s = s.replace(/(\d)([a-z]{2,})\b/g, '$1 $2');
-  s = s.replace(/\b([a-z]{3,})(\d)/g, '$1 $2');
-  // 25.40 is 25.4 and 1.00 is 1: zeros after the point are noise, and the
-  // ERP writes both.
-  s = s.replace(/(\d)\.0+\b/g, '$1').replace(/(\.\d*[1-9])0+\b/g, '$1');
-  return s;
-}
-
-/**
- * Tokens: words, numbers, fractions, decimals. Punctuation between them goes,
- * and an inch mark is a separator too — the ERP writes 21''Membranes with no
- * space, and the membranes are not part of the twenty-one.
- */
-export function tokenise(text) {
-  return normalise(text)
-    .split(/[\s,;()[\]{}"']+/)
-    .map((t) => t.replace(/^[^a-z0-9/]+|[^a-z0-9/]+$/g, ''))
-    .filter(Boolean);
-}
-
-const isNumeric = (t) => /^[\d./]+$/.test(t);
-const isFraction = (t) => /^\d+\/\d+$/.test(t);
-const fractionMm = (t) => { const [n, d] = t.split('/'); return mmOf(Number(n) / Number(d)); };
-
-/**
- * The query as terms, each a list of alternatives, any one of which counts.
- *
- * A measurement in inches becomes its millimetre value, so 1", 1 inch and
- * 25.4mm are the same ask — the index holds the millimetre value for every
- * inch it was written in (see `indexText`), and mm are already bare numbers
- * after `normalise`. A fraction keeps its written form beside the value,
- * marked or not: 3/8 on its own is an inch size in this workshop, and the
- * description may say "3/8 tube" or "9.525mm" or "3/8"" and mean the same
- * thing. A decimal with the mark does not keep its written form, because 1.5
- * on its own is a thread pitch as often as a size.
- *
- * @returns {string[][]}
- */
-export function queryTerms(query) {
-  const withMm = prep(query).replace(INCH_RE, (m, whole, num, den, dec) => {
-    const val = mmOf(inchesOf(whole, num, den, dec));
-    return num !== undefined && !whole ? ` ${num}/${den}|${val} ` : ` ${val} `;
-  });
-  return tokenise(withMm).map((t) => {
-    const alts = t.split('|').filter(Boolean);
-    if (alts.length === 1 && isFraction(alts[0])) alts.push(fractionMm(alts[0]));
-    return alts;
-  });
-}
-
-/**
- * A description as the search sees it: its tokens IN ORDER, each a short list
- * of alternatives (an inch measurement is itself and its millimetres), plus
- * the synonyms of anything in it, which have no position.
- *
- * ORDER AND REPETITION ARE KEPT, because a size is a sequence. "50 x 50 x 3"
- * is two fifties and a three, in that order. The first version of this kept
- * a bare set of tokens: the second fifty matched the same token as the first,
- * so "50 x 50 x 3" and "50 x 3" were the same search, and a pump that happened
- * to be 3 phase and 50Hz ranked level with the box section being looked for.
- *
- * Synonyms match WHOLE WORDS. "Brass" contains "ss" and is not stainless;
- * the first version of this used a substring test and indexed every brass
- * and glass part under "stainless".
- */
-function indexText(text) {
-  const p = prep(text);
-  // Each inch measurement carries its millimetres with it, attached to the
-  // last number it was written with, so the value stays in its place in the
-  // sequence: 1 1/2" is the tokens "1" and "1/2|38.1".
-  const marked = p.replace(INCH_RE, (m, whole, num, den, dec) => {
-    const written = dec !== undefined ? dec : `${whole ? `${whole} ` : ''}${num}/${den}`;
-    return ` ${written}|${mmOf(inchesOf(whole, num, den, dec))} `;
-  });
-  const seq = tokenise(marked).map((t) => t.split('|').filter(Boolean));
-  const have = new Set(seq.flat());
-  const joined = ` ${seq.map((alts) => alts[0]).join(' ')} `;
-  const extra = new Set();
-  for (const group of SYN_TOKENS) {
-    const present = group.some((mt) => (mt.length === 1 ? have.has(mt[0]) : joined.includes(` ${mt.join(' ')} `)));
-    if (present) for (const mt of group) for (const t of mt) if (!have.has(t)) extra.add(t);
-  }
-  return { seq, extra, have };
-}
-/** Each synonym as the tokens it would be indexed under. Built once. */
-const SYN_TOKENS = SYNONYMS.map((group) => group.map((m) => tokenise(m)));
+const looksLikeCode = (raw) => !raw.includes(' ') && /^s[a-z]/.test(raw) && /[0-9(]/.test(raw);
 
 /**
  * Build once per list, search many times.
  *
- * Each entry holds its description as `seq`: the tokens in order, each with
- * its alternatives, a position and a weight. The ERP's own wording, where a
- * correction has replaced it, is appended at half weight and out of reach of
- * the adjacency bonus, so a corrected part is still found by the words
- * someone remembers from before - but only the words the correction took
- * away, or a part corrected from 5mm to 3mm would count its fifties twice.
+ * A corrected part carries the ERP's own wording as a second field at half
+ * weight, so it is still found by the words someone remembers from before it
+ * was corrected. The engine keeps only the words the correction took away -
+ * or a part corrected from 5mm to 3mm would count its fifties twice.
  *
  * @param {Array<{id, desc, bin}>} parts
  * @param {Object} overrides
@@ -560,219 +423,55 @@ const SYN_TOKENS = SYNONYMS.map((group) => group.map((m) => tokenise(m)));
 export function buildIndex(parts, overrides = {}) {
   return (parts ?? []).map((p) => {
     const eff = effective(p, overrides);
-    const main = indexText(`${eff.desc} ${eff.bin}`);
-    const seq = main.seq.map((alts, i) => ({ alts, pos: i, w: 1 }));
-    const extra = [...main.extra].map((t) => ({ t, w: 1 }));
-    if (eff.descOv || eff.binOv) {
-      const orig = indexText(`${p.desc} ${p.bin}`);
-      let pos = main.seq.length + 1;
-      for (const alts of orig.seq) {
-        if (alts.some((a) => main.have.has(a))) continue;
-        seq.push({ alts, pos, w: 0.5 });
-        pos += 2;                                   // never next to anything
-      }
-      for (const t of orig.extra) if (!main.extra.has(t) && !main.have.has(t)) extra.push({ t, w: 0.5 });
-    }
+    const fields = [{ text: `${eff.desc} ${eff.bin}`, weight: 1 }];
+    if (eff.descOv || eff.binOv) fields.push({ text: `${p.desc} ${p.bin}`, weight: 0.5 });
     return {
+      ...engine.entry(fields, p.id),
       part: p, eff, family: familyOf(p.id),
       idLower: p.id.toLowerCase(),
-      seq, extra,
       descLen: eff.desc.length,
     };
   });
 }
 
-/** Levenshtein with a ceiling — bails as soon as it cannot come in under it. */
-export function editDistance(a, b, max) {
-  if (Math.abs(a.length - b.length) > max) return max + 1;
-  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
-  for (let i = 1; i <= a.length; i++) {
-    const cur = [i];
-    let rowMin = i;
-    for (let j = 1; j <= b.length; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
-      if (cur[j] < rowMin) rowMin = cur[j];
-    }
-    if (rowMin > max) return max + 1;
-    prev = cur;
-  }
-  return prev[b.length];
-}
-
-const SCORE = { exact: 10, prefix: 6, fuzzy: 3 };
-
-/** One query word against one indexed token: exact, prefix, a typo, or 0. */
-function matchScore(q, t) {
-  if (t === q) return SCORE.exact;
-  if (isNumeric(q)) return 0;                         // 25 must not find 250
-  if (q.length >= 2 && t.startsWith(q)) return SCORE.prefix;
-  const allow = q.length >= 7 ? 2 : q.length >= 4 ? 1 : 0;
-  if (allow && !isNumeric(t) && editDistance(q, t, allow) <= allow) return SCORE.fuzzy;
-  return 0;
-}
-
-/** A term is alternatives and so is a token; the best pairing is the score. */
-function termScore(term, alts) {
-  let best = 0;
-  for (const q of term) for (const t of alts) best = Math.max(best, matchScore(q, t));
-  return best;
-}
-
-// What the order of a size is worth. A term matched on the token straight
-// after the previous term's is the query read off the description. One matched
-// further along is the same numbers in the same order with something between:
-// "50 x 3" against a 50 x 25 x 3. One matched just BEFORE is the pair swapped,
-// which is worth least - 3" 50mm is not a fifty by three.
-const NEXT_TO = 4;
-const IN_ORDER = 2;
-const SWAPPED = 1;
-// A term with nothing left to match but a token an earlier term already took.
-// It still counts - the query is not thrown out - but as a poor answer, and
-// `search` drops such answers altogether when a proper one exists.
-const REUSED = 0.3;
-// Positions tried per term. A description rarely has one word four times.
-const BRANCH = 4;
-
-const adjacency = (prev, pos) => {
-  if (prev === null) return 0;
-  if (pos === prev + 1) return NEXT_TO;
-  if (pos > prev) return IN_ORDER;
-  return pos === prev - 1 ? SWAPPED : 0;
-};
-
-/**
- * Score one part against the query, or null if a term matches nothing.
- *
- * Every term needs a token OF ITS OWN: two fifties in the query want two in
- * the description. Terms are placed in the order they were typed, each on a
- * token no earlier term has taken, trying the few placements there are and
- * keeping the one that reuses least and then scores most.
- *
- * @returns {{score: number, reused: number}|null}
- */
-function scoreEntry(terms, dupes, e) {
-  const cands = terms.map((term) => {
-    const at = [];
-    for (let i = 0; i < e.seq.length; i++) {
-      const s = termScore(term, e.seq[i].alts) * e.seq[i].w;
-      if (s) at.push({ i, s });
-    }
-    // No position: a synonym of something in the description, or the code
-    // itself, so "sdc0 bracket" still works.
-    let loose = 0;
-    for (const x of e.extra) loose = Math.max(loose, termScore(term, [x.t]) * x.w);
-    if (!loose && term.some((q) => e.idLower.includes(q))) loose = SCORE.prefix;
-    return { at, loose };
-  });
-  if (cands.some((c) => !c.at.length && !c.loose)) return null;
-
-  const place = (k, used, prev) => {
-    if (k === cands.length) return { score: 0, reused: 0 };
-    const { at, loose } = cands[k];
-    const free = at.filter((c) => !used.has(c.i));
-    let options;
-    if (free.length) {
-      options = free
-        .map((c) => ({ i: c.i, s: c.s + adjacency(prev, e.seq[c.i].pos), reused: 0 }))
-        .sort((a, b) => b.s - a.s)
-        .slice(0, BRANCH);
-    } else if (loose && !dupes[k]) {
-      options = [{ i: -1, s: loose, reused: 0 }];
-    } else {
-      // The second fifty, and only one in the description.
-      const best = at.length ? Math.max(...at.map((c) => c.s)) : loose;
-      options = [{ i: -1, s: best * REUSED, reused: 1 }];
-    }
-    let best = null;
-    for (const o of options) {
-      const rest = place(k + 1, o.i >= 0 ? new Set(used).add(o.i) : used, o.i >= 0 ? e.seq[o.i].pos : prev);
-      const reused = o.reused + rest.reused;
-      const score = o.s + rest.score;
-      if (!best || reused < best.reused || (reused === best.reused && score > best.score)) best = { score, reused };
-    }
-    return best;
-  };
-  return place(0, new Set(), null);
-}
-
 /**
  * Search the index.
  *
- * Every query term must match, each on a token of its own, and sizes typed
- * together are worth more found together and in that order. A single word
- * that looks like a code ranks code matches first. Ties go to the shorter
- * description, then the code, so the plainest part of a family surfaces
- * before its variants.
+ * Every term must match, each on a token of its own, and sizes typed together
+ * are worth more found together and in that order. Equal answers come in
+ * size order - 8mm before 10mm, an inch where its millimetres put it - and
+ * then by code.
  *
- * `relaxed` is true when NO part gave every term a token of its own - two
- * fifties asked for, one found - and the list is the nearest there is rather
- * than a real answer. When some part does, the near misses are left out.
+ * `relaxed` is true when NO part had everything asked for and the list is the
+ * nearest there is rather than a real answer.
  *
  * @returns {{hits: Array<{entry, score}>, total: number, relaxed: boolean}}
  */
 export function search(index, query, { limit = 50 } = {}) {
-  const raw = clean(query).toLowerCase();
-  if (!raw) return { hits: [], total: 0 };
-
-  // A CODE IS MATCHED AS A CODE, before the tokeniser gets near it. The
-  // tokeniser takes "sch40" apart into "sch" and "40" because that is what a
-  // description needs - and would do the same to "szz0123", which is not a
-  // description. One word, starting with s, with a digit or bracket in it: try
-  // it against the codes first, exact then prefix then anywhere, in code order.
-  // If nothing has that code, it was a word after all and the search below
-  // gets it.
-  const codeLike = !raw.includes(' ') && /^s[a-z]/.test(raw) && /[0-9(]/.test(raw);
-  if (codeLike) {
-    const byCode = [];
-    for (const e of index) {
-      if (e.idLower === raw) byCode.push({ entry: e, score: 3 });
-      else if (e.idLower.startsWith(raw)) byCode.push({ entry: e, score: 2 });
-      else if (e.idLower.includes(raw)) byCode.push({ entry: e, score: 1 });
-    }
-    if (byCode.length) {
-      byCode.sort((a, b) => b.score - a.score
-        || a.entry.idLower.localeCompare(b.entry.idLower, undefined, { numeric: true }));
-      return { hits: byCode.slice(0, limit), total: byCode.length };
-    }
-  }
-
-  const terms = queryTerms(query);
-  if (!terms.length) return { hits: [], total: 0, relaxed: false };
-  // Which terms repeat an earlier one. A repeat has to find a second token;
-  // a synonym or the code cannot stand in for it.
-  const keys = terms.map((t) => t.join('|'));
-  const dupes = keys.map((k, i) => keys.indexOf(k) < i);
-
-  const all = [];
-  for (const e of index) {
-    const r = scoreEntry(terms, dupes, e);
-    if (r) all.push({ entry: e, score: r.score, full: r.reused === 0 });
-  }
-  const anyFull = all.some((h) => h.full);
-  const scored = anyFull ? all.filter((h) => h.full) : all;
-  // Ties go to the plainest part of a family, then to code order.
-  scored.sort((a, b) => b.score - a.score
-    || a.entry.descLen - b.entry.descLen
-    || a.entry.idLower.localeCompare(b.entry.idLower, undefined, { numeric: true }));
-  return { hits: scored.slice(0, limit), total: scored.length, relaxed: !anyFull && scored.length > 0 };
+  return engine.search(index, query, { limit, isCode: looksLikeCode });
 }
 
 /**
  * A list with no query: filtered and ordered rather than searched.
- * @param {{family?: string|null, bin?: 'all'|'with'|'without', binFirst?: boolean}} f
+ *
+ * By code unless `byDesc`, which puts it in size order by description - the
+ * order a rack is walked in, where the code order is the order things were
+ * added to the ERP.
+ *
+ * @param {{family?: string|null, bin?: 'all'|'with'|'without', binFirst?: boolean, byDesc?: boolean}} f
  */
-export function browse(index, { family = null, bin = 'all', binFirst = false } = {}) {
+export function browse(index, { family = null, bin = 'all', binFirst = false, byDesc = false } = {}) {
   let out = index;
   if (family) out = out.filter((e) => e.family === family);
   if (bin === 'with') out = out.filter((e) => hasBin(e.eff.bin));
   if (bin === 'without') out = out.filter((e) => !hasBin(e.eff.bin));
+  const byCode = (a, b) => a.idLower.localeCompare(b.idLower, undefined, { numeric: true });
   out = [...out].sort((a, b) => {
     if (binFirst) {
       const d = Number(hasBin(b.eff.bin)) - Number(hasBin(a.eff.bin));
       if (d) return d;
     }
-    return a.idLower.localeCompare(b.idLower, undefined, { numeric: true });
+    return (byDesc ? naturalCompare(a.natural, b.natural) : 0) || byCode(a, b);
   });
   return out;
 }

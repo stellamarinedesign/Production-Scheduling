@@ -39,7 +39,7 @@ let index = [];
 let role = ROLE.NONE;
 let who = null;
 let tab = 'search';
-const filters = { family: null, bin: 'all', binFirst: false };
+const filters = { family: null, bin: 'all', binFirst: false, byDesc: false };
 const open = new Set();     // expanded result cards, by id
 
 function booting(what) {
@@ -196,6 +196,14 @@ function wireSearch() {
     filters.binFirst = !filters.binFirst;
     $('binFirst').classList.toggle('on', filters.binFirst);
     $('binFirst').setAttribute('aria-pressed', String(filters.binFirst));
+    renderResults();
+  });
+  // Browsing in size order by description, the way a rack is walked. Code
+  // order is the default because the code is what this list is a list of.
+  $('byDesc').addEventListener('click', () => {
+    filters.byDesc = !filters.byDesc;
+    $('byDesc').classList.toggle('on', filters.byDesc);
+    $('byDesc').setAttribute('aria-pressed', String(filters.byDesc));
     renderResults();
   });
   // Tap a card to open it; controls inside are their own thing. Only that
