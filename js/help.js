@@ -10,6 +10,8 @@
 //
 // NO REAL CODES OR CUSTOMER NAMES. This file ships to anyone who opens the app.
 
+import { closeOnBackdrop } from './dialog.js';
+
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
   if (cls) n.className = cls;
@@ -49,6 +51,10 @@ export const HELP = [
           'Numbers must match exactly — 25 does not find 250, and 25 does not find '
           + '25.4 — because a size is a size. Typing a code, or the start of one, '
           + 'lists the codes first.',
+          'Sizes typed together count together. "50 x 50 x 3" wants two fifties and '
+          + 'a three, and the parts where those sit side by side, in that order, come '
+          + 'first. If nothing has all of it, the nearest are listed and the line '
+          + 'above the list says so.',
         ],
       },
       {
@@ -94,6 +100,10 @@ export const HELP = [
           + 'if the ERP still says the old thing, it stays and counts the export; if '
           + 'the ERP says something ELSE, it is put up for a decision, because the '
           + 'importer should not be guessing which value is right.',
+          'One made by mistake can be taken back. Open the part, or find it on the '
+          + 'Corrections tab, and press Remove; it asks once. The part goes back to '
+          + 'showing what the ERP says, and the correction is kept as history rather '
+          + 'than counted as something the ERP fixed.',
         ],
       },
       {
@@ -333,9 +343,7 @@ export function wireHelp() {
   const close = () => document.getElementById('helpOverlay')?.classList.remove('show');
   document.getElementById('helpBtn')?.addEventListener('click', openHelp);
   document.getElementById('helpClose')?.addEventListener('click', close);
-  document.getElementById('helpOverlay')?.addEventListener('click', (e) => {
-    if (e.target.id === 'helpOverlay') close();
-  });
+  closeOnBackdrop(document.getElementById('helpOverlay'), close);
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') close();
   });

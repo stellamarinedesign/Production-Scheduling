@@ -13,6 +13,7 @@ import { VERSION } from './version.js';
 import { wireHelp } from './help.js';
 import { davitsByBoat, mergeDavits } from './davits.js';
 import { itemFacts, mergeItemFacts } from './vessel-codes.js';
+import { closeOnBackdrop } from './dialog.js';
 import { Store, packRows, unpackRows, isNewerImport } from './store.js';
 import { renderPrint, measure, fitToPage,
          renderLanePrint, fitLaneToPage } from './print.js';
@@ -2639,10 +2640,10 @@ function wireOverlays() {
   });
   $('hideSave').addEventListener('click', saveHide);
 
+  // Pressed AND released on the backdrop - see dialog.js. Highlighting the
+  // text in a field and letting go outside the box used to close these.
   for (const id of ['labelOverlay', 'hideOverlay', 'completeOverlay']) {
-    $(id).addEventListener('click', (e) => {
-      if (e.target.id === id) { $(id).classList.remove('show'); flushDeferredRebuild(); }
-    });
+    closeOnBackdrop($(id), () => { $(id).classList.remove('show'); flushDeferredRebuild(); });
   }
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;

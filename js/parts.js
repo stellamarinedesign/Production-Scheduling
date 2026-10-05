@@ -351,6 +351,21 @@ export function resolveReview(o, action, { value = null, by = null, part = null,
   throw new Error(`Unknown action '${action}'.`);
 }
 
+/**
+ * Take a correction back.
+ *
+ * Not the same as the ERP catching up: nothing was fixed, somebody decided
+ * the correction was wrong or no longer wanted. It ends like every other
+ * correction - resolved, kept as history, no longer shown - and says which
+ * kind of ending it was, so the record does not read as an ERP fix that
+ * never happened.
+ */
+export function withdrawOverride(o, { by = null, now = new Date() } = {}) {
+  const stamp = now.toISOString();
+  return { ...o, status: 'resolved', resolution: 'withdrawn', reviewReason: null, observed: null,
+    resolvedAt: stamp, resolvedBy: by, updatedAt: stamp };
+}
+
 // ---------------------------------------------------------------------------
 // SEARCH
 // ---------------------------------------------------------------------------
@@ -471,7 +486,7 @@ const fractionMm = (t) => { const [n, d] = t.split('/'); return mmOf(Number(n) /
  *
  * A measurement in inches becomes its millimetre value, so 1", 1 inch and
  * 25.4mm are the same ask — the index holds the millimetre value for every
- * inch it was written in (see `indexTokens`), and mm are already bare numbers
+ * inch it was written in (see `indexText`), and mm are already bare numbers
  * after `normalise`. A fraction keeps its written form beside the value,
  * marked or not: 3/8 on its own is an inch size in this workshop, and the
  * description may say "3/8 tube" or "9.525mm" or "3/8"" and mean the same
@@ -493,44 +508,75 @@ export function queryTerms(query) {
 }
 
 /**
- * The token set a part is found by: its effective description, bin and code,
- * every inch in it as millimetres, plus every synonym of anything in it.
+ * A description as the search sees it: its tokens IN ORDER, each a short list
+ * of alternatives (an inch measurement is itself and its millimetres), plus
+ * the synonyms of anything in it, which have no position.
+ *
+ * ORDER AND REPETITION ARE KEPT, because a size is a sequence. "50 x 50 x 3"
+ * is two fifties and a three, in that order. The first version of this kept
+ * a bare set of tokens: the second fifty matched the same token as the first,
+ * so "50 x 50 x 3" and "50 x 3" were the same search, and a pump that happened
+ * to be 3 phase and 50Hz ranked level with the box section being looked for.
  *
  * Synonyms match WHOLE WORDS. "Brass" contains "ss" and is not stainless;
  * the first version of this used a substring test and indexed every brass
  * and glass part under "stainless".
  */
-function indexTokens(text) {
+function indexText(text) {
   const p = prep(text);
-  const toks = tokenise(p);
-  const out = new Set(toks);
-  for (const m of p.matchAll(INCH_RE)) out.add(mmOf(inchesOf(m[1], m[2], m[3], m[4])));
-  const joined = ` ${toks.join(' ')} `;
+  // Each inch measurement carries its millimetres with it, attached to the
+  // last number it was written with, so the value stays in its place in the
+  // sequence: 1 1/2" is the tokens "1" and "1/2|38.1".
+  const marked = p.replace(INCH_RE, (m, whole, num, den, dec) => {
+    const written = dec !== undefined ? dec : `${whole ? `${whole} ` : ''}${num}/${den}`;
+    return ` ${written}|${mmOf(inchesOf(whole, num, den, dec))} `;
+  });
+  const seq = tokenise(marked).map((t) => t.split('|').filter(Boolean));
+  const have = new Set(seq.flat());
+  const joined = ` ${seq.map((alts) => alts[0]).join(' ')} `;
+  const extra = new Set();
   for (const group of SYN_TOKENS) {
-    const present = group.some((mt) => (mt.length === 1 ? out.has(mt[0]) : joined.includes(` ${mt.join(' ')} `)));
-    if (present) for (const mt of group) for (const t of mt) out.add(t);
+    const present = group.some((mt) => (mt.length === 1 ? have.has(mt[0]) : joined.includes(` ${mt.join(' ')} `)));
+    if (present) for (const mt of group) for (const t of mt) if (!have.has(t)) extra.add(t);
   }
-  return out;
+  return { seq, extra, have };
 }
 /** Each synonym as the tokens it would be indexed under. Built once. */
 const SYN_TOKENS = SYNONYMS.map((group) => group.map((m) => tokenise(m)));
 
 /**
  * Build once per list, search many times.
+ *
+ * Each entry holds its description as `seq`: the tokens in order, each with
+ * its alternatives, a position and a weight. The ERP's own wording, where a
+ * correction has replaced it, is appended at half weight and out of reach of
+ * the adjacency bonus, so a corrected part is still found by the words
+ * someone remembers from before - but only the words the correction took
+ * away, or a part corrected from 5mm to 3mm would count its fifties twice.
+ *
  * @param {Array<{id, desc, bin}>} parts
  * @param {Object} overrides
  */
 export function buildIndex(parts, overrides = {}) {
   return (parts ?? []).map((p) => {
     const eff = effective(p, overrides);
-    const primary = indexTokens(`${eff.desc} ${eff.bin}`);
-    // The ERP's own wording, at a lower weight, so a corrected part is still
-    // found by the words someone remembers from before it was corrected.
-    const original = (eff.descOv || eff.binOv) ? indexTokens(`${p.desc} ${p.bin}`) : null;
+    const main = indexText(`${eff.desc} ${eff.bin}`);
+    const seq = main.seq.map((alts, i) => ({ alts, pos: i, w: 1 }));
+    const extra = [...main.extra].map((t) => ({ t, w: 1 }));
+    if (eff.descOv || eff.binOv) {
+      const orig = indexText(`${p.desc} ${p.bin}`);
+      let pos = main.seq.length + 1;
+      for (const alts of orig.seq) {
+        if (alts.some((a) => main.have.has(a))) continue;
+        seq.push({ alts, pos, w: 0.5 });
+        pos += 2;                                   // never next to anything
+      }
+      for (const t of orig.extra) if (!main.extra.has(t) && !main.have.has(t)) extra.push({ t, w: 0.5 });
+    }
     return {
       part: p, eff, family: familyOf(p.id),
       idLower: p.id.toLowerCase(),
-      primary: [...primary], original: original ? [...original] : null,
+      seq, extra,
       descLen: eff.desc.length,
     };
   });
@@ -556,32 +602,114 @@ export function editDistance(a, b, max) {
 
 const SCORE = { exact: 10, prefix: 6, fuzzy: 3 };
 
-/** Best score for one query token against one token set, or 0. */
-function tokenScore(q, tokens) {
-  let best = 0;
-  const numeric = isNumeric(q);
+/** One query word against one indexed token: exact, prefix, a typo, or 0. */
+function matchScore(q, t) {
+  if (t === q) return SCORE.exact;
+  if (isNumeric(q)) return 0;                         // 25 must not find 250
+  if (q.length >= 2 && t.startsWith(q)) return SCORE.prefix;
   const allow = q.length >= 7 ? 2 : q.length >= 4 ? 1 : 0;
-  for (const t of tokens) {
-    if (t === q) return SCORE.exact;
-    if (numeric) continue;                            // 25 must not find 250
-    if (q.length >= 2 && t.startsWith(q)) { best = Math.max(best, SCORE.prefix); continue; }
-    if (allow && !isNumeric(t) && editDistance(q, t, allow) <= allow) best = Math.max(best, SCORE.fuzzy);
-  }
+  if (allow && !isNumeric(t) && editDistance(q, t, allow) <= allow) return SCORE.fuzzy;
+  return 0;
+}
+
+/** A term is alternatives and so is a token; the best pairing is the score. */
+function termScore(term, alts) {
+  let best = 0;
+  for (const q of term) for (const t of alts) best = Math.max(best, matchScore(q, t));
   return best;
 }
 
-/** A term is alternatives; the best of them is its score. */
-const termScore = (alts, tokens) => Math.max(...alts.map((q) => tokenScore(q, tokens)));
+// What the order of a size is worth. A term matched on the token straight
+// after the previous term's is the query read off the description. One matched
+// further along is the same numbers in the same order with something between:
+// "50 x 3" against a 50 x 25 x 3. One matched just BEFORE is the pair swapped,
+// which is worth least - 3" 50mm is not a fifty by three.
+const NEXT_TO = 4;
+const IN_ORDER = 2;
+const SWAPPED = 1;
+// A term with nothing left to match but a token an earlier term already took.
+// It still counts - the query is not thrown out - but as a poor answer, and
+// `search` drops such answers altogether when a proper one exists.
+const REUSED = 0.3;
+// Positions tried per term. A description rarely has one word four times.
+const BRANCH = 4;
+
+const adjacency = (prev, pos) => {
+  if (prev === null) return 0;
+  if (pos === prev + 1) return NEXT_TO;
+  if (pos > prev) return IN_ORDER;
+  return pos === prev - 1 ? SWAPPED : 0;
+};
+
+/**
+ * Score one part against the query, or null if a term matches nothing.
+ *
+ * Every term needs a token OF ITS OWN: two fifties in the query want two in
+ * the description. Terms are placed in the order they were typed, each on a
+ * token no earlier term has taken, trying the few placements there are and
+ * keeping the one that reuses least and then scores most.
+ *
+ * @returns {{score: number, reused: number}|null}
+ */
+function scoreEntry(terms, dupes, e) {
+  const cands = terms.map((term) => {
+    const at = [];
+    for (let i = 0; i < e.seq.length; i++) {
+      const s = termScore(term, e.seq[i].alts) * e.seq[i].w;
+      if (s) at.push({ i, s });
+    }
+    // No position: a synonym of something in the description, or the code
+    // itself, so "sdc0 bracket" still works.
+    let loose = 0;
+    for (const x of e.extra) loose = Math.max(loose, termScore(term, [x.t]) * x.w);
+    if (!loose && term.some((q) => e.idLower.includes(q))) loose = SCORE.prefix;
+    return { at, loose };
+  });
+  if (cands.some((c) => !c.at.length && !c.loose)) return null;
+
+  const place = (k, used, prev) => {
+    if (k === cands.length) return { score: 0, reused: 0 };
+    const { at, loose } = cands[k];
+    const free = at.filter((c) => !used.has(c.i));
+    let options;
+    if (free.length) {
+      options = free
+        .map((c) => ({ i: c.i, s: c.s + adjacency(prev, e.seq[c.i].pos), reused: 0 }))
+        .sort((a, b) => b.s - a.s)
+        .slice(0, BRANCH);
+    } else if (loose && !dupes[k]) {
+      options = [{ i: -1, s: loose, reused: 0 }];
+    } else {
+      // The second fifty, and only one in the description.
+      const best = at.length ? Math.max(...at.map((c) => c.s)) : loose;
+      options = [{ i: -1, s: best * REUSED, reused: 1 }];
+    }
+    let best = null;
+    for (const o of options) {
+      const rest = place(k + 1, o.i >= 0 ? new Set(used).add(o.i) : used, o.i >= 0 ? e.seq[o.i].pos : prev);
+      const reused = o.reused + rest.reused;
+      const score = o.s + rest.score;
+      if (!best || reused < best.reused || (reused === best.reused && score > best.score)) best = { score, reused };
+    }
+    return best;
+  };
+  return place(0, new Set(), null);
+}
 
 /**
  * Search the index.
  *
- * Every query token must match (AND, any order). A single token that looks
- * like a code ranks code matches first. Ties go to the shorter description,
- * then the code, so the plainest part of a family surfaces before its
- * variants.
+ * Every query term must match, each on a token of its own, and sizes typed
+ * together are worth more found together and in that order. A single word
+ * that looks like a code ranks code matches first. Ties go to the shorter
+ * description, then the code, so the plainest part of a family surfaces
+ * before its variants.
  *
- * @returns {{hits: Array<{entry, score}>, total: number}}
+ * `relaxed` is true when NO part gave every term a token of its own - two
+ * fifties asked for, one found - and the list is the nearest there is rather
+ * than a real answer. When some part does, the near misses are left out.
+ *
+ * @returns {{hits: Array<{entry, score}>, total: number, relaxed: boolean}}
  */
 export function search(index, query, { limit = 50 } = {}) {
   const raw = clean(query).toLowerCase();
@@ -610,30 +738,24 @@ export function search(index, query, { limit = 50 } = {}) {
   }
 
   const terms = queryTerms(query);
-  if (!terms.length) return { hits: [], total: 0 };
+  if (!terms.length) return { hits: [], total: 0, relaxed: false };
+  // Which terms repeat an earlier one. A repeat has to find a second token;
+  // a synonym or the code cannot stand in for it.
+  const keys = terms.map((t) => t.join('|'));
+  const dupes = keys.map((k, i) => keys.indexOf(k) < i);
 
-  const scored = [];
+  const all = [];
   for (const e of index) {
-    let ok = true;
-    let total = 0;
-    for (const term of terms) {
-      let s = termScore(term, e.primary);
-      if (!s && e.original) s = termScore(term, e.original) * 0.5;
-      if (!s) {
-        // A code token can still match the code itself, so "sdc0 bracket" works.
-        if (term.some((q) => e.idLower.includes(q))) s = SCORE.prefix;
-        else { ok = false; break; }
-      }
-      total += s;
-    }
-    if (!ok) continue;
-    scored.push({ entry: e, score: total });
+    const r = scoreEntry(terms, dupes, e);
+    if (r) all.push({ entry: e, score: r.score, full: r.reused === 0 });
   }
+  const anyFull = all.some((h) => h.full);
+  const scored = anyFull ? all.filter((h) => h.full) : all;
   // Ties go to the plainest part of a family, then to code order.
   scored.sort((a, b) => b.score - a.score
     || a.entry.descLen - b.entry.descLen
     || a.entry.idLower.localeCompare(b.entry.idLower, undefined, { numeric: true }));
-  return { hits: scored.slice(0, limit), total: scored.length };
+  return { hits: scored.slice(0, limit), total: scored.length, relaxed: !anyFull && scored.length > 0 };
 }
 
 /**

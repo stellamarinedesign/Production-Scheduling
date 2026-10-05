@@ -13,12 +13,13 @@ import { VERSION } from './version.js';
 import { wireHelp } from './help.js';
 import { readStockExport } from './adapters/stock.js';
 import { downloadWorkbook } from './adapters/drafting-xlsx.js';
+import { closeOnBackdrop } from './dialog.js';
 import {
   transformParts, validateStockExport, diffParts, unknownFamilies,
   buildIndex, search, browse, familyCounts, familyOf, hasBin, effective,
   createOverride, reconcile, resolveReview, overrideKey, isActive, clean,
   fixList, fixListCsv, ageInDays, STALE_DAYS, FAMILIES, META_FIELDS, metaLine,
-  draftingSheets, workbookName,
+  draftingSheets, workbookName, withdrawOverride,
 } from './parts.js';
 
 const $ = (id) => document.getElementById(id);
@@ -286,14 +287,16 @@ function renderResults() {
   const q = clean($('q').value);
   let entries;
   if (q) {
-    const { hits, total } = search(index, q, { limit: Infinity });
+    const { hits, total, relaxed } = search(index, q, { limit: Infinity });
     entries = hits.map((h) => h.entry);
     if (filters.family) entries = entries.filter((e) => e.family === filters.family);
     if (filters.bin === 'with') entries = entries.filter((e) => hasBin(e.eff.bin));
     if (filters.bin === 'without') entries = entries.filter((e) => !hasBin(e.eff.bin));
-    meta.textContent = total
-      ? `${entries.length} match${entries.length === 1 ? '' : 'es'}`
-      : 'Nothing matches — try fewer words, or just the size.';
+    // `relaxed`: no part had a token for every term - two fifties asked for
+    // and only one found, say - so these are near misses, and it says so.
+    meta.textContent = !total ? 'Nothing matches — try fewer words, or just the size.'
+      : relaxed ? `Nothing has all of that. The ${entries.length} nearest:`
+        : `${entries.length} match${entries.length === 1 ? '' : 'es'}`;
   } else {
     entries = browse(index, filters);
     meta.textContent = `${entries.length} part${entries.length === 1 ? '' : 's'}`
@@ -435,6 +438,9 @@ function partCard(e) {
       note.append(el('span', 'dim', `${ov.reason} — ${who === ov.createdBy ? 'you' : (ov.createdBy ?? 'someone')}, ${fmtDate(ov.createdAt)}`
         + `${ov.importsPending ? ` · unfixed through ${ov.importsPending} export${ov.importsPending === 1 ? '' : 's'}` : ''}`
         + `${ov.status === 'review' ? ' · IN REVIEW' : ''}`));
+      if (Auth.canEditParts) {
+        note.append(armed('Remove correction', 'Really remove?', () => withdraw(p.id, ov.field)));
+      }
       body.append(note);
     }
     card.append(body);
@@ -457,7 +463,9 @@ function wireCorrect() {
   $('coBin').addEventListener('click', () => setCorrectField('bin'));
   $('coCancel').addEventListener('click', closeCorrect);
   $('coSave').addEventListener('click', saveCorrect);
-  $('correctOverlay').addEventListener('click', (e) => { if (e.target === $('correctOverlay')) closeCorrect(); });
+  // Pressed AND released on the backdrop - see dialog.js. Highlighting the
+  // text in a field and letting go outside the box used to close this.
+  closeOnBackdrop($('correctOverlay'), closeCorrect);
   $('coValue').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveCorrect(); });
   $('coReason').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveCorrect(); });
 }
@@ -485,6 +493,61 @@ function setCorrectField(field) {
   const existing = overrides[overrideKey(correcting.part.id, field)];
   $('coValue').value = isActive(existing) ? existing.value : '';
   $('coReason').value = isActive(existing) ? existing.reason : '';
+  // A correction that exists can be taken back from here as well. Built
+  // fresh each time so a half-pressed "Really remove?" never carries over.
+  const slot = $('coRemoveSlot');
+  slot.textContent = '';
+  if (isActive(existing)) {
+    const { part } = correcting;
+    slot.append(armed('Remove correction', 'Really remove?', async () => {
+      await withdraw(part.id, field);
+      closeCorrect();
+    }));
+  }
+}
+
+/**
+ * A button that asks once. The first press turns it into the question; a
+ * second within a few seconds is the answer. No native dialog, and a slip of
+ * the thumb costs nothing.
+ */
+function armed(label, sure, fn) {
+  const b = el('button', 'mini', label);
+  let timer = null;
+  b.addEventListener('click', async () => {
+    if (!timer) {
+      b.textContent = sure;
+      b.classList.add('bad');
+      timer = setTimeout(() => { b.textContent = label; b.classList.remove('bad'); timer = null; }, 3500);
+      return;
+    }
+    clearTimeout(timer);
+    timer = null;
+    b.disabled = true;
+    await fn();
+  });
+  return b;
+}
+
+/**
+ * Take a correction back: the part shows what the ERP says again and the
+ * correction leaves the list. Kept as history, marked withdrawn - it was not
+ * fixed in the ERP and the record should not say it was.
+ */
+async function withdraw(partId, field) {
+  const key = overrideKey(partId, field);
+  const o = overrides[key];
+  if (!isActive(o)) return;
+  try {
+    await Store.setPartOverride(key, withdrawOverride(o, { by: who }));
+    overrides = await Store.loadPartOverrides();
+    index = buildIndex(parts, overrides);
+    refreshEntries([partId]);
+    renderFix();
+    toast(`${partId}: correction removed. It shows what the ERP says again.`);
+  } catch (e) {
+    toast(`Could not remove it — ${e.message}`, 8000);
+  }
 }
 
 function closeCorrect() {
@@ -609,7 +672,7 @@ function renderFix() {
   }
   const table = el('div', 'fix-table');
   const head = el('div', 'fix-row fix-head');
-  for (const h of ['Code', 'Field', 'ERP says', 'Should be', 'Why', 'Since']) head.append(el('span', null, h));
+  for (const h of ['Code', 'Field', 'ERP says', 'Should be', 'Why', 'Since', '']) head.append(el('span', null, h));
   table.append(head);
   for (const o of pending) {
     const row = el('div', 'fix-row');
@@ -621,6 +684,11 @@ function renderFix() {
     const since = el('span', 'dim', fmtDate(o.createdAt));
     if (o.importsPending) since.title = `Still unfixed after ${o.importsPending} export${o.importsPending === 1 ? '' : 's'}`;
     row.append(since);
+    // Made by mistake, or no longer wanted: off the list without waiting for
+    // an export to agree with it.
+    const rm = el('span', 'fix-rm');
+    rm.append(armed('Remove', 'Really?', () => withdraw(o.partId, o.field)));
+    row.append(rm);
     table.append(row);
   }
   fl.append(table);
