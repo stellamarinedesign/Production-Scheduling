@@ -102,7 +102,12 @@ const QTY_RE = new RegExp(
 // polycarbonate. Single letters (8l, 6m, 24v, 10a, 8g) are the same and need
 // no rule: they are only ever a unit when glued, and glued is how they stay.
 const GLUED_ONLY = 'bar|nm|cc|ah|pcs|pct|sqmm';
-const SPLIT_DIGIT_WORD_RE = new RegExp('(\\d)(?!(?:' + GLUED_ONLY + ')\\b)([a-z]{2,})\\b', 'g');
+const SPLIT_DIGIT_WORD_RE = new RegExp('(\\d)(?!(?:' + GLUED_ONLY + ')\\b)([a-z]{2,})', 'g');
+// What a token is, once everything else has been turned into a separator: a
+// number with whatever is glued after it (25.4, 100kg, 1n5404), or a word with
+// whatever is glued after it (m10, sch40, c4b). A point only survives between
+// two digits, so "dia.x50" does not hide its fifty.
+const TOKEN_RE = /\d+(?:\.\d+)?[a-z0-9]*|[a-z][a-z0-9]*/g;
 
 const NUMBER_RE = /^\d+(?:\.\d+)?$/;            // 25, 25.4
 const QUANTITY_RE = /^(\d+(?:\.\d+)?)([a-z]+)$/; // 5kg, 6m, 100lph
@@ -215,6 +220,9 @@ function createSearch(options) {
     s = s.replace(/(\d|mm|\))\s*x\s*(?=\d)/g, '$1 ');
     // ...and the word-glued form: 1/2tubex1/2bsp.
     s = s.replace(/([a-z]{3,})x\s*(?=\d)/g, '$1 ');
+    // ...and an x that starts a size with nothing before it to multiply:
+    // "black x50m", "dia.x50". It means "by", and is not part of the number.
+    s = s.replace(/(^|[^a-z0-9])x(?=\d)/g, '$1');
     // Grade glued to stainless (316ss), and dc24v, one word to a catalogue and
     // two to everyone else.
     s = s.replace(/(\d)(ss|s\/s)\b/g, '$1 $2');
@@ -224,6 +232,8 @@ function createSearch(options) {
     // before one, so m10, t5 and lg2 are. Schedules are already one token.
     s = s.replace(SPLIT_DIGIT_WORD_RE, '$1 $2');
     s = s.replace(/\b(?!sch\d)([a-z]{3,})(\d)/g, '$1 $2');
+    // ...and once more, for several run together: 0.5hpdc1800rpm.
+    s = s.replace(SPLIT_DIGIT_WORD_RE, '$1 $2');
     // A number with a unit that is not a length is a quantity, kept with its
     // unit. BEFORE the millimetres go: "100mm gauge" is a hundred-millimetre
     // gauge, and with the mm already stripped it would read as "100 gauge".
@@ -231,32 +241,50 @@ function createSearch(options) {
     // Millimetres are the default, so the unit is noise: 25mm is 25. Square
     // millimetres are not a length.
     s = s.replace(/(\d)\s*mm\s*sq\b/g, '$1sqmm');
+    // mm2 too, but only written as one word: "50mm 2 way" is not a cable.
+    s = s.replace(/(\d)\s*mm2\b/g, '$1sqmm');
     s = s.replace(/(\d)\s*mm\b/g, '$1');
     return s.replace(/\s+/g, ' ').trim();
   }
 
   /**
-   * Tokens: words, numbers and quantities. Punctuation between them goes; a
-   * hyphen or a slash separates (6061-t6, 450/550) unless the slash sits
-   * between two single letters, which is a word (s/s, m/f), or it is a
-   * fraction - which only reaches here with inches switched off, and is then
-   * one thing as written rather than a one and a two.
+   * The text as terms: words, numbers and quantities, each knowing whether it
+   * was written HARD AGAINST the one before it, with punctuation between and
+   * no space.
+   *
+   * Everything that is not a letter, a digit, a point or a slash separates -
+   * a hyphen, an ampersand, a star - so 820-350-s6 is three things and each
+   * can be searched for by itself. A point survives only between two digits.
+   * A slash survives only between two single letters, which is a word (s/s,
+   * m/f), or in a fraction - which only reaches here with inches switched off,
+   * and is then one thing as written rather than a one and a two.
+   *
+   * @returns {Array<{t: string, joined: boolean}>}
    */
-  function tokenise(text) {
+  function terms(text) {
     const out = [];
-    const rough = normalise(text).split(/[\s,;:()[\]{}"'+=#-]+/);
-    for (let i = 0; i < rough.length; i++) {
-      const piece = rough[i].replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, '');
-      if (!piece) continue;
-      const frac = /^(\d+)\/(\d+)$/.exec(piece);
-      if (piece.indexOf('/') < 0 || /^[a-z]\/[a-z]$/.test(piece) || (frac && plausibleFraction(frac[1], frac[2]))) {
-        out.push(piece);
-        continue;
+    const chunks = normalise(text).split(' ');
+    for (let c = 0; c < chunks.length; c++) {
+      let first = true;
+      const subs = chunks[c].split(/[^a-z0-9./]+/);
+      for (let i = 0; i < subs.length; i++) {
+        const sub = subs[i].replace(/^[./]+|[./]+$/g, '');
+        if (!sub) continue;
+        const frac = /^(\d+)\/(\d+)$/.exec(sub);
+        const whole = /^[a-z]\/[a-z]$/.test(sub) || (frac && plausibleFraction(frac[1], frac[2]));
+        const found = whole ? [sub] : (sub.match(TOKEN_RE) || []);
+        for (let k = 0; k < found.length; k++) {
+          out.push({ t: found[k], joined: !first });
+          first = false;
+        }
       }
-      const parts = piece.split('/');
-      for (let j = 0; j < parts.length; j++) if (parts[j]) out.push(parts[j]);
     }
     return out;
+  }
+
+  /** The same, as plain strings. */
+  function tokenise(text) {
+    return terms(text).map((x) => x.t);
   }
 
   // Each synonym as the tokens it is indexed under. Built once.
@@ -363,17 +391,26 @@ function createSearch(options) {
    * taken, trying the few placements there are and keeping the one that falls
    * short least and then scores most.
    *
+   * `typing` is the index of a term that is still being typed as part of a
+   * compound - "820-3" on the way to 820-350 - or -1. That one term may match
+   * the START of a token, but only the token straight after the previous
+   * term's. Anywhere else a 3 is still exactly a 3; without this, a part number
+   * with hyphens in it vanishes from the list while it is being typed and
+   * comes back when the last digit lands.
+   *
    * @returns {{score, missed, reused}|null}  null when nothing matched at all
    */
-  function scoreEntry(terms, dupes, e) {
+  function scoreEntry(words, dupes, typing, e) {
     const cands = [];
     let matchable = 0;
-    for (let k = 0; k < terms.length; k++) {
-      const q = terms[k];
+    for (let k = 0; k < words.length; k++) {
+      const q = words[k];
       const at = [];
+      const starts = [];
       for (let i = 0; i < e.seq.length; i++) {
         const s = matchScore(q, e.seq[i].t) * e.seq[i].w;
         if (s) at.push({ i, s });
+        else if (k === typing && e.seq[i].t.indexOf(q) === 0) starts.push({ i, s: SCORE.prefix * e.seq[i].w });
       }
       // No position: a synonym of something in the description, or a piece of
       // the code. A short number is not looked for inside codes - every code
@@ -381,8 +418,8 @@ function createSearch(options) {
       let loose = 0;
       for (let x = 0; x < e.extra.length; x++) loose = Math.max(loose, matchScore(q, e.extra[x].t) * e.extra[x].w);
       if (!loose && e.code && e.code.indexOf(q) >= 0 && !(NUMBER_RE.test(q) && q.length < 3)) loose = SCORE.prefix;
-      if (at.length || loose) matchable++;
-      cands.push({ at, loose });
+      if (at.length || loose || starts.length) matchable++;
+      cands.push({ at, loose, starts });
     }
     if (!matchable) return null;
 
@@ -390,7 +427,10 @@ function createSearch(options) {
       if (k === cands.length) return { score: 0, missed: 0, reused: 0 };
       const at = cands[k].at;
       const loose = cands[k].loose;
-      const free = at.filter((c) => !used[c.i]);
+      let free = at.filter((c) => !used[c.i]);
+      if (prev !== null && cands[k].starts.length) {
+        free = free.concat(cands[k].starts.filter((c) => !used[c.i] && e.seq[c.i].pos === prev + 1));
+      }
       let options;
       if (free.length) {
         options = free
@@ -463,16 +503,20 @@ function createSearch(options) {
       }
     }
 
-    const terms = tokenise(query);
-    if (!terms.length) return { hits: [], total: 0, relaxed: false };
+    const parsed = terms(query);
+    if (!parsed.length) return { hits: [], total: 0, relaxed: false };
+    const words = parsed.map((x) => x.t);
     // Which terms repeat an earlier one. A repeat has to find a second token;
     // a synonym or the code cannot stand in for it.
-    const dupes = terms.map((t, i) => terms.indexOf(t) < i);
+    const dupes = words.map((t, i) => words.indexOf(t) < i);
+    // The last term, if it was typed hard against the one before it, is
+    // probably unfinished. See `scoreEntry`.
+    const typing = parsed.length > 1 && parsed[parsed.length - 1].joined ? parsed.length - 1 : -1;
 
     const all = [];
     let least = Infinity;
     for (let i = 0; i < entries.length; i++) {
-      const r = scoreEntry(terms, dupes, entries[i]);
+      const r = scoreEntry(words, dupes, typing, entries[i]);
       if (!r) continue;
       const short = r.missed + r.reused;
       if (short < least) least = short;
@@ -481,7 +525,7 @@ function createSearch(options) {
     // The real answers if there are any; otherwise whatever came closest, so
     // long as it has at least half of what was asked for.
     const relaxed = least > 0;
-    const kept = all.filter((h) => h.short === least && (!relaxed || h.missed <= Math.floor(terms.length / 2)));
+    const kept = all.filter((h) => h.short === least && (!relaxed || h.missed <= Math.floor(words.length / 2)));
     kept.sort((a, b) => b.score - a.score || tie(a.entry, b.entry) || byCode(a.entry, b.entry));
     return {
       hits: kept.slice(0, cfg.limit).map((h) => ({ entry: h.entry, score: h.score })),
