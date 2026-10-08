@@ -808,6 +808,8 @@ const SHEET_FOR_TAB = { edit: 'production', internal: 'internal', tm: 'tm' };
 
 const SHEET = {
   production: { btn: 'sheetBoard', label: 'Print board' },
+  // The board again, with tick boxes: same jobs, same horizon, smaller type.
+  warehouse: { btn: 'sheetWarehouse', label: 'Print warehouse board' },
   internal: { btn: 'sheetInternal', label: 'Print internal jobs',
     title: 'Internal factory jobs', itemLabel: 'Item',
     order: INTERNAL_CATEGORY_ORDER },
@@ -856,12 +858,18 @@ function renderPrintSheet() {
   $('printBtn').textContent = SHEET[lane].label;
   // The horizon is a property of the board; these lists have no future to
   // narrow, so the control would be answering a question they do not ask.
-  $('horizon').closest('.ctrl').hidden = lane !== 'production';
+  const isBoard = lane === 'production' || lane === 'warehouse';
+  $('horizon').closest('.ctrl').hidden = !isBoard;
 
-  if (lane === 'production') {
-    renderPrint(host, state.board);
+  if (isBoard) {
+    // The warehouse copy is the fitted board drawn with tick boxes. It is
+    // never refitted on its own - that would move the horizon under the board
+    // on screen - so it is measured, and the status line says if it spilled.
+    renderPrint(host, state.board, { variant: lane === 'warehouse' ? 'warehouse' : null });
     state.laneFit = null;
+    state.variantFit = lane === 'warehouse' ? measure(host) : null;
   } else {
+    state.variantFit = null;
     const jobs = (state.board[lane] ?? []).filter((j) => !j.completed && !j.hidden);
     state.laneFit = fitLaneToPage(host, jobs, {
       title: SHEET[lane].title,
@@ -1655,6 +1663,15 @@ function renderFitStatus() {
       + 'work past the horizon, or stock beyond the cap';
   box.append(rows);
   box.append(el('span', null, `·`));
+
+  // The warehouse copy: the same board, measured as drawn with its boxes.
+  if (state.variantFit) {
+    const v = state.variantFit;
+    box.append(el('span', null, !v.measured ? 'warehouse copy could not be measured'
+      : v.fits ? 'the warehouse copy fits one page'
+        : `the warehouse copy runs to ${v.pages} pages — lower the horizon to hold one`));
+    return;
+  }
 
   if (!state.settings.autoFit) {
     box.append(el('span', null, f.fits ? 'fits one page' : `${f.pages} pages — auto-fit is off`));

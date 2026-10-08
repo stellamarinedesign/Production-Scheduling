@@ -226,6 +226,20 @@ export const HELP = [
         ],
       },
       {
+        q: 'What is the warehouse copy?',
+        a: [
+          'The same printed board with two tick boxes to the right of every date, '
+          + 'for checking items off as they are picked. Print tab, Which sheet, '
+          + 'Warehouse. It is written a size smaller with short dates so the boxes '
+          + 'fit, and carries a WAREHOUSE tag in the header so the two sheets are '
+          + 'never confused on the wall.',
+          'It is the board as fitted - same jobs, same horizon - and printing it '
+          + 'changes nothing about the regular sheet or the board on screen. If it '
+          + 'runs past one page the status line says so; lower the horizon to hold '
+          + 'one.',
+        ],
+      },
+      {
         q: 'Why is something on the board but not on the print?',
         a: [
           'Three reasons, all about fitting a page: its category has no column on the '

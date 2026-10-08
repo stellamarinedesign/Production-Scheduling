@@ -65,21 +65,37 @@ const el = (tag, cls, text) => {
   return n;
 };
 
-function categoryTable(category, jobs, { full = false } = {}) {
+/**
+ * The warehouse copy writes its dates short - 31/12/26 - because two columns
+ * of tick boxes have taken the width the year used to have. STOCK stays STOCK.
+ */
+const shortDate = (display) => String(display ?? '').replace(/^(\d{2}\/\d{2}\/)\d{2}(\d{2})$/, '$1$2');
+
+/** How many tick boxes a warehouse row carries. */
+export const WAREHOUSE_TICKS = 2;
+
+function categoryTable(category, jobs, { full = false, variant = null } = {}) {
+  const warehouse = variant === 'warehouse';
   const table = el('table');
   if (full) table.dataset.full = '1';
 
   const colgroup = el('colgroup');
-  ['c-prod', '', 'c-due'].forEach((c) => { const col = el('col', c); colgroup.append(col); });
+  const cols = ['c-prod', '', 'c-due'];
+  if (warehouse) for (let i = 0; i < WAREHOUSE_TICKS; i++) cols.push('c-tick');
+  cols.forEach((c) => { const col = el('col', c); colgroup.append(col); });
   table.append(colgroup);
 
   const thead = el('thead');
   const banner = el('tr');
   const bcell = el('th', 'banner', category.toUpperCase());
-  bcell.colSpan = 3;
+  bcell.colSpan = cols.length;
   banner.append(bcell);
   const head = el('tr');
   head.append(el('th', null, 'Prod Nbr'), el('th', null, 'Vessel'), el('th', 'c-due', 'Due date'));
+  // The tick columns have no heading: what the two ticks mean is the
+  // warehouse's business, and a heading would have to be changed here every
+  // time that changed.
+  if (warehouse) for (let i = 0; i < WAREHOUSE_TICKS; i++) head.append(el('th', 'c-tick', ''));
   thead.append(banner, head);
   table.append(thead);
 
@@ -89,8 +105,15 @@ function categoryTable(category, jobs, { full = false } = {}) {
     if (j.on_hold) tr.className = 'on-hold';
     tr.append(el('td', null, j.prod_no));
     tr.append(el('td', 'vessel', j.on_hold ? `${jobTitle(j)}  [ON HOLD]` : jobTitle(j)));
-    const due = el('td', `due${j.is_stock ? ' stock' : ''}`, j.due_display);
+    const due = el('td', `due${j.is_stock ? ' stock' : ''}`, warehouse ? shortDate(j.due_display) : j.due_display);
     tr.append(due);
+    if (warehouse) {
+      for (let i = 0; i < WAREHOUSE_TICKS; i++) {
+        const cell = el('td', 'tick');
+        cell.append(el('span', 'tickbox'));   // not .box - that is the dialog
+        tr.append(cell);
+      }
+    }
     tbody.append(tr);
   }
   table.append(tbody);
@@ -182,6 +205,7 @@ function laneTable(category, jobs, itemLabel) {
  */
 export function renderLanePrint(host, { jobs, title, asOf, itemLabel, order = null, total = null }) {
   host.textContent = '';
+  host.dataset.variant = '';            // never the warehouse styling, whatever was drawn before
 
   const head = el('div', 'doc-head');
   head.append(el('div', 'doc-title', title));
@@ -252,13 +276,26 @@ export function fitLaneToPage(host, allJobs, { title, asOf, itemLabel, order = n
  * @param {HTMLElement} host   the element to fill (cleared first)
  * @param {Object} board       result of buildBoard()
  */
-export function renderPrint(host, board) {
+/**
+ * Draw the board sheet.
+ *
+ * `variant: 'warehouse'` is the same sheet with two columns of tick boxes to
+ * the right of the date on every row, for checking items off as they are
+ * picked. It is written a size smaller, with short dates, so the boxes fit
+ * without the vessel column wrapping; the stylesheet keys off
+ * `data-variant` on the host. The board the sheet is drawn from is the same
+ * one - the warehouse copy never changes what the board shows or how the
+ * horizon is fitted.
+ */
+export function renderPrint(host, board, { variant = null } = {}) {
   host.textContent = '';
+  host.dataset.variant = variant ?? '';
 
   const asOf = toAU(toDateOnly(board.meta.as_of));
 
   const head = el('div', 'doc-head');
   head.append(el('div', 'doc-title', 'Current production orders'));
+  if (variant === 'warehouse') head.append(el('div', 'doc-tag', 'WAREHOUSE'));
   head.append(el('div', 'doc-range', `as of:  ${asOf}`));
   host.append(head);
 
@@ -277,7 +314,7 @@ export function renderPrint(host, board) {
     const col = el('div', 'col');
     for (const cat of side) {
       const jobs = groups.get(cat) ?? [];
-      if (jobs.length) col.append(categoryTable(cat, jobs));
+      if (jobs.length) col.append(categoryTable(cat, jobs, { variant }));
     }
     grid.append(col);
   }
@@ -287,7 +324,7 @@ export function renderPrint(host, board) {
     const jobs = groups.get(cat) ?? [];
     if (jobs.length) {
       const wrap = el('div', 'full');
-      wrap.append(categoryTable(cat, jobs, { full: true }));
+      wrap.append(categoryTable(cat, jobs, { full: true, variant }));
       host.append(wrap);
     }
   }
