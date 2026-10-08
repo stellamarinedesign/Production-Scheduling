@@ -122,8 +122,9 @@ function categoryTable(category, jobs, { full = false, ticks = [], title = null 
 // The board again, for the people picking it. Tick boxes down the left of
 // every row - one to tick as a pick starts, one as it completes - then the
 // same number, vessel and date, a size smaller with the dates shortened,
-// printed landscape so the boxes have room. A lifter is picked twice over,
-// the lifter itself and its power pack, so the lifter categories carry four.
+// printed landscape so the boxes have room. A lifter or a davit is picked
+// twice over, the unit itself and its power pack, so those categories carry
+// four.
 //
 // It paginates itself. The regular sheet shrinks its horizon to hold one
 // page; this one is allowed to run on, but a category must not be cut in two
@@ -139,9 +140,9 @@ export const WAREHOUSE_TICKS = {
   lifters: [['Lifter', 'started'], ['Lifter', 'completed'], ['PP', 'started'], ['PP', 'completed']],
 };
 
-/** Lifters are the categories named so: cylinder and rotary. */
+/** Four for the categories named lifter, cylinder and rotary, and for davits. */
 export const ticksFor = (category) =>
-  (/lifter/i.test(category) ? WAREHOUSE_TICKS.lifters : WAREHOUSE_TICKS.general);
+  (/lifter|davit/i.test(category) ? WAREHOUSE_TICKS.lifters : WAREHOUSE_TICKS.general);
 
 /** Short dates, 31/12/26, where the boxes have taken the year's width. STOCK stays STOCK. */
 const shortDate = (display) => String(display ?? '').replace(/^(\d{2}\/\d{2}\/)\d{2}(\d{2})$/, '$1$2');

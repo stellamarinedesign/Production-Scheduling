@@ -230,7 +230,7 @@ export const HELP = [
         a: [
           'The printed board for the people picking it. Print tab, Which sheet, '
           + 'Warehouse. Every row starts with tick boxes: Pick started and Pick '
-          + 'completed, or for the lifter categories four of them, Lifter and PP '
+          + 'completed, or for lifters and davits four of them, Lifter and PP '
           + '(power pack) each started and completed. Then the production number, '
           + 'vessel and a short date. It prints landscape, a size smaller, and '
           + 'carries a WAREHOUSE tag so the two sheets are never confused on the wall.',

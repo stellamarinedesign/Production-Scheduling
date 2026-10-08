@@ -500,14 +500,16 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 #printRoot [data-variant="warehouse"] .banner { font-size: 11pt; padding: 2px 6px; }
 #printRoot [data-variant="warehouse"] th,
 #printRoot [data-variant="warehouse"] td { padding: 2px 4px; }
-/* Fixed widths, so the vessel takes whatever a table's ticks leave it: with
-   four ticks in a half-width column that is about what the regular sheet
-   gives it, with two it is twice that. */
-#printRoot [data-variant="warehouse"] .c-tick { width: 58px; }
-#printRoot [data-variant="warehouse"] .c-prod { width: 56px; }
-#printRoot [data-variant="warehouse"] .c-due { width: 64px; }
+/* Fixed widths, so the vessel takes whatever a table's ticks leave it. Each
+   is the least its heading needs on one line, measured: COMPLETED at 8.5pt
+   bold is 60px, PROD # 41px, DUE DATE 56px, plus padding and a border. With
+   four ticks in a half-width column the vessel keeps about 120px, enough for
+   a code and a hull; a custom name wraps, as it does on the regular sheet. */
+#printRoot [data-variant="warehouse"] .c-tick { width: 64px; }
+#printRoot [data-variant="warehouse"] .c-prod { width: 52px; }
+#printRoot [data-variant="warehouse"] .c-due { width: 66px; }
 #printRoot [data-variant="warehouse"] thead th.c-tick {
-  font-size: 7.5pt; letter-spacing: .02em; line-height: 1.15; padding: 2px 1px;
+  font-size: 8.5pt; letter-spacing: .02em; line-height: 1.15; padding: 2px 1px;
   text-align: center; vertical-align: bottom; white-space: pre-line;
 }
 #printRoot [data-variant="warehouse"] td.tick { text-align: center; padding: 2px 0; }
