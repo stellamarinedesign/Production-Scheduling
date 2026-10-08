@@ -8,7 +8,7 @@
 <link rel="apple-touch-icon" href="assets/logo.png">
 <title>Production Board — Stella Marine</title>
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="css/style.css?v=2026-10-09.3">
+<link rel="stylesheet" href="css/style.css?v=2026-10-09.4">
 <style id="pageRule"></style>  <!-- the paper's orientation; app.js switches it with the sheet -->
 </head>
 <body>
@@ -191,6 +191,15 @@
           <button class="mini" id="sheetWarehouse" aria-pressed="false" title="The board for the pickers: tick boxes down the left of every row, printed landscape">Warehouse</button>
           <button class="mini" id="sheetInternal" aria-pressed="false">Internal</button>
           <button class="mini" id="sheetTm" aria-pressed="false">T&amp;M</button>
+        </div>
+      </div>
+
+      <div class="ctrl">
+        <label for="paperA4">Paper</label>
+        <div class="ctrl-row" id="paperPick">
+          <button class="mini on" id="paperA4" aria-pressed="true">A4</button>
+          <button class="mini" id="paperA3" aria-pressed="false" title="The same sheet scaled up by root two, as a PDF would be: every line, box and letter 41% larger, nothing moved">A3</button>
+          <span class="val" id="paperNote"></span>
         </div>
       </div>
 
@@ -422,6 +431,6 @@
 
 </div><!-- /#appShell -->
 
-<script type="module" src="js/app.js?v=2026-10-09.3"></script>
+<script type="module" src="js/app.js?v=2026-10-09.4"></script>
 </body>
 </html>

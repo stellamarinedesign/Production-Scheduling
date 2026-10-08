@@ -11,6 +11,38 @@ import { byCategory, toAU, toDateOnly, jobTitle, printJobs } from './transform.j
 const PAGE_H = 1123;
 const CONTENT_H = PAGE_H - Math.round(0.625 * 96) - Math.round(0.49 * 96);   // 1016px
 
+// ---------------------------------------------------------------------------
+// PAPER
+//
+// Every sheet is laid out for A4, and that is what the preview shows. A3 is
+// the same sheet scaled up by root two, as a PDF would be: the @page box is
+// the next size up and the content is zoomed to match, so every rule, font
+// and box is 41% bigger and nothing reflows. The zoom is in the stylesheet
+// (`#printPreview[data-paper="a3"]`, print media only); the page rule that
+// goes with it is written here, because @page cannot be scoped to an element
+// and app.js switches it in with the sheet.
+//
+// The zoom is 1.41 rather than 1.4142 so a sheet measured to the last pixel
+// of A4 has a few pixels in hand on A3: the margins, scaled by root two and
+// rounded down, leave a printable box 1437px tall against 1016 * 1.41 = 1433.
+// ---------------------------------------------------------------------------
+export const PAPER = {
+  a4: { label: 'A4', margin: null },                      // the stylesheet's @page
+  a3: { label: 'A3', margin: '0.88in 0.83in 0.68in' },    // 0.625in 0.59in 0.49in, times root two
+};
+
+/**
+ * The @page rule a sheet needs over the stylesheet's A4 portrait: nothing for
+ * that, the turned page for landscape, the next size up for A3. An unknown
+ * paper is A4.
+ */
+export function pageRule({ paper = 'a4', landscape = false } = {}) {
+  const known = PAPER[paper] ? paper : 'a4';
+  if (known === 'a4' && !landscape) return '';
+  const margin = PAPER[known].margin ? ` margin: ${PAPER[known].margin};` : '';
+  return `@page { size: ${known.toUpperCase()} ${landscape ? 'landscape' : 'portrait'};${margin} }`;
+}
+
 /**
  * Split the narrow categories across two columns so the page is as short as
  * possible.

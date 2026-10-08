@@ -243,6 +243,19 @@ export const HELP = [
         ],
       },
       {
+        q: 'Can it print on A3?',
+        a: [
+          'Any of the sheets. Print tab, Paper, A3: the same sheet scaled up by '
+          + 'root two, as a PDF would be. Every line, box and letter is 41% larger '
+          + 'and nothing moves or reflows, so what fits a page on A4 fits a page on '
+          + 'A3. The preview stays A4-sized; the scaling happens on the way to the '
+          + 'printer. If the printer dialog does not pick the size up, choose A3 '
+          + 'there too.',
+          'The choice is remembered on this device only, since it is really a '
+          + 'property of the printer at hand.',
+        ],
+      },
+      {
         q: 'Why is something on the board but not on the print?',
         a: [
           'Three reasons, all about fitting a page: its category has no column on the '

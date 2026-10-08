@@ -570,6 +570,10 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 
   #printRoot { display: block !important; }
   #printPreview { width: auto; padding: 0; box-shadow: none; margin: 0; }
+  /* A3: the A4 sheet scaled up by root two, nothing reflowed. The @page box to
+     match comes from app.js; the number and its slack are explained at PAPER
+     in print.js. */
+  #printPreview[data-paper="a3"] { zoom: 1.41; }
   #printRoot table, #printRoot tr { page-break-inside: avoid; }
   #printRoot .col { break-inside: avoid; }
   /* A trailing margin on the last block is enough to tip onto a second page. */

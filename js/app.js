@@ -15,7 +15,7 @@ import { davitsByBoat, mergeDavits } from './davits.js';
 import { itemFacts, mergeItemFacts } from './vessel-codes.js';
 import { closeOnBackdrop } from './dialog.js';
 import { Store, packRows, unpackRows, isNewerImport } from './store.js';
-import { renderPrint, renderWarehouse, measure, fitToPage,
+import { renderPrint, renderWarehouse, measure, fitToPage, pageRule, PAPER,
          renderLanePrint, fitLaneToPage } from './print.js';
 import { renderGantt } from './gantt.js';
 import { balanceColumns } from './print.js';
@@ -38,6 +38,12 @@ function loadGanttPrefs() {
 }
 const saveGanttPrefs = (v) => { try { localStorage.setItem(GANTT_KEY, JSON.stringify(v)); } catch {} };
 
+// The paper a sheet prints on is a property of the printer at hand, so it is
+// remembered per device rather than shared with the other managers.
+const PAPER_KEY = 'stella.board.paper';
+const loadPaper = () => { try { return PAPER[localStorage.getItem(PAPER_KEY)] ? localStorage.getItem(PAPER_KEY) : 'a4'; } catch { return 'a4'; } };
+const savePaper = (p) => { try { localStorage.setItem(PAPER_KEY, p); } catch {} };
+
 const PUBLISHED_KEY = 'stella.board.publishedAt';
 const publishedAt = () => { try { return localStorage.getItem(PUBLISHED_KEY) ?? ''; } catch { return ''; } };
 const markPublished = (at) => { try { localStorage.setItem(PUBLISHED_KEY, at ?? ''); } catch {} };
@@ -56,6 +62,7 @@ const state = {
   // Which list the Print tab is previewing. Follows the tab you came from, so
   // the print button prints what you were just looking at.
   printLane: 'production',
+  paper: loadPaper(),               // 'a4' | 'a3', see PAPER in print.js
   board: null,
   fit: null,
 };
@@ -789,6 +796,14 @@ function wireControls() {
   for (const [key, cfg] of Object.entries(SHEET)) {
     $(cfg.btn).addEventListener('click', () => setPrintLane(key));
   }
+  $('paperA4').addEventListener('click', () => setPaper('a4'));
+  $('paperA3').addEventListener('click', () => setPaper('a3'));
+}
+
+function setPaper(paper) {
+  state.paper = PAPER[paper] ? paper : 'a4';
+  savePaper(state.paper);
+  if (state.tab === 'print') renderPrintSheet();
 }
 
 function setAutoFit(on, { save = true, render = true } = {}) {
@@ -855,14 +870,24 @@ function renderPrintSheet() {
     b.classList.toggle('on', key === lane);
     b.setAttribute('aria-pressed', String(key === lane));
   }
-  $('printBtn').textContent = SHEET[lane].label;
+  const a3 = state.paper === 'a3';
+  $('printBtn').textContent = SHEET[lane].label + (a3 ? ' on A3' : '');
+  for (const p of Object.keys(PAPER)) {
+    const b = $(`paper${p.toUpperCase()}`);
+    b.classList.toggle('on', p === state.paper);
+    b.setAttribute('aria-pressed', String(p === state.paper));
+  }
+  $('paperNote').textContent = a3 ? 'the A4 sheet scaled up by root two, like a PDF' : '';
   // The horizon is a property of the board; these lists have no future to
   // narrow, so the control would be answering a question they do not ask.
   const isBoard = lane === 'production' || lane === 'warehouse';
   $('horizon').closest('.ctrl').hidden = !isBoard;
-  // The warehouse copy prints landscape. @page cannot be scoped to an element,
-  // so the orientation is a one-line stylesheet switched with the sheet.
-  $('pageRule').textContent = lane === 'warehouse' ? '@page { size: A4 landscape; }' : '';
+  // The warehouse copy prints landscape, and A3 is the next page box up with
+  // the content zoomed to match (see PAPER in print.js). @page cannot be
+  // scoped to an element, so the rule is a one-line stylesheet switched with
+  // the sheet; the zoom keys off data-paper on the preview.
+  $('pageRule').textContent = pageRule({ paper: state.paper, landscape: lane === 'warehouse' });
+  host.dataset.paper = state.paper;
 
   if (lane === 'production') {
     renderPrint(host, state.board);
