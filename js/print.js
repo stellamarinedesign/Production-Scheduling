@@ -66,36 +66,33 @@ const el = (tag, cls, text) => {
 };
 
 /**
- * The warehouse copy writes its dates short - 31/12/26 - because two columns
- * of tick boxes have taken the width the year used to have. STOCK stays STOCK.
+ * One category's table.
+ *
+ * `ticks` is the warehouse copy's tick columns (WAREHOUSE_TICKS), drawn down
+ * the left of every row; without them this is the regular sheet's table.
+ * `title` overrides the banner, for the continuation of a category the
+ * warehouse copy had to split.
  */
-const shortDate = (display) => String(display ?? '').replace(/^(\d{2}\/\d{2}\/)\d{2}(\d{2})$/, '$1$2');
-
-/** How many tick boxes a warehouse row carries. */
-export const WAREHOUSE_TICKS = 2;
-
-function categoryTable(category, jobs, { full = false, variant = null } = {}) {
-  const warehouse = variant === 'warehouse';
+function categoryTable(category, jobs, { full = false, ticks = [], title = null } = {}) {
   const table = el('table');
   if (full) table.dataset.full = '1';
 
   const colgroup = el('colgroup');
-  const cols = ['c-prod', '', 'c-due'];
-  if (warehouse) for (let i = 0; i < WAREHOUSE_TICKS; i++) cols.push('c-tick');
-  cols.forEach((c) => { const col = el('col', c); colgroup.append(col); });
+  const cols = [...ticks.map(() => 'c-tick'), 'c-prod', '', 'c-due'];
+  cols.forEach((c) => colgroup.append(el('col', c)));
   table.append(colgroup);
 
   const thead = el('thead');
   const banner = el('tr');
-  const bcell = el('th', 'banner', category.toUpperCase());
+  const bcell = el('th', 'banner', (title ?? category).toUpperCase());
   bcell.colSpan = cols.length;
   banner.append(bcell);
   const head = el('tr');
-  head.append(el('th', null, 'Prod Nbr'), el('th', null, 'Vessel'), el('th', 'c-due', 'Due date'));
-  // The tick columns have no heading: what the two ticks mean is the
-  // warehouse's business, and a heading would have to be changed here every
-  // time that changed.
-  if (warehouse) for (let i = 0; i < WAREHOUSE_TICKS; i++) head.append(el('th', 'c-tick', ''));
+  // A tick heading is two short lines, LIFTER over STARTED: side by side it
+  // would take the width the vessel needs. The stylesheet keeps the break.
+  for (const [top, bottom] of ticks) head.append(el('th', 'c-tick', `${top}\n${bottom}`));
+  head.append(el('th', null, ticks.length ? 'Prod #' : 'Prod Nbr'),
+    el('th', null, 'Vessel'), el('th', 'c-due', 'Due date'));
   thead.append(banner, head);
   table.append(thead);
 
@@ -103,23 +100,170 @@ function categoryTable(category, jobs, { full = false, variant = null } = {}) {
   for (const j of jobs) {
     const tr = el('tr');
     if (j.on_hold) tr.className = 'on-hold';
+    for (let i = 0; i < ticks.length; i++) {
+      const cell = el('td', 'tick');
+      cell.append(el('span', 'tickbox'));   // not .box - that is the dialog
+      tr.append(cell);
+    }
     tr.append(el('td', null, j.prod_no));
     tr.append(el('td', 'vessel', j.on_hold ? `${jobTitle(j)}  [ON HOLD]` : jobTitle(j)));
-    const due = el('td', `due${j.is_stock ? ' stock' : ''}`, warehouse ? shortDate(j.due_display) : j.due_display);
-    tr.append(due);
-    if (warehouse) {
-      for (let i = 0; i < WAREHOUSE_TICKS; i++) {
-        const cell = el('td', 'tick');
-        cell.append(el('span', 'tickbox'));   // not .box - that is the dialog
-        tr.append(cell);
-      }
-    }
+    tr.append(el('td', `due${j.is_stock ? ' stock' : ''}`,
+      ticks.length ? shortDate(j.due_display) : j.due_display));
     tbody.append(tr);
   }
   table.append(tbody);
   return table;
 }
 
+
+// ---------------------------------------------------------------------------
+// THE WAREHOUSE COPY
+//
+// The board again, for the people picking it. Tick boxes down the left of
+// every row - one to tick as a pick starts, one as it completes - then the
+// same number, vessel and date, a size smaller with the dates shortened,
+// printed landscape so the boxes have room. A lifter is picked twice over,
+// the lifter itself and its power pack, so the lifter categories carry four.
+//
+// It paginates itself. The regular sheet shrinks its horizon to hold one
+// page; this one is allowed to run on, but a category must not be cut in two
+// by a page break, and a browser cannot be trusted with that inside a
+// two-column grid. So the pages are built here, by measuring: each table goes
+// into the shorter column of the page it fits on, and only a category too
+// tall for a whole page on its own is split, with its banner saying so.
+// ---------------------------------------------------------------------------
+
+/** The tick columns a category carries, each heading as its two lines. */
+export const WAREHOUSE_TICKS = {
+  general: [['Pick', 'started'], ['Pick', 'completed']],
+  lifters: [['Lifter', 'started'], ['Lifter', 'completed'], ['PP', 'started'], ['PP', 'completed']],
+};
+
+/** Lifters are the categories named so: cylinder and rotary. */
+export const ticksFor = (category) =>
+  (/lifter/i.test(category) ? WAREHOUSE_TICKS.lifters : WAREHOUSE_TICKS.general);
+
+/** Short dates, 31/12/26, where the boxes have taken the year's width. STOCK stays STOCK. */
+const shortDate = (display) => String(display ?? '').replace(/^(\d{2}\/\d{2}\/)\d{2}(\d{2})$/, '$1$2');
+
+/**
+ * Draw the warehouse copy into the host as landscape pages.
+ *
+ * The page box is the stylesheet's (`#printRoot .page`): landscape A4 with the
+ * @page margins as padding, and a sheet inside it that clips. Content past
+ * the sheet's foot is what would be a second piece of paper, so that is the
+ * test every placement makes.
+ *
+ * @returns {{pages:number, measured:boolean, split:string[]}}  how many pages;
+ *   whether the host could be measured (off-canvas it cannot, and then the
+ *   whole board lands on one page as a stand-in until it is drawn again); and
+ *   the categories that had to be split because one alone outran a page.
+ */
+export function renderWarehouse(host, board) {
+  host.textContent = '';
+  host.dataset.variant = 'warehouse';
+
+  const asOf = toAU(toDateOnly(board.meta.as_of));
+  const all = printJobs(board);
+  const groups = byCategory(all);
+  const measurable = host.getClientRects().length > 0;
+  const pages = [];
+
+  const newPage = () => {
+    const page = el('section', 'page');
+    const sheet = el('div', 'sheet');
+    const head = el('div', 'doc-head');
+    head.append(el('div', 'doc-title', 'Current production orders'));
+    head.append(el('div', 'doc-tag', 'WAREHOUSE'));
+    head.append(el('div', 'doc-range', `as of:  ${asOf}`));
+    const grid = el('div', 'grid');
+    const cols = [el('div', 'col'), el('div', 'col')];
+    grid.append(...cols);
+    sheet.append(head, grid);
+    page.append(sheet);
+    host.append(page);
+    const p = { page, sheet, head, cols, fullWrap: null };
+    pages.push(p);
+    return p;
+  };
+  const spills = measurable ? (p) => p.sheet.scrollHeight > p.sheet.clientHeight : () => false;
+  const empty = (p) => !p.page.querySelector('table');
+  // The shorter column, which balances the two as the regular sheet does and
+  // leaves the most room beneath for Davits. Ties go to the emptier, then the
+  // left, so an unmeasurable draw still alternates.
+  const shorter = (p) => {
+    const [a, b] = p.cols;
+    const ha = a.offsetHeight, hb = b.offsetHeight;
+    return ha < hb || (ha === hb && a.children.length <= b.children.length) ? a : b;
+  };
+  const fullWrap = (p) => {
+    if (!p.fullWrap) { p.fullWrap = el('div', 'full'); p.sheet.append(p.fullWrap); }
+    return p.fullWrap;
+  };
+  // Put a table on a page if it fits there, and say whether it did. A narrow
+  // table tries the shorter column, then the other; a full-width one the strip
+  // under the grid.
+  const tryPage = (p, table, full) => {
+    const slots = full ? [fullWrap(p)] : [shorter(p)];
+    if (!full) slots.push(p.cols.find((c) => c !== slots[0]));
+    for (const slot of slots) {
+      slot.append(table);
+      if (!spills(p)) return true;
+      table.remove();
+    }
+    if (full && !p.fullWrap.children.length) { p.fullWrap.remove(); p.fullWrap = null; }
+    return false;
+  };
+  // The most rows of a category that fit on this (empty) page, by halving.
+  // At least one, so a split always advances.
+  const rowsThatFit = (p, category, jobs, opts) => {
+    let lo = 1, hi = jobs.length - 1;     // all of them did not fit
+    while (lo < hi) {
+      const mid = Math.ceil((lo + hi) / 2);
+      const t = categoryTable(category, jobs.slice(0, mid), opts);
+      if (tryPage(p, t, opts.full)) { t.remove(); lo = mid; } else hi = mid - 1;
+    }
+    return lo;
+  };
+
+  let p = newPage();
+  const split = [];
+  const items = [
+    ...PRINT_LAYOUT.narrow.map((c) => [c, false]),
+    ...PRINT_LAYOUT.full.map((c) => [c, true]),
+  ];
+  for (const [category, full] of items) {
+    const ticks = ticksFor(category);
+    let rest = groups.get(category) ?? [];
+    let title = category;
+    while (rest.length) {
+      const opts = { full, ticks, title };
+      const table = categoryTable(category, rest, opts);
+      if (tryPage(p, table, full)) break;
+      if (!empty(p)) { p = newPage(); if (tryPage(p, table, full)) break; }
+      // Alone on an empty page and still too tall: as many rows as fit here,
+      // and the rest carries on under a banner that says so.
+      const n = rowsThatFit(p, category, rest, opts);
+      tryPage(p, categoryTable(category, rest.slice(0, n), opts), full);
+      if (!split.includes(category)) split.push(category);
+      rest = rest.slice(n);
+      title = `${category} (continued)`;
+    }
+  }
+
+  const held = all.filter((j) => j.on_hold).length;
+  if (held) {
+    const note = el('div', 'hold-note', `${held} job(s) marked ON HOLD \u2014 confirm before starting.`);
+    p.sheet.append(note);
+    if (spills(p)) { note.remove(); p = newPage(); p.sheet.append(note); }
+  }
+
+  if (pages.length > 1) {
+    pages.forEach((pg, i) => pg.head.querySelector('.doc-range')
+      .append(el('span', 'doc-page', `  \u00b7  page ${i + 1} of ${pages.length}`)));
+  }
+  return { pages: pages.length, measured: measurable, split };
+}
 
 // ---------------------------------------------------------------------------
 // THE FOLLOW-UP SHEETS
@@ -276,26 +420,14 @@ export function fitLaneToPage(host, allJobs, { title, asOf, itemLabel, order = n
  * @param {HTMLElement} host   the element to fill (cleared first)
  * @param {Object} board       result of buildBoard()
  */
-/**
- * Draw the board sheet.
- *
- * `variant: 'warehouse'` is the same sheet with two columns of tick boxes to
- * the right of the date on every row, for checking items off as they are
- * picked. It is written a size smaller, with short dates, so the boxes fit
- * without the vessel column wrapping; the stylesheet keys off
- * `data-variant` on the host. The board the sheet is drawn from is the same
- * one - the warehouse copy never changes what the board shows or how the
- * horizon is fitted.
- */
-export function renderPrint(host, board, { variant = null } = {}) {
+export function renderPrint(host, board) {
   host.textContent = '';
-  host.dataset.variant = variant ?? '';
+  host.dataset.variant = '';           // the regular sheet, whatever was drawn before
 
   const asOf = toAU(toDateOnly(board.meta.as_of));
 
   const head = el('div', 'doc-head');
   head.append(el('div', 'doc-title', 'Current production orders'));
-  if (variant === 'warehouse') head.append(el('div', 'doc-tag', 'WAREHOUSE'));
   head.append(el('div', 'doc-range', `as of:  ${asOf}`));
   host.append(head);
 
@@ -314,7 +446,7 @@ export function renderPrint(host, board, { variant = null } = {}) {
     const col = el('div', 'col');
     for (const cat of side) {
       const jobs = groups.get(cat) ?? [];
-      if (jobs.length) col.append(categoryTable(cat, jobs, { variant }));
+      if (jobs.length) col.append(categoryTable(cat, jobs));
     }
     grid.append(col);
   }
@@ -324,7 +456,7 @@ export function renderPrint(host, board, { variant = null } = {}) {
     const jobs = groups.get(cat) ?? [];
     if (jobs.length) {
       const wrap = el('div', 'full');
-      wrap.append(categoryTable(cat, jobs, { full: true, variant }));
+      wrap.append(categoryTable(cat, jobs, { full: true }));
       host.append(wrap);
     }
   }

@@ -15,7 +15,7 @@ import { davitsByBoat, mergeDavits } from './davits.js';
 import { itemFacts, mergeItemFacts } from './vessel-codes.js';
 import { closeOnBackdrop } from './dialog.js';
 import { Store, packRows, unpackRows, isNewerImport } from './store.js';
-import { renderPrint, measure, fitToPage,
+import { renderPrint, renderWarehouse, measure, fitToPage,
          renderLanePrint, fitLaneToPage } from './print.js';
 import { renderGantt } from './gantt.js';
 import { balanceColumns } from './print.js';
@@ -860,14 +860,21 @@ function renderPrintSheet() {
   // narrow, so the control would be answering a question they do not ask.
   const isBoard = lane === 'production' || lane === 'warehouse';
   $('horizon').closest('.ctrl').hidden = !isBoard;
+  // The warehouse copy prints landscape. @page cannot be scoped to an element,
+  // so the orientation is a one-line stylesheet switched with the sheet.
+  $('pageRule').textContent = lane === 'warehouse' ? '@page { size: A4 landscape; }' : '';
 
-  if (isBoard) {
-    // The warehouse copy is the fitted board drawn with tick boxes. It is
-    // never refitted on its own - that would move the horizon under the board
-    // on screen - so it is measured, and the status line says if it spilled.
-    renderPrint(host, state.board, { variant: lane === 'warehouse' ? 'warehouse' : null });
+  if (lane === 'production') {
+    renderPrint(host, state.board);
     state.laneFit = null;
-    state.variantFit = lane === 'warehouse' ? measure(host) : null;
+    state.variantFit = null;
+  } else if (lane === 'warehouse') {
+    // The fitted board again, with tick boxes, on as many landscape pages as
+    // it takes. It is never refitted on its own - that would move the horizon
+    // under the board on screen - so it pages instead, and the status line
+    // says how many.
+    state.variantFit = renderWarehouse(host, state.board);
+    state.laneFit = null;
   } else {
     state.variantFit = null;
     const jobs = (state.board[lane] ?? []).filter((j) => !j.completed && !j.hidden);
@@ -1664,12 +1671,17 @@ function renderFitStatus() {
   box.append(rows);
   box.append(el('span', null, `·`));
 
-  // The warehouse copy: the same board, measured as drawn with its boxes.
+  // The warehouse copy: the same board, paged rather than fitted.
   if (state.variantFit) {
     const v = state.variantFit;
-    box.append(el('span', null, !v.measured ? 'warehouse copy could not be measured'
-      : v.fits ? 'the warehouse copy fits one page'
-        : `the warehouse copy runs to ${v.pages} pages — lower the horizon to hold one`));
+    if (!v.measured) box.append(el('span', null, 'the warehouse copy could not be measured'));
+    else if (v.pages === 1) box.append(el('span', null, 'the warehouse copy fits one landscape page'));
+    else {
+      box.append(el('span', null, 'the warehouse copy runs to '), el('b', null, `${v.pages} landscape pages`));
+      box.append(el('span', null, v.split.length
+        ? `, and ${v.split.join(', ')} had to be split \u2014 too tall for a page on its own`
+        : ', no category split across two'));
+    }
     return;
   }
 

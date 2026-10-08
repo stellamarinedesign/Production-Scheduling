@@ -475,32 +475,45 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
   margin-top: 7px; font-size: 7.5pt; font-style: italic; color: #B00020;
 }
 
-/* THE WAREHOUSE COPY. The same sheet with two columns of tick boxes to the
-   right of the date, for checking items off as they are picked. Everything
-   here is scoped to the variant attribute the renderer sets, so the regular
-   sheet is untouched: a size smaller, short dates, and the vessel column
-   giving up what the boxes need. Percentages per table add to 100. */
+/* THE WAREHOUSE COPY. The board again for the people picking it: tick boxes
+   down the left of every row, landscape, as many pages as it takes with no
+   category cut in two. print.js builds the pages itself, measuring against
+   the page box below, and marks the preview data-variant; everything here is
+   scoped to that, so the regular sheet is untouched. A size smaller, with
+   short dates, because the boxes take the width. */
+#printPreview[data-variant="warehouse"] {
+  width: auto; min-height: 0; padding: 0; background: transparent; box-shadow: none;
+  overflow-x: auto;             /* a landscape page is wider than a narrow screen */
+}
+#printRoot .page {
+  width: 1123px; height: 794px; box-sizing: border-box;   /* landscape A4 at 96dpi */
+  padding: 60px 57px 51px;      /* the @page margins, with 4px of safety at the foot */
+  margin: 0 auto; background: #fff; box-shadow: 0 6px 30px rgba(0,0,0,.55);
+}
+#printRoot .page + .page { margin-top: 28px; }
+#printRoot .page .sheet { height: 100%; overflow: hidden; }   /* past this foot is a second sheet */
+#printRoot .doc-tag {
+  font-size: 9pt; font-weight: 700; letter-spacing: .14em; color: #AF1F24;
+  border: 1.5px solid #AF1F24; border-radius: 3px; padding: 1px 7px; align-self: center;
+}
 #printRoot [data-variant="warehouse"] table { font-size: 10pt; }
-#printRoot [data-variant="warehouse"] .full table { font-size: 9pt; }
 #printRoot [data-variant="warehouse"] .banner { font-size: 11pt; padding: 2px 6px; }
-#printRoot [data-variant="warehouse"] .full .banner { font-size: 10pt; }
 #printRoot [data-variant="warehouse"] th,
 #printRoot [data-variant="warehouse"] td { padding: 2px 4px; }
-#printRoot [data-variant="warehouse"] thead th { padding: 2px 3px; }   /* PROD NBR and DUE DATE on one line */
-#printRoot [data-variant="warehouse"] .c-prod { width: 21%; }
-#printRoot [data-variant="warehouse"] .c-due { width: 19.5%; }
-#printRoot [data-variant="warehouse"] .c-tick { width: 8.25%; }
-#printRoot [data-variant="warehouse"] .full .c-prod { width: 11%; }
-#printRoot [data-variant="warehouse"] .full .c-due { width: 12%; }
-#printRoot [data-variant="warehouse"] .full .c-tick { width: 6%; }
+/* Fixed widths, so the vessel takes whatever a table's ticks leave it: with
+   four ticks in a half-width column that is about what the regular sheet
+   gives it, with two it is twice that. */
+#printRoot [data-variant="warehouse"] .c-tick { width: 58px; }
+#printRoot [data-variant="warehouse"] .c-prod { width: 56px; }
+#printRoot [data-variant="warehouse"] .c-due { width: 64px; }
+#printRoot [data-variant="warehouse"] thead th.c-tick {
+  font-size: 7.5pt; letter-spacing: .02em; line-height: 1.15; padding: 2px 1px;
+  text-align: center; vertical-align: bottom; white-space: pre-line;
+}
 #printRoot [data-variant="warehouse"] td.tick { text-align: center; padding: 2px 0; }
 #printRoot [data-variant="warehouse"] .tickbox {
   display: inline-block; width: 11px; height: 11px; vertical-align: middle;
   border: 1.2px solid #333; border-radius: 2px; background: #fff;
-}
-#printRoot .doc-tag {
-  font-size: 9pt; font-weight: 700; letter-spacing: .14em; color: #AF1F24;
-  border: 1.5px solid #AF1F24; border-radius: 3px; padding: 1px 7px; align-self: center;
 }
 
 @page { size: A4 portrait; margin: 0.625in 0.59in 0.49in; }
@@ -559,7 +572,16 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
   #printRoot .col { break-inside: avoid; }
   /* A trailing margin on the last block is enough to tip onto a second page. */
   #printRoot > :last-child { margin-bottom: 0 !important; }
-  #printRoot { overflow: hidden; }
+  /* Clipped at the preview, not the root: the warehouse copy's pages live
+     under the same root and must be free to run on to a second sheet. */
+  #printPreview:not([data-variant="warehouse"]) { overflow: hidden; }
+
+  /* The warehouse copy's pages: one sheet each, the paper's own margins. The
+     orientation comes from the @page rule app.js switches in with the sheet. */
+  #printRoot .page { width: auto; height: auto; padding: 0; margin: 0; box-shadow: none; break-after: page; }
+  #printRoot .page:last-child { break-after: auto; }
+  #printRoot .page + .page { margin-top: 0; }   /* outranks the screen gap between pages */
+  #printRoot .page .sheet { height: auto; overflow: visible; }
 }
 
 /* The follow-up sheets: one full-width table, so the columns are set here

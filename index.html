@@ -8,7 +8,8 @@
 <link rel="apple-touch-icon" href="assets/logo.png">
 <title>Production Board — Stella Marine</title>
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="css/style.css?v=2026-10-08.1">
+<link rel="stylesheet" href="css/style.css?v=2026-10-09.1">
+<style id="pageRule"></style>  <!-- the paper's orientation; app.js switches it with the sheet -->
 </head>
 <body>
 
@@ -187,7 +188,7 @@
         <label for="sheetBoard">Which sheet</label>
         <div class="ctrl-row" id="sheetPick">
           <button class="mini on" id="sheetBoard" aria-pressed="true">Board</button>
-          <button class="mini" id="sheetWarehouse" aria-pressed="false" title="The board with two tick boxes on every row, for checking items off as they are picked">Warehouse</button>
+          <button class="mini" id="sheetWarehouse" aria-pressed="false" title="The board for the pickers: tick boxes down the left of every row, printed landscape">Warehouse</button>
           <button class="mini" id="sheetInternal" aria-pressed="false">Internal</button>
           <button class="mini" id="sheetTm" aria-pressed="false">T&amp;M</button>
         </div>
@@ -421,6 +422,6 @@
 
 </div><!-- /#appShell -->
 
-<script type="module" src="js/app.js?v=2026-10-08.1"></script>
+<script type="module" src="js/app.js?v=2026-10-09.1"></script>
 </body>
 </html>

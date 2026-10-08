@@ -228,15 +228,18 @@ export const HELP = [
       {
         q: 'What is the warehouse copy?',
         a: [
-          'The same printed board with two tick boxes to the right of every date, '
-          + 'for checking items off as they are picked. Print tab, Which sheet, '
-          + 'Warehouse. It is written a size smaller with short dates so the boxes '
-          + 'fit, and carries a WAREHOUSE tag in the header so the two sheets are '
-          + 'never confused on the wall.',
+          'The printed board for the people picking it. Print tab, Which sheet, '
+          + 'Warehouse. Every row starts with tick boxes: Pick started and Pick '
+          + 'completed, or for the lifter categories four of them, Lifter and PP '
+          + '(power pack) each started and completed. Then the production number, '
+          + 'vessel and a short date. It prints landscape, a size smaller, and '
+          + 'carries a WAREHOUSE tag so the two sheets are never confused on the wall.',
           'It is the board as fitted - same jobs, same horizon - and printing it '
-          + 'changes nothing about the regular sheet or the board on screen. If it '
-          + 'runs past one page the status line says so; lower the horizon to hold '
-          + 'one.',
+          + 'changes nothing about the regular sheet or the board on screen. Where '
+          + 'the regular sheet shrinks the horizon to hold one page, this one runs '
+          + 'to as many landscape pages as it takes, keeping each category whole on '
+          + 'a page. Only a category too tall for a page on its own is split, under '
+          + 'a banner that says continued. The status line says how many pages.',
         ],
       },
       {
