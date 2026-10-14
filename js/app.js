@@ -40,6 +40,12 @@ const saveGanttPrefs = (v) => { try { localStorage.setItem(GANTT_KEY, JSON.strin
 
 // The paper a sheet prints on is a property of the printer at hand, so it is
 // remembered per device rather than shared with the other managers.
+// Whether part orders - numbered parts on customer orders - are on the board.
+// A view of the moment, so per device, like the paper; see rules.js isPartOrder.
+const PART_ORDERS_KEY = 'stella.board.partOrders';
+const loadShowPartOrders = () => { try { return localStorage.getItem(PART_ORDERS_KEY) !== 'hidden'; } catch { return true; } };
+const saveShowPartOrders = (on) => { try { localStorage.setItem(PART_ORDERS_KEY, on ? 'shown' : 'hidden'); } catch {} };
+
 const PAPER_KEY = 'stella.board.paper';
 const loadPaper = () => { try { return PAPER[localStorage.getItem(PAPER_KEY)] ? localStorage.getItem(PAPER_KEY) : 'a3'; } catch { return 'a3'; } };
 const savePaper = (p) => { try { localStorage.setItem(PAPER_KEY, p); } catch {} };
@@ -63,6 +69,7 @@ const state = {
   // the print button prints what you were just looking at.
   printLane: 'production',
   paper: loadPaper(),               // 'a4' | 'a3', see PAPER in print.js
+  showPartOrders: loadShowPartOrders(),
   board: null,
   fit: null,
 };
@@ -728,6 +735,13 @@ function wireCollapseAll() {
     saveCollapsed(collapsed);
     renderBoard();
   });
+  // Part orders in or out. The board is rebuilt rather than filtered, so the
+  // Gantt, the sheet and its auto-fit all follow.
+  $('partOrders').addEventListener('click', () => {
+    state.showPartOrders = !state.showPartOrders;
+    saveShowPartOrders(state.showPartOrders);
+    rebuild();
+  });
 }
 
 function wireRowTaps() {
@@ -952,6 +966,7 @@ function rebuild() {
     overrides: state.overrides,
     itemOverrides: state.itemOverrides,
     maxStock: state.settings.maxStock,
+    hidePartOrders: !state.showPartOrders,
   };
   const build = (weeks) => buildBoard(state.rows, { ...opts, horizonWeeks: weeks });
 
@@ -1275,6 +1290,15 @@ function renderBoard() {
     + (pastDue ? ` · ${pastDue} past due` : '');
   $('completePastDue').disabled = !pastDue;
   $('collapseAll').textContent = collapsed.size ? 'Expand all' : 'Collapse all';
+  // The toggle says what it holds: how many part orders are on the board, or
+  // how many it is keeping off it.
+  const po = $('partOrders');
+  const n = state.board.meta.part_orders ?? 0;
+  const on = state.showPartOrders;
+  po.textContent = !n ? 'Part orders: none' : on ? `Part orders: ${n} shown` : `Part orders: ${n} hidden`;
+  po.classList.toggle('on', on);
+  po.setAttribute('aria-pressed', String(on));
+  po.disabled = !n && on;
 }
 
 function categoryBlock(cat, jobs, { full = false } = {}) {
@@ -1690,9 +1714,11 @@ function renderFitStatus() {
   const printed = state.board.meta.print_count;
   const total = state.board.meta.job_count;
   const rows = el('b', null, `${printed} of ${total} jobs`);
-  rows.title = total === printed ? ''
+  const heldBack = state.board.meta.part_orders_hidden ?? 0;
+  rows.title = (total === printed ? ''
     : `${total - printed} on the board but off the sheet — watermakers, `
-      + 'work past the horizon, or stock beyond the cap';
+      + 'work past the horizon, or stock beyond the cap')
+    + (heldBack ? `${total === printed ? '' : '. '}${heldBack} part order${heldBack === 1 ? '' : 's'} held back by the Part orders toggle` : '');
   box.append(rows);
   box.append(el('span', null, `·`));
 

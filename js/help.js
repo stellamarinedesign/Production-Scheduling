@@ -254,6 +254,21 @@ export const HELP = [
         ],
       },
       {
+        q: 'What does the Part orders toggle do?',
+        a: [
+          'Current orders, next to Collapse all. A part order is a production order '
+          + 'for a numbered part rather than a unit - a gland, a bung, a rope kit, a '
+          + 'head rest - raised against a customer order, so it sits on the board in '
+          + 'its family\'s column. The toggle takes them off the board, the Gantt and '
+          + 'both printed sheets, and puts them back. Units are never touched: a '
+          + 'part is known by the shape of its code, a family prefix and four digits, '
+          + 'which no lifter, davit or launcher code has.',
+          'It is a view of the moment, remembered on this device only, so a sheet '
+          + 'can be printed with them and another without. The button says how many '
+          + 'it is showing or holding back.',
+        ],
+      },
+      {
         q: 'What is the warehouse copy?',
         a: [
           'The printed board for the people picking it. Print tab, Which sheet, '

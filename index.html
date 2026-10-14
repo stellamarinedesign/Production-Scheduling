@@ -8,7 +8,7 @@
 <link rel="apple-touch-icon" href="assets/logo.png">
 <title>Production Board — Stella Marine</title>
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="css/style.css?v=2026-10-14.1">
+<link rel="stylesheet" href="css/style.css?v=2026-10-14.2">
 <style id="pageRule"></style>  <!-- the paper's orientation; app.js switches it with the sheet -->
 </head>
 <body>
@@ -116,6 +116,7 @@
       <div class="view-bar">
         <button class="mini manager-only" id="completePastDue">Complete past due…</button>
         <button class="mini" id="collapseAll">Collapse all</button>
+        <button class="mini on" id="partOrders" aria-pressed="true" title="Orders for numbered parts - glands, rope kits, a head rest - on the board, the Gantt and the sheet, or held back. Units are never touched.">Part orders</button>
         <span class="spacer"></span>
         <span class="hint" id="boardCount"></span>
         <button class="mini quiet manager-only" id="historyEdit" data-lane="production">History</button>
@@ -431,6 +432,6 @@
 
 </div><!-- /#appShell -->
 
-<script type="module" src="js/app.js?v=2026-10-14.1"></script>
+<script type="module" src="js/app.js?v=2026-10-14.2"></script>
 </body>
 </html>

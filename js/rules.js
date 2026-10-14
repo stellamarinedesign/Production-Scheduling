@@ -50,6 +50,22 @@ export const isWaterUnit = (inventoryId) => {
   return WATERMAKER_UNIT_RE.test(inv) || inv.startsWith(SOFTENER_PREFIX);
 };
 
+// A PART ORDER: a production order for a numbered part rather than a unit.
+//
+// The ERP's part codes are a family prefix and exactly four digits - a gland,
+// a bung, a rope kit, a head rest, a winch cover - and nothing else has that
+// shape. A unit's code carries letters after the prefix (a model, a boat, a
+// voltage), a softener runs to five digits, and a watermaker's built
+// sub-assembly takes a suffix letter. Checked across three exports: every one
+// of the ninety-odd codes of this shape was a part.
+//
+// A part order on a customer order lands on the board in its family's column,
+// which the manager wants. It is also the thing the Part orders toggle holds
+// back when the sheet should show units only - so it is a flag on the job,
+// never an exclusion.
+export const PART_ORDER_RE = /^S[A-Z]{1,3}\d{4}$/;
+export const isPartOrder = (inventoryId) => PART_ORDER_RE.test(String(inventoryId ?? '').trim().toUpperCase());
+
 export const CATEGORY_RULES = [
   // prefix,             category,                     excludeReason
   ['SLRIVCOMMISSION',    null,                         'on-site commissioning, not workshop fab'],

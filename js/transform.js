@@ -13,7 +13,7 @@ import {
   LANE, laneFor, tmCategory, internalCategory, WATERMAKER_CATEGORIES,
   TM_CATEGORY_ORDER, INTERNAL_CATEGORY_ORDER, PRINT_CATEGORIES,
   VESSEL_IN_DESC_RE, CUSTOMER_SUFFIX_RE, CUSTOM_TEXT_RE, LABEL_OVERRIDES, COMPONENT_TYPE,
-  EXCLUSION_ORDER, classify,
+  EXCLUSION_ORDER, classify, isPartOrder,
 } from './rules.js';
 import { resolveDisplays, labelFor, detectNewCodes, applyTemplate } from './vessel-codes.js';
 
@@ -661,6 +661,7 @@ export function buildBoard(rows, opts = {}) {
     codeMap = {}, horizonWeeks = 12, asOf = today(),
     overrides = {}, itemOverrides = {}, maxStock = null,
     includeCompleted = false,
+    hidePartOrders = false,
   } = opts;
 
   const resolved = resolveDisplays(codeMap);
@@ -672,6 +673,10 @@ export function buildBoard(rows, opts = {}) {
   const internalJobs = [];
   const excluded = [];
   const completed = [];
+  // Part orders on the board, and the ones the toggle is holding back. Counted
+  // either way, so the toggle can say how many it holds.
+  let partOrders = 0;
+  const partOrdersHidden = [];
 
   // Codes this export carries that the map has never seen. Detected across ALL
   // rows, not just the ones on the board: a code first appearing outside the
@@ -785,6 +790,7 @@ export function buildBoard(rows, opts = {}) {
         && isCustomBuild({ productionDescription: r['Production Description'], descField: r['Description'] }),
       type,
       is_component: type === COMPONENT_TYPE,
+      part_order: isPartOrder(inv),           // a numbered part, not a unit - see rules.js
       qty: Number(r['Qty. to Produce']) || 1,
       // Background fields — captured, not displayed on the printed board:
       item_description: text(r['Item Description']),
@@ -835,6 +841,12 @@ export function buildBoard(rows, opts = {}) {
     // by the horizon, and print as STOCK.
     job.beyond_horizon = cutoffOrd !== null && ord(endDate) > cutoffOrd
       && !isStock && !job.completed;
+
+    // The Part orders toggle: a numbered part on a customer order stays off
+    // the board, the Gantt and the sheet while it is off. Not an exclusion -
+    // the job is real and the manager chose to look past it for now.
+    if (job.part_order) partOrders++;
+    if (job.part_order && hidePartOrders) { partOrdersHidden.push(job); continue; }
 
     jobs.push(job);
   }
@@ -951,6 +963,8 @@ export function buildBoard(rows, opts = {}) {
       tm_count: tmVisible.length,
       internal_count: internalVisible.length,
       print_count: onPaper.length,
+      part_orders: partOrders,
+      part_orders_hidden: partOrdersHidden.length,
     },
     resolved,
   };
