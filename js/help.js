@@ -76,6 +76,34 @@ export const HELP = [
         ],
       },
       {
+        q: 'What is the Materials tab?',
+        a: [
+          'The raw stock - bar, plate, tube, sheet - laid out the way the material '
+          + 'ordering app lays it out: a pill for each material, then one for each '
+          + 'form within it, most used first, and the list in that order with sizes '
+          + 'ascending. The search box works the same way as Search, with the '
+          + 'material and form as words too: "aluminium plate 8" finds the 8mm '
+          + 'plate. Every row is a part from the list, so Copy and Correct are the '
+          + 'same here as on Search, and a correction made on either tab shows on both.',
+          'Which parts are materials, and of what kind, comes from the material '
+          + 'ordering app\'s sheet, loaded by a manager on the Import tab. A code the '
+          + 'sheet has and the last export does not is still listed, marked as '
+          + 'missing, with the sheet\'s description standing in.',
+        ],
+      },
+      {
+        q: 'How do I load the materials sheet?',
+        a: [
+          'Import tab, the second drop zone: materials.csv from the material '
+          + 'ordering app, or that app\'s catalogue export. Part Code, Category, '
+          + 'Subcategory and Quantity Type are read; retired rows are skipped. The '
+          + 'review says how many materials in how many categories and which codes '
+          + 'the part list lacks, and nothing changes until it is applied. Loading a '
+          + 'sheet replaces the one before. Until the two apps share one manifest, '
+          + 'load it again when the material app\'s sheet changes.',
+        ],
+      },
+      {
         q: 'Can I have it as a spreadsheet?',
         a: [
           'Download Excel, above the results, gives the whole list as the old '
@@ -243,16 +271,19 @@ export const HELP = [
         ],
       },
       {
-        q: 'Can it print on A3?',
+        q: 'What paper does it print on?',
         a: [
-          'Any of the sheets. Print tab, Paper, A3: the same sheet scaled up by '
-          + 'root two, as a PDF would be. Every line, box and letter is 41% larger '
-          + 'and nothing moves or reflows, so what fits a page on A4 fits a page on '
-          + 'A3. The preview stays A4-sized; the scaling happens on the way to the '
-          + 'printer. If the printer dialog does not pick the size up, choose A3 '
-          + 'there too.',
-          'The choice is remembered on this device only, since it is really a '
-          + 'property of the printer at hand.',
+          'Any. The sheets are drawn on an A3 page box and the printer scales them '
+          + 'down to whatever paper it holds, the way a PDF prints: pick the paper '
+          + 'in the print dialog and leave its scale alone. On A3 the sheet is 1:1; '
+          + 'on A4 it comes out exactly as the preview, because A3 is A4 scaled by '
+          + 'root two. The preview on screen stays A4-proportioned since the layout '
+          + 'is the same at every size.',
+          'For a sheet that any viewer can fit to any paper, print with the '
+          + 'destination set to Save as PDF: that is the same drawing as a PDF, '
+          + 'text and lines, not a picture. Print tab, Paper, A4 is the fallback for '
+          + 'a printer that will not scale: an A4 page box, exactly the preview, '
+          + 'remembered on this device.',
         ],
       },
       {

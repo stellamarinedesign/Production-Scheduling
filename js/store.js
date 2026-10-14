@@ -396,6 +396,24 @@ export const Store = {
     await setDoc(doc(this._db, 'parts', 'current'), record);
   },
 
+  // The materials manifest: which parts are materials, and of what kind.
+  // Loaded from the material ordering app's sheet; one document, like the
+  // list, under the same rule (everyone reads, the manager writes).
+  async loadMaterials() {
+    if (this.mode === 'local') return lsGet('materials', null);
+    try {
+      const { doc, getDoc } = this._fs;
+      const snap = await getDoc(doc(this._db, 'parts', 'materials'));
+      return snap.exists() ? snap.data() : null;
+    } catch (e) { console.warn('[materials]', e.message); return null; }
+  },
+
+  async saveMaterials(record) {
+    if (this.mode === 'local') { lsSet('materials', record); return; }
+    const { doc, setDoc } = this._fs;
+    await setDoc(doc(this._db, 'parts', 'materials'), record);
+  },
+
   async loadPartOverrides() {
     if (this.mode === 'local') return lsGet('partOverrides', {});
     const { collection, getDocs } = this._fs;

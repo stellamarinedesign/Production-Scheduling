@@ -476,6 +476,177 @@ export function browse(index, { family = null, bin = 'all', binFirst = false, by
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// MATERIALS
+//
+// The raw stock - bar, plate, tube, sheet - is in the part list like
+// everything else, filed under whichever family first ordered it, which is
+// no way to find a length of 50 x 50 box. The material ordering app keeps a
+// sheet of what is a material and what kind: part code, category (the
+// material), subcategory (the form) and quantity type. Loaded here as a
+// manifest, that sheet is what makes a part a material on this page; the
+// description, bin and corrections are the part list's own. Until the two
+// apps share one manifest, a manager loads the sheet again when it changes.
+// ---------------------------------------------------------------------------
+
+export const MATERIAL_COLUMNS = ['Part Code', 'Description', 'Category', 'Subcategory', 'Quantity Type'];
+
+/** One CSV line into cells: quotes, doubled quotes, commas inside quotes. */
+export function csvCells(line) {
+  const out = [];
+  let cur = '';
+  let q = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (q) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') { cur += '"'; i++; } else q = false;
+      } else cur += ch;
+    } else if (ch === '"') q = true;
+    else if (ch === ',') { out.push(cur); cur = ''; }
+    else cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+
+/**
+ * Read the materials sheet.
+ *
+ * Columns are found by heading, so the material app's own export reads too
+ * (it adds Id, List Description and Retired); a row marked retired is left
+ * out, as is one with no code. A code listed twice keeps its first row and is
+ * reported. The description is kept only as a stand-in for a code the part
+ * list does not have.
+ *
+ * @returns {{items: Array<{code, desc, category, subcategory, qtyType}>,
+ *            errors: string[], warnings: string[], skipped: number}}
+ */
+export function parseMaterialsCsv(text) {
+  const lines = String(text ?? '').replace(/^\uFEFF/, '').split(/\r?\n/);
+  const headAt = lines.findIndex((l) => /part code/i.test(l) && /categor/i.test(l));
+  if (headAt < 0) {
+    return { items: [], skipped: 0, warnings: [],
+      errors: ['No heading row with "Part Code" and "Category" - is this the materials sheet?'] };
+  }
+  const heads = csvCells(lines[headAt]).map((h) => clean(h).toLowerCase());
+  const col = (...names) => heads.findIndex((h) => names.includes(h));
+  const at = {
+    code: col('part code', 'code', 'inventory id'),
+    desc: col('description', 'list description'),
+    category: col('category', 'material'),
+    subcategory: col('subcategory', 'sub category', 'type', 'form'),
+    qtyType: col('quantity type', 'qty type', 'unit'),
+    retired: col('retired'),
+  };
+  const errors = [];
+  for (const [k, label] of [['code', 'Part Code'], ['category', 'Category'], ['subcategory', 'Subcategory']]) {
+    if (at[k] < 0) errors.push(`No "${label}" column.`);
+  }
+  if (errors.length) return { items: [], skipped: 0, warnings: [], errors };
+
+  const items = [];
+  const seen = new Set();
+  const dupes = [];
+  let skipped = 0;
+  for (const line of lines.slice(headAt + 1)) {
+    if (!line.trim()) continue;
+    const c = csvCells(line);
+    const cell = (i) => (i >= 0 ? clean(c[i]) : '');
+    const code = cell(at.code).toUpperCase();
+    if (!code) { skipped++; continue; }
+    if (at.retired >= 0 && /^(yes|y|true|1|retired)$/i.test(cell(at.retired))) { skipped++; continue; }
+    if (seen.has(code)) { dupes.push(code); continue; }
+    seen.add(code);
+    items.push({
+      code,
+      desc: cell(at.desc),
+      category: cell(at.category) || 'Uncategorised',
+      subcategory: cell(at.subcategory) || 'General',
+      qtyType: cell(at.qtyType),
+    });
+  }
+  const warnings = [];
+  if (dupes.length) warnings.push(`${dupes.length} code${dupes.length === 1 ? ' is' : 's are'} listed twice; the first row counts: ${dupes.slice(0, 8).join(', ')}${dupes.length > 8 ? '...' : ''}`);
+  if (!items.length) errors.push('No rows with a part code under the heading.');
+  return { items, errors, warnings, skipped };
+}
+
+/**
+ * Join the manifest with the part list: one entry per material, carrying the
+ * ERP part with its corrections applied - so the description and bin are the
+ * ones the Search tab shows - and the manifest's category, subcategory and
+ * quantity type. The category and form are indexed too, at a lower weight,
+ * so "aluminium plate" finds a plate whose description only says 5083.
+ *
+ * A code the part list does not have is kept and flagged `missing`, with the
+ * sheet's description standing in: the sheet may be ahead of the export, or
+ * the code may be gone from the ERP, and either way it should be seen.
+ */
+export function buildMaterialsIndex(parts, manifest, overrides = {}) {
+  const byId = new Map((parts ?? []).map((p) => [p.id, p]));
+  return (manifest ?? []).map((m) => {
+    const missing = !byId.has(m.code);
+    const p = byId.get(m.code) ?? { id: m.code, desc: m.desc ?? '', bin: '' };
+    const eff = effective(p, overrides);
+    const fields = [
+      { text: `${eff.desc} ${eff.bin}`, weight: 1 },
+      { text: `${m.category} ${m.subcategory}`, weight: 0.8 },
+    ];
+    if (eff.descOv || eff.binOv) fields.push({ text: `${p.desc} ${p.bin}`, weight: 0.5 });
+    return {
+      ...engine.entry(fields, p.id),
+      part: p, eff, family: familyOf(p.id),
+      idLower: p.id.toLowerCase(),
+      descLen: eff.desc.length,
+      material: m,
+      missing,
+    };
+  });
+}
+
+/**
+ * The categories, most used first, each with its forms likewise. The order
+ * of the pills and of the list: a rack is walked by material, then by form,
+ * then by size.
+ */
+export function materialGroups(index) {
+  const cats = new Map();
+  for (const e of index ?? []) {
+    const m = e.material;
+    if (!cats.has(m.category)) cats.set(m.category, { category: m.category, count: 0, subs: new Map() });
+    const c = cats.get(m.category);
+    c.count++;
+    c.subs.set(m.subcategory, (c.subs.get(m.subcategory) ?? 0) + 1);
+  }
+  const byCount = (a, b) => b.count - a.count || a.name.localeCompare(b.name);
+  return [...cats.values()]
+    .map((c) => ({ ...c, name: c.category,
+      subs: [...c.subs.entries()].map(([subcategory, count]) => ({ subcategory, count, name: subcategory })).sort(byCount) }))
+    .sort(byCount)
+    .map(({ name, ...c }) => ({ ...c, subs: c.subs.map(({ name: n, ...s }) => s) }));
+}
+
+/**
+ * The materials with no query: filtered by category and form, in rack order -
+ * category, form, then size by description, then code.
+ */
+export function browseMaterials(index, { category = null, subcategory = null } = {}) {
+  const groups = materialGroups(index);
+  const catRank = new Map(groups.map((g, i) => [g.category, i]));
+  const subRank = new Map(groups.flatMap((g) => g.subs.map((s, i) => [`${g.category}\u0000${s.subcategory}`, i])));
+  let out = index ?? [];
+  if (category) out = out.filter((e) => e.material.category === category);
+  if (subcategory) out = out.filter((e) => e.material.subcategory === subcategory);
+  const rank = (e) => [catRank.get(e.material.category) ?? 999, subRank.get(`${e.material.category}\u0000${e.material.subcategory}`) ?? 999];
+  return [...out].sort((a, b) => {
+    const [ca, sa] = rank(a);
+    const [cb, sb] = rank(b);
+    return ca - cb || sa - sb || naturalCompare(a.natural, b.natural)
+      || a.idLower.localeCompare(b.idLower, undefined, { numeric: true });
+  });
+}
+
 /** Family -> count, for the pills. */
 export function familyCounts(index) {
   const out = {};

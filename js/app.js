@@ -41,7 +41,7 @@ const saveGanttPrefs = (v) => { try { localStorage.setItem(GANTT_KEY, JSON.strin
 // The paper a sheet prints on is a property of the printer at hand, so it is
 // remembered per device rather than shared with the other managers.
 const PAPER_KEY = 'stella.board.paper';
-const loadPaper = () => { try { return PAPER[localStorage.getItem(PAPER_KEY)] ? localStorage.getItem(PAPER_KEY) : 'a4'; } catch { return 'a4'; } };
+const loadPaper = () => { try { return PAPER[localStorage.getItem(PAPER_KEY)] ? localStorage.getItem(PAPER_KEY) : 'a3'; } catch { return 'a3'; } };
 const savePaper = (p) => { try { localStorage.setItem(PAPER_KEY, p); } catch {} };
 
 const PUBLISHED_KEY = 'stella.board.publishedAt';
@@ -877,7 +877,7 @@ function renderPrintSheet() {
     b.classList.toggle('on', p === state.paper);
     b.setAttribute('aria-pressed', String(p === state.paper));
   }
-  $('paperNote').textContent = a3 ? 'the A4 sheet scaled up by root two, like a PDF' : '';
+  $('paperNote').textContent = a3 ? 'any smaller paper scales it down, like a PDF' : 'exactly the preview, no scaling';
   // The horizon is a property of the board; these lists have no future to
   // narrow, so the control would be answering a question they do not ask.
   const isBoard = lane === 'production' || lane === 'warehouse';

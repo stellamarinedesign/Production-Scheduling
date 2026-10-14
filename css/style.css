@@ -166,14 +166,14 @@ main { padding: 16px 22px 60px; max-width: 1720px; margin: 0 auto; }
 }
 
 /* ---------- drop zone ---------- */
-#dropZone {
+#dropZone, .drop-zone {
   border: 2px dashed var(--line); border-radius: 14px;
   padding: 44px 24px; text-align: center; color: var(--text-dim);
   transition: border-color .15s, background .15s; cursor: pointer;
 }
-#dropZone:hover, #dropZone.dragover { border-color: var(--red-bright); background: rgba(234,55,46,.06); color: var(--white); }
-#dropZone strong { display: block; color: var(--white); font-size: 17px; margin-bottom: 6px; }
-#dropZone .hint { font-size: 13px; line-height: 1.6; }
+#dropZone:hover, #dropZone.dragover, .drop-zone:hover, .drop-zone.dragover { border-color: var(--red-bright); background: rgba(234,55,46,.06); color: var(--white); }
+#dropZone strong, .drop-zone strong { display: block; color: var(--white); font-size: 17px; margin-bottom: 6px; }
+#dropZone .hint, .drop-zone .hint { font-size: 13px; line-height: 1.6; }
 
 /* ---------- controls ---------- */
 .controls {
@@ -1485,7 +1485,12 @@ body.role-engineer .not-engineer { display: none !important; }
    The code column is --code-w, set by the page to fit the longest code on
    screen — model codes run to twenty characters and a fixed width either
    overlapped them or wasted the row for everything else. */
-#ptSearch { --code-w: 120px; }
+#ptSearch, #ptMaterials { --code-w: 120px; }
+/* The form pills sit under the material pills, a size down. */
+.pills-sub { padding-top: 0; }
+.pills-sub .pill { font-size: 12px; min-height: 30px; padding: 4px 10px; }
+.part-missing { color: var(--red-bright); font-size: 12.5px; margin-top: 6px; }
+.parts-page .drop-zone { margin-top: 28px; }
 /* Every column but the description is fixed: each row is its own grid, and
    an auto-sized bin column moved Type, Source and Unit about from row to row. */
 .results-head, .part-head {

@@ -7,7 +7,7 @@
 <link rel="icon" type="image/png" href="assets/logo.png">
 <title>Parts — Stella Marine</title>
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="css/style.css?v=2026-10-09.4">
+<link rel="stylesheet" href="css/style.css?v=2026-10-14.1">
 </head>
 <body class="parts-page">
 
@@ -50,6 +50,7 @@
 
   <div class="tabs" id="partsTabs" hidden>
     <button class="tab" id="ptSearchBtn" aria-current="page">Search</button>
+    <button class="tab" id="ptMaterialsBtn">Materials</button>
     <button class="tab staff-only" id="ptFixBtn">Corrections</button>
     <button class="tab manager-only" id="ptImportBtn">Import</button>
   </div>
@@ -78,6 +79,31 @@
       <span>Code</span><span>Description</span><span>Type</span><span>Source</span><span>Unit</span><span>Bin</span>
     </div>
     <div id="results"></div>
+  </section>
+
+  <!-- ============ MATERIALS ============ -->
+  <section id="ptMaterials" hidden>
+    <div class="search-bar">
+      <input type="search" id="mq" placeholder="Size, material or form"
+             autocomplete="off" autocapitalize="off" spellcheck="false" inputmode="search">
+    </div>
+    <div class="pills" id="matPills"></div>
+    <div class="pills pills-sub" id="subPills"></div>
+    <div class="results-bar">
+      <span class="results-meta" id="mResultsMeta"></span>
+      <span class="spacer"></span>
+      <span class="results-meta" id="matAsOf"></span>
+    </div>
+    <div class="results-head" id="mResultsHead" hidden>
+      <span>Code</span><span>Description</span><span>Material</span><span>Form</span><span>Unit</span><span>Bin</span>
+    </div>
+    <div class="state" id="matEmpty" hidden>
+      <strong>No materials sheet loaded yet</strong>
+      Which parts are materials, and of what kind, comes from the material
+      ordering app's sheet. A manager loads it on the Import tab; from then on
+      it is here for everyone.
+    </div>
+    <div id="mresults"></div>
   </section>
 
   <!-- ============ CORRECTIONS ============ -->
@@ -111,6 +137,16 @@
     </div>
     <div id="partsReview" class="import-review" hidden></div>
     <div id="partsAfter" hidden></div>
+
+    <div id="matDropZone" class="drop-zone">
+      <strong>Drop the materials sheet here</strong>
+      <div class="hint">
+        <code>materials.csv</code> from the material ordering app, or its catalogue export &mdash; or click to choose a file.<br>
+        Part Code, Category, Subcategory and Quantity Type are read; the description only stands in for a code the part list lacks.
+      </div>
+      <input type="file" id="matFile" accept=".csv,text/csv" hidden>
+    </div>
+    <div id="matReview" class="import-review" hidden></div>
   </section>
 
   <!-- ============ CORRECT ============ -->
@@ -157,6 +193,6 @@
   <div id="toast" hidden></div>
 </main>
 
-<script type="module" src="js/parts-page.js?v=2026-10-09.4"></script>
+<script type="module" src="js/parts-page.js?v=2026-10-14.1"></script>
 </body>
 </html>

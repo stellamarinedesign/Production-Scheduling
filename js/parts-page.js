@@ -20,6 +20,7 @@ import {
   createOverride, reconcile, resolveReview, overrideKey, isActive, clean,
   fixList, fixListCsv, ageInDays, STALE_DAYS, FAMILIES, META_FIELDS, metaLine,
   draftingSheets, workbookName, withdrawOverride,
+  parseMaterialsCsv, buildMaterialsIndex, materialGroups, browseMaterials,
 } from './parts.js';
 
 const $ = (id) => document.getElementById(id);
@@ -36,10 +37,14 @@ let parts = [];             // [{id, desc, bin}]
 let partsById = new Map();
 let overrides = {};         // key -> override
 let index = [];
+let materials = null;       // the stored manifest document
+let manifest = [];          // [{code, desc, category, subcategory, qtyType}]
+let mindex = [];            // the materials, joined with the part list
 let role = ROLE.NONE;
 let who = null;
 let tab = 'search';
 const filters = { family: null, bin: 'all', binFirst: false, byDesc: false };
+const mfilters = { category: null, subcategory: null };
 const open = new Set();     // expanded result cards, by id
 
 function booting(what) {
@@ -101,6 +106,7 @@ function booting(what) {
   wireHelp();
   wireTabs();
   wireSearch();
+  wireMaterials();
   wireCorrect();
   wireFix();
   wireImport();
@@ -111,10 +117,17 @@ function booting(what) {
 })();
 
 async function loadAll() {
-  [record, overrides] = await Promise.all([Store.loadParts(), Store.loadPartOverrides()]);
+  [record, overrides, materials] = await Promise.all([Store.loadParts(), Store.loadPartOverrides(), Store.loadMaterials()]);
   parts = record?.partsJson ? JSON.parse(record.partsJson) : [];
   partsById = new Map(parts.map((p) => [p.id, p]));
+  manifest = materials?.itemsJson ? JSON.parse(materials.itemsJson) : [];
+  rebuildIndexes();
+}
+
+/** Both indexes come from the same list and corrections, so they move together. */
+function rebuildIndexes() {
   index = buildIndex(parts, overrides);
+  mindex = buildMaterialsIndex(parts, manifest, overrides);
 }
 
 function renderAll() {
@@ -125,16 +138,18 @@ function renderAll() {
   $('partsReimport').hidden = !(parts.length && !parts.some((p) => META_FIELDS.some((f) => f in p)));
   renderPills();
   renderResults();
+  renderMaterials();
   renderFix();
 }
 
 // ---------------------------------------------------------------------------
 // tabs
 // ---------------------------------------------------------------------------
-const TABS = { search: 'ptSearch', fix: 'ptFix', import: 'ptImport' };
+const TABS = { search: 'ptSearch', materials: 'ptMaterials', fix: 'ptFix', import: 'ptImport' };
 
 function wireTabs() {
   $('ptSearchBtn').addEventListener('click', () => showTab('search'));
+  $('ptMaterialsBtn').addEventListener('click', () => showTab('materials'));
   $('ptFixBtn').addEventListener('click', () => showTab('fix'));
   $('ptImportBtn').addEventListener('click', () => showTab('import'));
 }
@@ -148,6 +163,7 @@ function showTab(which) {
     $(`pt${key[0].toUpperCase()}${key.slice(1)}Btn`).setAttribute('aria-current', key === which ? 'page' : 'false');
   }
   if (which === 'search') $('q').focus({ preventScroll: true });
+  if (which === 'materials') $('mq').focus({ preventScroll: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -206,44 +222,7 @@ function wireSearch() {
     $('byDesc').setAttribute('aria-pressed', String(filters.byDesc));
     renderResults();
   });
-  // Tap a card to open it; controls inside are their own thing. Only that
-  // card is redrawn: the list may be two thousand rows deep, and rebuilding
-  // it would drop the scroll position and every chunk loaded so far.
-  $('results').addEventListener('click', (e) => {
-    if (e.target.closest('button, a, input')) return;
-    // A drag that ends with text highlighted is a highlight, not a tap. The
-    // card stays as it is — redrawing it would throw the selection away —
-    // and the text can be copied. A plain click collapses any selection
-    // before this runs, so it still opens the card.
-    const sel = window.getSelection();
-    if (sel && !sel.isCollapsed && sel.toString().trim()) return;
-    const card = e.target.closest('.part');
-    if (!card) return;
-    const id = card.dataset.id;
-    if (open.has(id)) {
-      open.delete(id);
-      redrawCard(id);
-      return;
-    }
-    // One open at a time: opening a card closes whichever was open, so the
-    // list does not fill with cards that each need closing by hand. When the
-    // one closing sits above, the page shrinks by its body and the tapped
-    // card would jump up the screen — scroll by the same amount so it stays
-    // under the finger.
-    const tappedTop = card.getBoundingClientRect().top;
-    let shift = 0;
-    for (const other of [...open]) {
-      open.delete(other);
-      const was = cardEl(other);
-      if (!was) continue;
-      const before = was.getBoundingClientRect();
-      redrawCard(other);
-      if (before.top < tappedTop) shift += before.height - (cardEl(other)?.getBoundingClientRect().height ?? 0);
-    }
-    open.add(id);
-    redrawCard(id);
-    if (shift) window.scrollBy(0, -shift);
-  });
+  wireList('search');
   // The whole list as the old drafting workbook. Not the filtered view: the
   // sheet is the thing people keep, and a filter is the thing of the moment.
   $('xlsxAll').addEventListener('click', async () => {
@@ -288,9 +267,7 @@ function renderPills() {
 function renderResults() {
   const host = $('results');
   const meta = $('resultsMeta');
-  host.textContent = '';
-  listing = { entries: [], shown: 0 };
-  if (!parts.length) { meta.textContent = ''; $('resultsHead').hidden = true; return; }
+  if (!parts.length) { meta.textContent = ''; $('resultsHead').hidden = true; showList('search', []); return; }
 
   const q = clean($('q').value);
   let entries;
@@ -319,9 +296,7 @@ function renderResults() {
   const longest = entries.reduce((n, e) => Math.max(n, e.part.id.length), 7);
   $('ptSearch').style.setProperty('--code-w', `${Math.round(longest * 8.6 + 6)}px`);
   $('resultsHead').hidden = !entries.length;
-
-  listing = { entries, shown: 0 };
-  appendChunk();
+  showList('search', entries);
 }
 
 // ---- the list, in chunks ----------------------------------------------------
@@ -331,20 +306,33 @@ function renderResults() {
 // second of nothing on a phone. So the first chunk is built at once and the
 // rest as the end of the list comes into view, well before it is reached.
 const CHUNK = 200;
-let listing = { entries: [], shown: 0 };
+// Two lists, one per tab, each with its own host and its own place in its
+// entries. They are never on screen together, but a correction made on one
+// must reach the other, so both are kept rather than rebuilt on arrival.
+const LISTS = {
+  search: { host: 'results', index: () => index },
+  materials: { host: 'mresults', index: () => mindex },
+};
+const listings = {
+  search: { entries: [], shown: 0 },
+  materials: { entries: [], shown: 0 },
+};
 const moreObserver = new IntersectionObserver((hits) => {
-  if (hits.some((h) => h.isIntersecting)) appendChunk();
+  for (const h of hits) if (h.isIntersecting) appendChunk(h.target.dataset.list);
 }, { rootMargin: '800px 0px' });
 // Belt and braces: a scroll that brings the end within reach builds the next
 // chunk too, for a webview whose observer is late or missing.
 window.addEventListener('scroll', () => {
-  const s = $('moreSentinel');
-  if (s && s.getBoundingClientRect().top < innerHeight + 800) appendChunk();
+  for (const key of Object.keys(LISTS)) {
+    const s = $(`moreSentinel-${key}`);
+    if (s && s.getBoundingClientRect().top < innerHeight + 800) appendChunk(key);
+  }
 }, { passive: true });
 
-function appendChunk() {
-  const host = $('results');
-  const old = $('moreSentinel');
+function appendChunk(key) {
+  const listing = listings[key];
+  const host = $(LISTS[key].host);
+  const old = $(`moreSentinel-${key}`);
   if (old) { moreObserver.unobserve(old); old.remove(); }
   const next = listing.entries.slice(listing.shown, listing.shown + CHUNK);
   const frag = document.createDocumentFragment();
@@ -353,33 +341,252 @@ function appendChunk() {
   host.append(frag);
   const left = listing.entries.length - listing.shown;
   if (left > 0) {
-    const s = el('div', 'more-sentinel', `${left} more — keep scrolling`);
-    s.id = 'moreSentinel';
-    s.addEventListener('click', appendChunk);   // a browser with no observer still gets there
+    const s = el('div', 'more-sentinel', `${left} more \u2014 keep scrolling`);
+    s.id = `moreSentinel-${key}`;
+    s.dataset.list = key;
+    s.addEventListener('click', () => appendChunk(key));   // a browser with no observer still gets there
     host.append(s);
     moreObserver.observe(s);
   }
 }
 
-/** The card on screen for a code, if it is on screen. */
-const cardEl = (id) => $('results').querySelector(`.part[data-id="${CSS.escape(id)}"]`);
+/** Start a list over with these entries. */
+function showList(key, entries) {
+  $(LISTS[key].host).textContent = '';
+  listings[key] = { entries, shown: 0 };
+  appendChunk(key);
+}
 
-/** Redraw one card in place, from the entry the list holds for it. */
-function redrawCard(id) {
-  const card = cardEl(id);
-  const entry = listing.entries.find((e) => e.part.id === id);
+/** The card on screen for a code in a list, if it is on screen. */
+const cardEl = (key, id) => $(LISTS[key].host).querySelector(`.part[data-id="${CSS.escape(id)}"]`);
+
+/** Redraw one card in place, from the entry its list holds for it. */
+function redrawCard(key, id) {
+  const card = cardEl(key, id);
+  const entry = listings[key].entries.find((e) => e.part.id === id);
   if (card && entry) card.replaceWith(partCard(entry));
 }
 
 /**
- * After a correction the index has been rebuilt, so the list's entries are
- * stale. Swap every entry for its new self — order, scroll position and the
- * chunks on screen all stay — and redraw the cards that actually changed.
+ * After a correction the indexes have been rebuilt, so the lists' entries are
+ * stale. Swap every entry for its new self - order, scroll position and the
+ * chunks on screen all stay - and redraw the cards that actually changed, on
+ * both lists.
  */
 function refreshEntries(changedIds) {
-  const byId = new Map(index.map((e) => [e.part.id, e]));
-  listing.entries = listing.entries.map((e) => byId.get(e.part.id) ?? e);
-  for (const id of changedIds) redrawCard(id);
+  for (const key of Object.keys(LISTS)) {
+    const byId = new Map(LISTS[key].index().map((e) => [e.part.id, e]));
+    listings[key].entries = listings[key].entries.map((e) => byId.get(e.part.id) ?? e);
+    for (const id of changedIds) redrawCard(key, id);
+  }
+}
+
+/**
+ * Tap a card to open it; controls inside are their own thing. Only that card
+ * is redrawn: the list may be two thousand rows deep, and rebuilding it would
+ * drop the scroll position and every chunk loaded so far.
+ */
+function wireList(key) {
+  $(LISTS[key].host).addEventListener('click', (e) => {
+    if (e.target.closest('button, a, input')) return;
+    // A drag that ends with text highlighted is a highlight, not a tap. The
+    // card stays as it is - redrawing it would throw the selection away -
+    // and the text can be copied. A plain click collapses any selection
+    // before this runs, so it still opens the card.
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed && sel.toString().trim()) return;
+    const card = e.target.closest('.part');
+    if (!card) return;
+    const id = card.dataset.id;
+    if (open.has(id)) {
+      open.delete(id);
+      redrawCard(key, id);
+      return;
+    }
+    // One open at a time: opening a card closes whichever was open, so the
+    // list does not fill with cards that each need closing by hand. When the
+    // one closing sits above, the page shrinks by its body and the tapped
+    // card would jump up the screen - scroll by the same amount so it stays
+    // under the finger.
+    const tappedTop = card.getBoundingClientRect().top;
+    let shift = 0;
+    for (const other of [...open]) {
+      open.delete(other);
+      const was = cardEl(key, other);
+      if (!was) continue;
+      const before = was.getBoundingClientRect();
+      redrawCard(key, other);
+      if (before.top < tappedTop) shift += before.height - (cardEl(key, other)?.getBoundingClientRect().height ?? 0);
+    }
+    open.add(id);
+    redrawCard(key, id);
+    if (shift) window.scrollBy(0, -shift);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// materials
+// ---------------------------------------------------------------------------
+function wireMaterials() {
+  wireList('materials');
+  let mdebounce = null;
+  $('mq').addEventListener('input', () => {
+    clearTimeout(mdebounce);
+    mdebounce = setTimeout(renderMaterials, 150);
+  });
+  const zone = $('matDropZone');
+  zone.addEventListener('click', () => $('matFile').click());
+  zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+  zone.addEventListener('drop', (e) => {
+    e.preventDefault(); zone.classList.remove('dragover');
+    const f = e.dataTransfer?.files?.[0];
+    if (f) stageMaterials(f);
+  });
+  $('matFile').addEventListener('change', (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (f) stageMaterials(f);
+  });
+}
+
+/** The material pills, then the form pills for the chosen material. */
+function renderMaterialPills() {
+  const groups = materialGroups(mindex);
+  const cats = $('matPills');
+  cats.textContent = '';
+  const pill = (host, label, n, on, fn) => {
+    const b = el('button', `pill${on ? ' on' : ''}`, label);
+    b.append(el('span', 'pill-n', String(n)));
+    b.setAttribute('aria-pressed', String(on));
+    b.addEventListener('click', fn);
+    host.append(b);
+  };
+  pill(cats, 'All', mindex.length, !mfilters.category, () => {
+    mfilters.category = null; mfilters.subcategory = null; renderMaterials();
+  });
+  for (const g of groups) {
+    pill(cats, g.category, g.count, mfilters.category === g.category, () => {
+      mfilters.category = mfilters.category === g.category ? null : g.category;
+      mfilters.subcategory = null;
+      renderMaterials();
+    });
+  }
+  const subs = $('subPills');
+  subs.textContent = '';
+  const g = groups.find((x) => x.category === mfilters.category);
+  subs.hidden = !g;
+  if (!g) return;
+  pill(subs, 'All forms', g.count, !mfilters.subcategory, () => { mfilters.subcategory = null; renderMaterials(); });
+  for (const s of g.subs) {
+    pill(subs, s.subcategory, s.count, mfilters.subcategory === s.subcategory, () => {
+      mfilters.subcategory = mfilters.subcategory === s.subcategory ? null : s.subcategory;
+      renderMaterials();
+    });
+  }
+}
+
+function renderMaterials() {
+  const meta = $('mResultsMeta');
+  $('matEmpty').hidden = Boolean(mindex.length) || role === ROLE.NONE;
+  $('matAsOf').textContent = materials?.importedAt ? `sheet loaded ${fmtDate(materials.importedAt)}` : '';
+  if (!mindex.length) {
+    meta.textContent = '';
+    $('mResultsHead').hidden = true;
+    $('matPills').textContent = '';
+    $('subPills').hidden = true;
+    showList('materials', []);
+    return;
+  }
+  renderMaterialPills();
+
+  const q = clean($('mq').value);
+  let entries;
+  if (q) {
+    const { hits, total, relaxed } = search(mindex, q, { limit: Infinity });
+    entries = hits.map((h) => h.entry);
+    if (mfilters.category) entries = entries.filter((e) => e.material.category === mfilters.category);
+    if (mfilters.subcategory) entries = entries.filter((e) => e.material.subcategory === mfilters.subcategory);
+    meta.textContent = !total ? 'Nothing matches \u2014 try fewer words, or just the size.'
+      : relaxed ? `Nothing has all of that. The ${entries.length} nearest:`
+        : `${entries.length} match${entries.length === 1 ? '' : 'es'}`;
+  } else {
+    entries = browseMaterials(mindex, mfilters);
+    meta.textContent = `${entries.length} material${entries.length === 1 ? '' : 's'}`
+      + `${mfilters.category ? ` in ${mfilters.category}` : ''}${mfilters.subcategory ? ` \u203a ${mfilters.subcategory}` : ''}`;
+  }
+  const longest = entries.reduce((n, e) => Math.max(n, e.part.id.length), 7);
+  $('ptMaterials').style.setProperty('--code-w', `${Math.round(longest * 8.6 + 6)}px`);
+  $('mResultsHead').hidden = !entries.length;
+  showList('materials', entries);
+}
+
+/** Read a materials sheet and show what loading it would mean. */
+async function stageMaterials(file) {
+  const host = $('matReview');
+  host.hidden = false;
+  host.textContent = '';
+  host.append(el('div', 'lede', `Reading ${file.name}\u2026`));
+  let text;
+  try {
+    text = await file.text();
+  } catch (e) {
+    host.textContent = '';
+    host.append(el('div', 'import-clean', `Could not read that file \u2014 ${e.message}`));
+    return;
+  }
+  const { items, errors, warnings, skipped } = parseMaterialsCsv(text);
+  host.textContent = '';
+  host.append(el('h2', null, 'Review the materials sheet'));
+  if (errors.length) {
+    for (const m of errors) host.append(el('div', 'flag flag-bad import-err', m));
+    host.append(el('div', 'import-clean', 'This file was not loaded.'));
+    return;
+  }
+  const groups = materialGroups(buildMaterialsIndex(parts, items, overrides));
+  const notInList = items.filter((m) => !partsById.has(m.code));
+  host.append(el('div', 'lede', `${file.name} \u2014 ${items.length} materials in ${groups.length} categor${groups.length === 1 ? 'y' : 'ies'}`
+    + `${skipped ? `, ${skipped} row${skipped === 1 ? '' : 's'} skipped (no code, or retired)` : ''}. `
+    + `${manifest.length ? `Replaces the ${manifest.length} loaded now.` : 'First load.'} Nothing changes until you apply it.`));
+  for (const m of warnings) host.append(el('div', 'flag flag-warn import-warn', m));
+  if (notInList.length) {
+    host.append(el('div', 'flag flag-warn import-warn',
+      `${notInList.length} code${notInList.length === 1 ? ' is' : 's are'} not in the part list `
+      + `(${notInList.slice(0, 6).map((m) => m.code).join(', ')}${notInList.length > 6 ? '...' : ''}). `
+      + 'They will be shown with the sheet\'s description and marked as missing from the ERP list.'));
+  }
+  const grid = el('div', 'import-stats');
+  for (const g of groups.slice(0, 12)) {
+    const c = el('div', 'stat');
+    c.append(el('b', null, String(g.count)), el('span', null, g.category));
+    c.append(el('em', null, g.subs.map((s) => `${s.subcategory} ${s.count}`).join(' \u00b7 ')));
+    grid.append(c);
+  }
+  host.append(grid);
+  const acts = el('div', 'import-actions');
+  const apply = el('button', 'primary', warnings.length || notInList.length ? 'Load anyway' : 'Load this sheet');
+  apply.addEventListener('click', async () => {
+    apply.disabled = true;
+    const now = new Date().toISOString();
+    try {
+      await Store.saveMaterials({
+        importedAt: now, importedBy: who, sourceLabel: file.name, count: items.length,
+        itemsJson: JSON.stringify(items),
+      });
+    } catch (e) {
+      apply.disabled = false;
+      toast(`Could not save \u2014 ${e.message}`, 8000);
+      return;
+    }
+    host.hidden = true;
+    await loadAll();
+    renderAll();
+    toast(`${items.length} materials loaded.`);
+  });
+  const cancel = el('button', 'ghost', 'Cancel');
+  cancel.addEventListener('click', () => { host.hidden = true; });
+  acts.append(apply, cancel);
+  host.append(acts);
 }
 
 function partCard(e) {
@@ -396,9 +603,13 @@ function partCard(e) {
   head.append(d);
   // Type, source, unit: columns of their own on a desktop; on a phone the
   // stylesheet hides these and shows the one-line version in the open card.
-  for (const f of ['type', 'source', 'unit']) {
-    const m = el('span', 'part-meta', p[f] ?? '');
-    m.title = p[f] ?? '';
+  // A material shows its kind instead: material, form, quantity type.
+  const cols = e.material
+    ? [e.material.category, e.material.subcategory, e.material.qtyType]
+    : ['type', 'source', 'unit'].map((f) => p[f] ?? '');
+  for (const v of cols) {
+    const m = el('span', 'part-meta', v ?? '');
+    m.title = v ?? '';
     head.append(m);
   }
   const binWrap = el('span', 'part-bin');
@@ -409,8 +620,14 @@ function partCard(e) {
 
   if (isOpen) {
     const body = el('div', 'part-body');
-    const ml = metaLine(p);
+    const ml = [e.material ? `${e.material.category} \u203a ${e.material.subcategory}${e.material.qtyType ? ` \u00b7 ${e.material.qtyType}` : ''}` : '', metaLine(p)]
+      .filter(Boolean).join('   ');
     if (ml) body.append(el('div', 'part-meta-line', ml));
+    if (e.missing) {
+      body.append(el('div', 'part-missing',
+        'Not in the part list: the materials sheet has this code, the last Stock Items export does not. '
+        + 'The description is the sheet\'s.'));
+    }
     const acts = el('div', 'part-acts');
     // Code and description on one line, the way it is written into an email
     // or a drawing note. The description is the one on screen — corrected,
@@ -549,7 +766,7 @@ async function withdraw(partId, field) {
   try {
     await Store.setPartOverride(key, withdrawOverride(o, { by: who }));
     overrides = await Store.loadPartOverrides();
-    index = buildIndex(parts, overrides);
+    rebuildIndexes();
     refreshEntries([partId]);
     renderFix();
     toast(`${partId}: correction removed. It shows what the ERP says again.`);
@@ -580,7 +797,7 @@ async function saveCorrect() {
       : o;
     await Store.setPartOverride(key, data);
     overrides = await Store.loadPartOverrides();
-    index = buildIndex(parts, overrides);
+    rebuildIndexes();
     closeCorrect();
     refreshEntries([part.id]);
     renderFix();
@@ -707,7 +924,7 @@ async function decide(o, action, value = null) {
     const next = resolveReview(o, action, { value, by: who, part: partsById.get(o.partId) ?? null });
     await Store.setPartOverride(overrideKey(o.partId, o.field), next);
     overrides = await Store.loadPartOverrides();
-    index = buildIndex(parts, overrides);
+    rebuildIndexes();
     refreshEntries([o.partId]);
     renderFix();
     toast(action === 'accept' ? `${o.partId}: ERP accepted.` : `${o.partId}: correction kept.`);
@@ -775,7 +992,7 @@ async function reviewFixFile(file) {
     try {
       await Store.setPartOverrides(toWrite);
       overrides = await Store.loadPartOverrides();
-      index = buildIndex(parts, overrides);
+      rebuildIndexes();
       host.hidden = true;
       refreshEntries(Object.values(toWrite).map((o) => o.partId));
       renderFix();

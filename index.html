@@ -8,7 +8,7 @@
 <link rel="apple-touch-icon" href="assets/logo.png">
 <title>Production Board — Stella Marine</title>
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="css/style.css?v=2026-10-09.4">
+<link rel="stylesheet" href="css/style.css?v=2026-10-14.1">
 <style id="pageRule"></style>  <!-- the paper's orientation; app.js switches it with the sheet -->
 </head>
 <body>
@@ -197,8 +197,8 @@
       <div class="ctrl">
         <label for="paperA4">Paper</label>
         <div class="ctrl-row" id="paperPick">
-          <button class="mini on" id="paperA4" aria-pressed="true">A4</button>
-          <button class="mini" id="paperA3" aria-pressed="false" title="The same sheet scaled up by root two, as a PDF would be: every line, box and letter 41% larger, nothing moved">A3</button>
+          <button class="mini on" id="paperA3" aria-pressed="true" title="Drawn on an A3 page box. Any smaller paper scales it down, as a PDF would be">A3</button>
+          <button class="mini" id="paperA4" aria-pressed="false" title="An A4 page box, exactly as the preview. The printer will not scale it">A4</button>
           <span class="val" id="paperNote"></span>
         </div>
       </div>
@@ -431,6 +431,6 @@
 
 </div><!-- /#appShell -->
 
-<script type="module" src="js/app.js?v=2026-10-09.4"></script>
+<script type="module" src="js/app.js?v=2026-10-14.1"></script>
 </body>
 </html>
