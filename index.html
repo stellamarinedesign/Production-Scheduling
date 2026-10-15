@@ -8,7 +8,7 @@
 <link rel="apple-touch-icon" href="assets/logo.png">
 <title>Production Board — Stella Marine</title>
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="css/style.css?v=2026-10-14.2">
+<link rel="stylesheet" href="css/style.css?v=2026-10-16.1">
 <style id="pageRule"></style>  <!-- the paper's orientation; app.js switches it with the sheet -->
 </head>
 <body>
@@ -408,6 +408,23 @@
 </div>
 
 <!-- ============ HIDE JOB ============ -->
+<div class="overlay" id="hullOverlay">
+  <div class="box">
+    <h3>Hull</h3>
+    <div class="lede" id="hullLede"></div>
+    <div class="field">
+      <label for="hullInput">Hull</label>
+      <input type="text" id="hullInput" autocomplete="off" spellcheck="false" placeholder="e.g. 00SY/001">
+      <div class="hint" id="hullHint"></div>
+    </div>
+    <div class="actions">
+      <button class="primary" id="hullSave">Save</button>
+      <button class="ghost" id="hullClear" hidden>Back to the ERP's</button>
+      <button class="ghost" id="hullCancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <div class="overlay" id="hideOverlay">
   <div class="box">
     <h3>Hide from the board</h3>
@@ -432,6 +449,6 @@
 
 </div><!-- /#appShell -->
 
-<script type="module" src="js/app.js?v=2026-10-14.2"></script>
+<script type="module" src="js/app.js?v=2026-10-16.1"></script>
 </body>
 </html>

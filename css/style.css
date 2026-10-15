@@ -285,7 +285,7 @@ button.mini.bad, button.mini.bad:disabled { border-color: var(--red-bright); col
      92px Status track — invisible while that held three buttons, and an overlap
      the moment the status control made it four. A row's tracks must match the
      cells it actually renders. */
-  grid-template-columns: 76px 74px minmax(150px, 1.7fr) 92px 252px;
+  grid-template-columns: 76px 74px minmax(150px, 1.7fr) 92px 92px 252px;
   gap: 12px; align-items: center;
   padding: 9px 10px; border-bottom: 1px solid var(--line);
   font-size: 14px;
@@ -300,6 +300,19 @@ button.mini.bad, button.mini.bad:disabled { border-color: var(--red-bright); col
 .job .prod { font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: 13px; }
 .job .label { font-weight: 600; }
 .job .due { font-variant-numeric: tabular-nums; }
+/* The hull column: the ERP's reading dim, the manager's own in white. For a
+   manager it is a button, so a tap opens the dialog instead of the row. */
+.job .hull { font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: 13px; }
+.job .hull.is-manual { color: var(--white); }
+button.hull { background: none; border: 0; padding: 0; text-align: left; font: inherit; font-size: 13px; cursor: pointer; }
+button.hull:hover { color: var(--white); text-decoration: underline; }
+button.hull.is-empty::before { content: '+ hull'; opacity: .45; }
+button.hull.is-empty:hover::before { opacity: 1; }
+.job .part-chip {
+  font-size: 10.5px; color: var(--text-dim); border: 1px solid var(--line);
+  border-radius: 5px; padding: 0 5px; letter-spacing: .05em; margin-left: 6px;
+  vertical-align: middle;
+}
 .job .due.stock { color: var(--text-dim); font-weight: 700; letter-spacing: .05em; }
 .job .status { font-size: 12px; color: var(--text-dim); }
 /* Riviera PO is manager-view only — it never reaches the printed board. It sits
@@ -922,9 +935,9 @@ body.role-floor #boardWrap { display: block; }
    have three cells (see jobRow). Desktop only: on a phone every row is the
    same two-column card regardless of role. */
 @media screen and (min-width: 761px) {
-  body.role-floor .job { grid-template-columns: 76px minmax(150px, 1fr) 92px; }
-  body.role-floor .board-col .job { grid-template-columns: 66px minmax(90px, 1fr) 82px; }
-  body.role-floor .job.is-full { grid-template-columns: 76px minmax(200px, 1fr) 96px; }
+  body.role-floor .job { grid-template-columns: 76px minmax(150px, 1fr) 92px 92px; }
+  body.role-floor .board-col .job { grid-template-columns: 66px minmax(90px, 1fr) 78px 82px; }
+  body.role-floor .job.is-full { grid-template-columns: 76px minmax(200px, 1fr) 92px 96px; }
 }
 
 table.codes select {
@@ -1096,7 +1109,7 @@ button.linkish:disabled { opacity: .5; cursor: default; }
    which is why the buttons sat left of where they belonged and the due date
    appeared to run through them. */
 .board-col .job {
-  grid-template-columns: 66px 62px minmax(90px, 1fr) 82px 220px;
+  grid-template-columns: 66px 62px minmax(90px, 1fr) 78px 82px 220px;
   gap: 10px; font-size: 13px; padding: 7px 8px;
 }
 .board-col .job .acts { gap: 5px; }
@@ -1104,13 +1117,13 @@ button.linkish:disabled { opacity: .5; cursor: default; }
 /* The status control has to fit a two-up column alongside three buttons, so it
    is tighter here than in the full-width blocks. */
 .board-col .job .st-select { width: 76px; font-size: 10px; }
-.job.is-full { grid-template-columns: 76px 74px minmax(200px, 1.8fr) 96px 88px 252px; }
+.job.is-full { grid-template-columns: 76px 74px minmax(200px, 1.8fr) 92px 96px 88px 252px; }
 
 /* Below roughly a laptop the two-column board is already one column, and the
    actions have room to sit under the row rather than fight it for width. */
 @media (max-width: 1240px) {
   .job, .job.is-full, .board-col .job {
-    grid-template-columns: 66px 60px minmax(90px, 1.4fr) 80px 200px;
+    grid-template-columns: 66px 60px minmax(90px, 1.4fr) 76px 80px 200px;
   }
   .job.is-full .status { display: none; }
 }
@@ -1392,6 +1405,8 @@ button.linkish:disabled { opacity: .5; cursor: default; }
 
   /* Column headings label columns that no longer exist. */
   .job.col-head, .lane-head { display: none; }
+  /* The hull has no place in the two-column phone row; it is a desk column. */
+  .job .hull { display: none; }
 
   /* Thumbs, not mouse pointers. */
   .job .acts button, .lane-row .acts button { min-height: 40px; padding: 0 14px; }

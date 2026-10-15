@@ -312,7 +312,8 @@ export const Store = {
       const all = lsGet('itemOverrides', {});
       all[inventoryId] = { ...(all[inventoryId] ?? {}), ...stamped };
       const o = all[inventoryId];
-      if (!o.label && !o.displayCode) delete all[inventoryId];
+      for (const k of ['label', 'displayCode', 'partOrder']) if (o[k] === null) delete o[k];
+      if (!o.label && !o.displayCode && o.partOrder == null) delete all[inventoryId];
       lsSet('itemOverrides', all);
       return;
     }
@@ -320,7 +321,7 @@ export const Store = {
     const ref = doc(this._db, 'itemOverrides', id);
     await setDoc(ref, stamped, { merge: true });
     const after = (await getDoc(ref)).data() ?? {};
-    if (!after.label && !after.displayCode) await deleteDoc(ref);
+    if (!after.label && !after.displayCode && after.partOrder == null) await deleteDoc(ref);
   },
 
   // ---- settings -----------------------------------------------------------

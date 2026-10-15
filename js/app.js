@@ -6,7 +6,7 @@ import { buildBoard, byCategory, today, toAU, toDateOnly, jobTitle, CUSTOM_PREFI
          diffBoards } from './transform.js';
 import { CATEGORY_ORDER, PRINT_LAYOUT, EXCLUSION_ORDER, EXCLUSION_GROUP_LABEL,
          TM_CATEGORY_ORDER, INTERNAL_CATEGORY_ORDER, LANE_LABEL, WATERMAKER_CATEGORIES,
-         SETTABLE_STATUSES, ERP_CLOSER } from './rules.js';
+         SETTABLE_STATUSES, ERP_CLOSER, isPartOrder } from './rules.js';
 import { stellaCode, labelFor, existingBoats, acceptNewCode, applyTemplate } from './vessel-codes.js';
 import { Auth, ROLE, friendlyAuthError, setManagers, setEngineers, managerCount } from './auth.js';
 import { VERSION } from './version.js';
@@ -288,7 +288,7 @@ const unsubscribes = [];
 let rebuildTimer = null;
 let rebuildDeferred = false;
 
-const dialogOpen = () => ['labelOverlay', 'hideOverlay', 'completeOverlay', 'newCodeOverlay']
+const dialogOpen = () => ['labelOverlay', 'hideOverlay', 'hullOverlay', 'completeOverlay', 'newCodeOverlay']
   .some((id) => $(id)?.classList.contains('show'));
 
 function scheduleRebuild() {
@@ -1330,7 +1330,7 @@ function categoryBlock(cat, jobs, { full = false } = {}) {
   const hdr = el('div', `job col-head${full ? ' is-full' : ''}`);
   hdr.append(el('span', null, 'Prod Nbr'));
   if (manager) hdr.append(el('span', null, 'PO'));
-  hdr.append(el('span', null, 'Vessel'), el('span', null, 'Due'));
+  hdr.append(el('span', null, 'Vessel'), el('span', null, 'Hull'), el('span', null, 'Due'));
   if (full && manager) hdr.append(el('span', null, 'Status'));
   if (manager) hdr.append(el('span', null, ''));
   body.append(hdr);
@@ -1400,7 +1400,28 @@ function jobRow(j, { full = false } = {}) {
   const label = el('span', 'label', jobTitle(j));
   if (manager && j.label !== j.base_label) label.append(el('span', 'edited', 'EDITED'));
   else if (manager && j.item_override) label.append(el('span', 'pinned', 'ITEM'));
+  // A part order is marked so the manager can see what the Part orders toggle
+  // will hold back, and whether that was the code's shape or their own call.
+  if (manager && j.part_order) {
+    const chip = el('span', 'part-chip', 'PART');
+    chip.title = j.part_order_manual ? 'Marked a part order by hand, for every job on this code'
+      : 'A part order by the shape of its code: a family prefix and four digits';
+    label.append(chip);
+  }
   row.append(label);
+
+  // The hull the unit is for: on the page, never on the printed sheet. Read
+  // from the ERP where the admin wrote it in; the manager types it where not.
+  const hull = manager ? el('button', 'hull') : el('span', 'hull');
+  hull.textContent = j.hull ?? '';
+  hull.classList.toggle('is-manual', Boolean(j.hull_manual));
+  hull.classList.toggle('is-empty', !j.hull);
+  if (manager) {
+    hull.title = j.hull_manual ? `Typed in by hand${j.hull_auto ? ` \u2014 the ERP says ${j.hull_auto}` : ''}. Click to change.`
+      : j.hull ? 'From the ERP\'s order text. Click to override.' : 'No hull in the ERP\'s order text. Click to type one.';
+    hull.addEventListener('click', () => openHullDialog(j));
+  }
+  row.append(hull);
 
   row.append(el('span', `due${j.is_stock ? ' stock' : ''}`, j.due_display));
   // Status only in the full-width block, and only for the manager.
@@ -1419,6 +1440,15 @@ function jobRow(j, { full = false } = {}) {
   const hide = el('button', `mini${j.hidden ? ' on' : ''}`, j.hidden ? 'Show' : 'Hide');
   hide.addEventListener('click', () => (j.hidden ? unhide(j) : openHideDialog(j)));
   acts.append(hide);
+
+  // Part or not, for every job on this code. The code's shape decides by
+  // default; this is the manager's say for a lettered kit that is a part, or
+  // a numbered code that is a unit.
+  const part = el('button', `mini${j.part_order ? ' on' : ''}`, 'Part');
+  part.title = j.part_order ? 'A part order: the Part orders toggle holds it back. Click to make it a unit.'
+    : 'A unit. Click to mark it a part order, for every job on this code.';
+  part.addEventListener('click', () => togglePartOrder(j));
+  acts.append(part);
 
   acts.append(statusControl(j));
 
@@ -2719,16 +2749,24 @@ function wireOverlays() {
     flushDeferredRebuild();
   });
   $('hideSave').addEventListener('click', saveHide);
+  $('hullCancel').addEventListener('click', () => {
+    $('hullOverlay').classList.remove('show');
+    flushDeferredRebuild();
+  });
+  $('hullSave').addEventListener('click', () => saveHull($('hullInput').value));
+  $('hullClear').addEventListener('click', () => saveHull(''));
+  $('hullInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveHull($('hullInput').value); });
 
   // Pressed AND released on the backdrop - see dialog.js. Highlighting the
   // text in a field and letting go outside the box used to close these.
-  for (const id of ['labelOverlay', 'hideOverlay', 'completeOverlay']) {
+  for (const id of ['labelOverlay', 'hideOverlay', 'hullOverlay', 'completeOverlay']) {
     closeOnBackdrop($(id), () => { $(id).classList.remove('show'); flushDeferredRebuild(); });
   }
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     $('labelOverlay').classList.remove('show');
     $('hideOverlay').classList.remove('show');
+    $('hullOverlay').classList.remove('show');
     $('completeOverlay').classList.remove('show');
     flushDeferredRebuild();
   });
@@ -2768,8 +2806,8 @@ async function saveLabel() {
 
 async function setItemOverride(inventoryId, patch) {
   const next = { ...(state.itemOverrides[inventoryId] ?? {}), ...patch };
-  for (const k of ['label', 'displayCode']) if (next[k] === null) delete next[k];
-  if (next.label || next.displayCode) state.itemOverrides[inventoryId] = next;
+  for (const k of ['label', 'displayCode', 'partOrder']) if (next[k] === null) delete next[k];
+  if (next.label || next.displayCode || next.partOrder != null) state.itemOverrides[inventoryId] = next;
   else delete state.itemOverrides[inventoryId];
 
   await Store.setItemOverride(inventoryId, patch);
@@ -2787,6 +2825,56 @@ function closeLabel() {
 // ---------------------------------------------------------------------------
 
 let hiding = null;
+let hulling = null;
+
+/**
+ * The hull for a job, typed in. For the units whose order text the admin never
+ * wrote a hull into, and for the odd one where what they wrote is wrong.
+ */
+function openHullDialog(job) {
+  hulling = job;
+  $('hullLede').textContent = `${job.prod_no} \u2014 ${jobTitle(job)}, due ${job.due_display}.`;
+  $('hullInput').value = job.hull ?? '';
+  $('hullHint').textContent = job.hull_auto
+    ? `The ERP's order text says ${job.hull_auto}. What is typed here shows instead, for this job only, and survives the next upload.`
+    : 'The ERP\'s order text has no hull for this job. What is typed here shows on the page for this job only, never on the printed sheet, and survives the next upload.';
+  $('hullClear').hidden = !job.hull_manual;
+  $('hullOverlay').classList.add('show');
+  $('hullInput').focus();
+  $('hullInput').select();
+}
+
+async function saveHull(raw) {
+  if (!hulling) return;
+  const value = String(raw ?? '').trim().toUpperCase().replace(/\s+/g, '');
+  const job = hulling;
+  hulling = null;
+  $('hullOverlay').classList.remove('show');
+  // Typing the ERP's own hull, or nothing, is a return to the ERP's.
+  if (!value || value === job.hull_auto) {
+    if (job.hull_manual) {
+      await setOverride(job.prod_no, { hullOverride: null });
+      toast(`${job.prod_no}: hull follows the ERP again${job.hull_auto ? ` \u2014 ${job.hull_auto}` : ''}.`);
+    } else flushDeferredRebuild();
+    return;
+  }
+  await setOverride(job.prod_no, { hullOverride: value });
+  toast(`${job.prod_no}: hull ${value}.`);
+}
+
+/**
+ * Part order or unit, for every job on this item code. The shape of the code
+ * decides unless the manager has said otherwise; saying what the shape already
+ * says clears the override rather than pinning it.
+ */
+async function togglePartOrder(job) {
+  const auto = isPartOrder(job.inventory_id);
+  const next = !job.part_order;
+  await setItemOverride(job.inventory_id, { partOrder: next === auto ? null : next });
+  toast(next
+    ? `${job.inventory_id} is a part order: every job on it follows the Part orders toggle.`
+    : `${job.inventory_id} is a unit: the Part orders toggle leaves it alone.`);
+}
 
 function openHideDialog(job) {
   hiding = job;
@@ -2813,6 +2901,7 @@ async function unhide(job) {
 async function setOverride(prodNo, patch) {
   const next = { ...(state.overrides[prodNo] ?? {}), ...patch };
   if (patch.labelOverride === null) delete next.labelOverride;
+  if (patch.hullOverride === null) delete next.hullOverride;
   if (patch.status === null) { delete next.status; delete next.statusFrom; }
   if (next.hidden === false) { delete next.hidden; delete next.hiddenReason; }
   if (Object.keys(next).length) state.overrides[prodNo] = next;

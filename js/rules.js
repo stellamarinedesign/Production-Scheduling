@@ -259,8 +259,12 @@ export const keepColumns = (rows) => (rows ?? []).map((r) => {
   return out;
 });
 
-// 'Used by 00SY/001' out of any free-text field.
-export const HULL_RE = /used\s*by\s*([A-Z0-9]+\s*\/\s*[A-Z0-9]+)/i;
+// A hull reference out of any free-text field: a code, a slash, a number, after
+// "used by" or "for". The ERP writes "Used by 00SY/001" on a unit's order and
+// "Parts for 000XX/001" or "cylinders for 00/002" on a parts order for the
+// same boat, so both are read. A boat NAME after "used by" (no slash, no
+// number) is not a hull and is left alone.
+export const HULL_RE = /(?:used\s*by|for)\s+([A-Z0-9]{2,10}\s*\/\s*[0-9]{1,4}[A-Z]?)(?![0-9])/i;
 
 // A one-off built on a STANDARD item code.
 //

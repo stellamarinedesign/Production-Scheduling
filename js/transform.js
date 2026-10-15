@@ -790,11 +790,19 @@ export function buildBoard(rows, opts = {}) {
         && isCustomBuild({ productionDescription: r['Production Description'], descField: r['Description'] }),
       type,
       is_component: type === COMPONENT_TYPE,
-      part_order: isPartOrder(inv),           // a numbered part, not a unit - see rules.js
+      // A numbered part, not a unit (rules.js), unless a manager has said
+      // otherwise for this code: a lettered kit that is a part, a numbered
+      // code that is not.
+      part_order: itemOverride?.partOrder ?? isPartOrder(inv),
+      part_order_manual: itemOverride?.partOrder != null,
       qty: Number(r['Qty. to Produce']) || 1,
       // Background fields — captured, not displayed on the printed board:
       item_description: text(r['Item Description']),
-      hull: extractHull(r['Description'], r['Production Description']),
+      // The hull the unit is for, read from the ERP's free text where the
+      // admin wrote it in and typed in by a manager where they did not.
+      hull_auto: extractHull(r['Description'], r['Production Description']),
+      hull: ov.hullOverride || extractHull(r['Description'], r['Production Description']),
+      hull_manual: Boolean(ov.hullOverride),
       customer_po: textOrNull(r['Customer Order Nbr.']),
       sales_order: textOrNull(r['Order Nbr.']),
       notes: textOrNull(r['Internal Notes']),

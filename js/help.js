@@ -266,6 +266,24 @@ export const HELP = [
           'It is a view of the moment, remembered on this device only, so a sheet '
           + 'can be printed with them and another without. The button says how many '
           + 'it is showing or holding back.',
+          'The shape of the code is the default, not the last word. A kit with a '
+          + 'lettered code that is really a part, or a numbered code that is really '
+          + 'a unit, is set with the Part button on the row: it marks every job on '
+          + 'that item code, for everyone, and the PART chip on the row says which '
+          + 'way it was decided. Pressing it back to what the code says clears the '
+          + 'mark.',
+        ],
+      },
+      {
+        q: 'What is the Hull column?',
+        a: [
+          'The hull the unit is for, on the page only - never on the printed '
+          + 'sheets. It is read from the ERP\'s order text where the admin wrote it '
+          + 'in ("Used by 00SY/001", "Parts for 000XX/001"); a boat named without '
+          + 'a hull number is not one. Where the ERP has nothing, a manager clicks '
+          + 'the empty cell and types it: that hull shows in white, for that job '
+          + 'only, and survives the next upload. Typing the ERP\'s own hull, or '
+          + 'nothing, goes back to the ERP\'s.',
         ],
       },
       {
