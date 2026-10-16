@@ -254,6 +254,15 @@ export const HELP = [
         ],
       },
       {
+        q: 'Where are the row buttons?',
+        a: [
+          'Hide stays on the row, since it is the one used in passing. The rest - '
+          + 'Label, Part, the status and Done - are folded beneath: click the row, '
+          + 'or its caret, and they come out under it; click again to put them away. '
+          + 'A row stays open through an edit.',
+        ],
+      },
+      {
         q: 'What does the Part orders toggle do?',
         a: [
           'Current orders, next to Collapse all. A part order is a production order '

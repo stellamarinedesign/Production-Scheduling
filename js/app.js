@@ -744,6 +744,14 @@ function wireCollapseAll() {
   });
 }
 
+// Rows opened to their controls, by production number, so a redraw after an
+// edit - every edit redraws - puts the row back the way it was.
+const openRows = new Set();
+function toggleRow(row) {
+  const open = row.classList.toggle('is-open');
+  if (row.dataset.prod) { if (open) openRows.add(row.dataset.prod); else openRows.delete(row.dataset.prod); }
+}
+
 function wireRowTaps() {
   document.addEventListener('click', (e) => {
     const row = e.target.closest('.job, .lane-row');
@@ -752,7 +760,7 @@ function wireRowTaps() {
     // otherwise opening the status select would also collapse what it sits in.
     if (e.target.closest('button, select, input, textarea, a, label')) return;
     if (!row.querySelector('.acts button')) return;
-    row.classList.toggle('is-open');
+    toggleRow(row);
   });
 }
 
@@ -1329,7 +1337,7 @@ function categoryBlock(cat, jobs, { full = false } = {}) {
   const manager = Auth.isManager;
   const hdr = el('div', `job col-head${full ? ' is-full' : ''}`);
   hdr.append(el('span', null, 'Prod Nbr'));
-  if (manager) hdr.append(el('span', null, 'PO'));
+  if (manager) hdr.append(el('span', 'po', 'PO'));
   hdr.append(el('span', null, 'Vessel'), el('span', null, 'Hull'), el('span', null, 'Due'));
   if (full && manager) hdr.append(el('span', null, 'Status'));
   if (manager) hdr.append(el('span', null, ''));
@@ -1382,7 +1390,8 @@ async function setStatus(j, value) {
 
 function jobRow(j, { full = false } = {}) {
   const row = el('div', `job${j.on_hold ? ' on-hold' : ''}${j.hidden ? ' is-hidden' : ''}`
-    + `${full ? ' is-full' : ''}`);
+    + `${full ? ' is-full' : ''}${openRows.has(j.prod_no) ? ' is-open' : ''}`);
+  row.dataset.prod = j.prod_no;
 
   // THE FLOOR'S ROW IS THE PRINTED ROW: production number, vessel, due date.
   // The PO, the status, the edit markers and the actions are the manager's
@@ -1390,7 +1399,9 @@ function jobRow(j, { full = false } = {}) {
   // item is removed from flow and everything after it shifts a column left.
   const manager = Auth.isManager;
 
-  row.append(el('span', 'prod', j.prod_no));
+  const prod = el('span', 'prod', j.prod_no);
+  if (manager && j.customer_po) prod.title = `PO ${j.customer_po}`;   // the PO column gives way on a narrow screen
+  row.append(prod);
 
   // the manufacturer's PO sits next to the production number because that is the pair
   // the manager reads together when checking an order against the manufacturer. It is
@@ -1432,14 +1443,25 @@ function jobRow(j, { full = false } = {}) {
   }
   if (!manager) return row;
 
+  // ON THE ROW: Hide, the one control used in passing, and a caret. Everything
+  // that edits the job - Label, Part, the status, Done - is folded beneath and
+  // comes out when the row (or the caret) is clicked. Six controls across
+  // every row crowded the columns off the page; one and a caret do not.
   const acts = el('span', 'acts');
-  const edit = el('button', 'mini', 'Label');
-  edit.addEventListener('click', () => openLabelEditor(j));
-  acts.append(edit);
-
   const hide = el('button', `mini${j.hidden ? ' on' : ''}`, j.hidden ? 'Show' : 'Hide');
   hide.addEventListener('click', () => (j.hidden ? unhide(j) : openHideDialog(j)));
   acts.append(hide);
+  const more = el('button', 'mini more', openRows.has(j.prod_no) ? '\u25be' : '\u25b8');
+  more.title = 'Label, part, status, done';
+  more.setAttribute('aria-label', 'More');
+  more.addEventListener('click', () => { toggleRow(row); more.textContent = row.classList.contains('is-open') ? '\u25be' : '\u25b8'; });
+  acts.append(more);
+  row.append(acts);
+
+  const fold = el('span', 'acts-more');
+  const edit = el('button', 'mini', 'Label');
+  edit.addEventListener('click', () => openLabelEditor(j));
+  fold.append(edit);
 
   // Part or not, for every job on this code. The code's shape decides by
   // default; this is the manager's say for a lettered kit that is a part, or
@@ -1448,16 +1470,16 @@ function jobRow(j, { full = false } = {}) {
   part.title = j.part_order ? 'A part order: the Part orders toggle holds it back. Click to make it a unit.'
     : 'A unit. Click to mark it a part order, for every job on this code.';
   part.addEventListener('click', () => togglePartOrder(j));
-  acts.append(part);
+  fold.append(part);
 
-  acts.append(statusControl(j));
+  fold.append(statusControl(j));
 
   const done = el('button', 'mini', 'Done');
-  done.title = 'Mark completed — off the board for good, reversible from History';
+  done.title = 'Mark completed \u2014 off the board for good, reversible from History';
   done.addEventListener('click', () => openCompleteDialog([j]));
-  acts.append(done);
+  fold.append(done);
 
-  row.append(acts);
+  row.append(fold);
   return row;
 }
 
@@ -1771,7 +1793,7 @@ function renderFitStatus() {
   } else if (f.trimmedFrom) {
     box.append(el('span', null, 'Auto-fit reduced the horizon from '));
     box.append(el('b', null, `${f.trimmedFrom} weeks to ${f.weeks}`));
-    box.append(el('span', null, ' to hold one page. The printed header shows the covered range.'));
+    box.append(el('span', null, ' to hold one page.'));
   } else if (f.fits) {
     box.append(el('span', null, `fits one page at ${f.weeks} weeks`));
   } else {

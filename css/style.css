@@ -285,7 +285,7 @@ button.mini.bad, button.mini.bad:disabled { border-color: var(--red-bright); col
      92px Status track — invisible while that held three buttons, and an overlap
      the moment the status control made it four. A row's tracks must match the
      cells it actually renders. */
-  grid-template-columns: 76px 74px minmax(150px, 1.7fr) 92px 92px 252px;
+  grid-template-columns: 76px 74px minmax(150px, 1.7fr) 92px 92px 112px;
   gap: 12px; align-items: center;
   padding: 9px 10px; border-bottom: 1px solid var(--line);
   font-size: 14px;
@@ -306,7 +306,7 @@ button.mini.bad, button.mini.bad:disabled { border-color: var(--red-bright); col
 .job .hull.is-manual { color: var(--white); }
 button.hull { background: none; border: 0; padding: 0; text-align: left; font: inherit; font-size: 13px; cursor: pointer; }
 button.hull:hover { color: var(--white); text-decoration: underline; }
-button.hull.is-empty::before { content: '+ hull'; opacity: .45; }
+button.hull.is-empty::before { content: 'Add hull'; opacity: .45; }
 button.hull.is-empty:hover::before { opacity: 1; }
 .job .part-chip {
   font-size: 10.5px; color: var(--text-dim); border: 1px solid var(--line);
@@ -319,6 +319,15 @@ button.hull.is-empty:hover::before { opacity: 1; }
    beside the production number because that is the pair read together. */
 .job .po { font-size: 12.5px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .job .acts { display: flex; gap: 6px; justify-content: flex-end; }
+/* The edits, folded under the row until it is opened: a strip across the
+   whole row, so the columns above never have to make room for them. */
+.job .acts-more {
+  grid-column: 1 / -1; display: none; justify-content: flex-end; align-items: center;
+  gap: 8px; padding-top: 8px; margin-top: 2px; border-top: 1px dashed var(--line);
+}
+.job.is-open .acts-more { display: flex; }
+.job:has(.acts button) { cursor: pointer; }
+.job .more { min-width: 30px; padding-left: 8px; padding-right: 8px; }
 .job.on-hold .label { color: var(--red-bright); }
 .job.on-hold .label::after {
   content: " [ON HOLD]"; font-size: 11px; letter-spacing: .06em; font-weight: 700;
@@ -1109,22 +1118,22 @@ button.linkish:disabled { opacity: .5; cursor: default; }
    which is why the buttons sat left of where they belonged and the due date
    appeared to run through them. */
 .board-col .job {
-  grid-template-columns: 66px 62px minmax(90px, 1fr) 78px 82px 220px;
+  grid-template-columns: 66px 62px minmax(90px, 1fr) 78px 82px 100px;
   gap: 10px; font-size: 13px; padding: 7px 8px;
 }
 .board-col .job .acts { gap: 5px; }
 .board-col .job .acts .mini { padding: 4px 7px; font-size: 11px; }
-/* The status control has to fit a two-up column alongside three buttons, so it
-   is tighter here than in the full-width blocks. */
-.board-col .job .st-select { width: 76px; font-size: 10px; }
-.job.is-full { grid-template-columns: 76px 74px minmax(200px, 1.8fr) 92px 96px 88px 252px; }
+.job.is-full { grid-template-columns: 76px 74px minmax(200px, 1.8fr) 92px 96px 88px 112px; }
 
-/* Below roughly a laptop the two-column board is already one column, and the
-   actions have room to sit under the row rather than fight it for width. */
+/* Below roughly a laptop a two-up column is about 450px, which is not room
+   for six cells: the PO gives way (it stays in the production number's
+   tooltip) and the status column with it. Five tracks, matching the five
+   cells left. */
 @media (max-width: 1240px) {
   .job, .job.is-full, .board-col .job {
-    grid-template-columns: 66px 60px minmax(90px, 1.4fr) 76px 80px 200px;
+    grid-template-columns: 60px minmax(84px, 1.4fr) 70px 76px 96px;
   }
+  .job .po { display: none; }
   .job.is-full .status { display: none; }
 }
 
@@ -1402,6 +1411,8 @@ button.linkish:disabled { opacity: .5; cursor: default; }
     border-top: 1px solid var(--line);
   }
   .job.is-open .acts, .lane-row.is-open .acts { display: flex; }
+  .job .acts-more { grid-row: 4; padding-top: 8px; margin-top: 0; border-top: 0; flex-wrap: wrap; }
+  .job .more { display: none; }   /* the row's own caret does this job on a phone */
 
   /* Column headings label columns that no longer exist. */
   .job.col-head, .lane-head { display: none; }

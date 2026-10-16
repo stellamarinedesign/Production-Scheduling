@@ -939,7 +939,10 @@ export function buildBoard(rows, opts = {}) {
     warnings: {
       // Only warn for jobs that would actually appear — an On Hold job outside
       // the horizon is already gone and is not worth flagging.
-      onHold: visible.filter((j) => j.on_hold),
+      // ...and "appear" means on the printed sheet: a watermaker on hold sits
+      // under the page's off-sheet rule, and the floor will not start it from
+      // a board it is not on.
+      onHold: visible.filter((j) => j.on_hold && isPrintable(j)),
       hidden: kept.filter((j) => j.hidden),
       unmapped: excluded.filter((e) => e.kind === 'unmapped'),
       // On the board, past its end date, and not marked done. The prompt for
