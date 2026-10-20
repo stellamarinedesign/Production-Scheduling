@@ -266,18 +266,17 @@ export const HELP = [
       {
         q: 'How is somebody given access?',
         a: [
-          'Two steps. The Firebase user is made in the console, with a temporary '
-          + 'password to pass on (self-signup stays off, so an account is a deliberate '
-          + 'act). Then a master user opens the cog, Settings, Accounts, and adds the '
-          + 'address with a role from the dropdown: manager, engineer or floor. That '
-          + 'list is the one place a role lives - the security rules read it too - '
-          + 'and it takes effect for them on their next page load. A role is changed '
-          + 'the same way, on its row; nothing has to be deleted and remade.',
-          'A master user is an ordinary account - a manager, today - that is also on '
-          + 'the masters list, which is set in the Firebase console and nowhere else. '
-          + 'Everyone else sees under the cog only their own account, Password and '
-          + 'Sign out, and who the masters are. A master cannot change or remove '
-          + 'their own entry; another master can.',
+          'One step, by a master user: the cog, Settings, Accounts, type the address, '
+          + 'pick a role - manager, engineer or floor - and Add. That lists the '
+          + 'address and makes its account, with a temporary password shown once to '
+          + 'pass on; they sign in with it and press Password under the cog to make '
+          + 'it theirs. The list is the one place a role lives, the security rules '
+          + 'read it too, and an account nobody listed can sign in and see nothing. '
+          + 'A role is changed on its row; nothing is deleted and remade.',
+          'A master user is an ordinary account - a manager, today - with the Master '
+          + 'box ticked on this list, which only a master can tick for someone else. '
+          + 'Everyone else sees under the cog just their own account, Password and '
+          + 'Sign out. A master cannot change or remove their own entry.',
         ],
       },
       {

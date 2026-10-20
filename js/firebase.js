@@ -97,3 +97,18 @@ export async function getFirebase() {
 }
 
 export const failureReason = () => _failed;
+
+// A SECOND AUTH, for making accounts. createUserWithEmailAndPassword signs
+// the new user in on whichever auth it is called with; on the main one that
+// would sign the master out of their own session. So accounts are made on a
+// second Firebase app, same config, separate auth, signed out again at once.
+let _second = null;
+export async function secondaryAuth() {
+  const fb = await getFirebase();
+  if (!fb) return null;
+  if (!_second) {
+    const { initializeApp } = await import(`${SDK}/firebase-app.js`);
+    _second = fb.fa.getAuth(initializeApp(firebaseConfig, 'accounts'));
+  }
+  return _second;
+}

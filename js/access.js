@@ -24,10 +24,16 @@ const ROLE_LIST = { manager: 'managers', engineer: 'engineers', floor: 'floor' }
 
 const tidyList = (xs) => [...new Set((Array.isArray(xs) ? xs : []).map(tidyEmail).filter(Boolean))];
 
-/** The document as the app holds it: four tidy, de-duplicated lists. */
+/**
+ * The document as the app holds it: four tidy, de-duplicated lists. With no
+ * masters, the first manager listed is the master - the same default the
+ * rules apply - so the document can be claimed and then handed on from the
+ * app without anyone touching the console.
+ */
 export function normaliseAccess(d) {
   const out = {};
   for (const k of LISTS) out[k] = tidyList(d?.[k]);
+  if (!out.masters.length && out.managers.length) out.masters = [out.managers[0]];
   return out;
 }
 
@@ -63,6 +69,25 @@ export function withRole(access, email, role) {
   for (const r of ROLES) a[ROLE_LIST[r]] = a[ROLE_LIST[r]].filter((x) => x !== e);
   a[ROLE_LIST[role]] = [...a[ROLE_LIST[role]], e];
   return a;
+}
+
+/** The lists with this address on, or off, the masters list. */
+export function withMaster(access, email, on) {
+  const e = tidyEmail(email);
+  const a = normaliseAccess(access);
+  a.masters = on ? [...new Set([...a.masters, e])] : a.masters.filter((x) => x !== e);
+  return a;
+}
+
+/**
+ * A temporary password for an account just made: four words' worth of
+ * letters and digits, readable aloud, no lookalikes. Changed by its owner
+ * under the cog on first sign-in.
+ */
+export function tempPassword() {
+  const alphabet = 'abcdefghjkmnpqrstuvwxyz23456789';
+  const pick = (n) => Array.from(crypto.getRandomValues(new Uint8Array(n)), (b) => alphabet[b % alphabet.length]).join('');
+  return `${pick(4)}-${pick(4)}-${pick(4)}`;
 }
 
 /** The lists without this address on any role list. Masters untouched. */

@@ -1,0 +1,121 @@
+rules_version = '2';
+
+// Firestore security rules for the production board. The canonical copy:
+// paste into Firebase console -> Firestore Database -> Rules -> Publish (or
+// deploy with the Firebase CLI). No addresses live here: who is what is the
+// settings/access document, which these rules read.
+//
+// THE MODEL. An account counts only if a master listed it. Every read needs a
+// LISTED account - a manager, an engineer or a floor address in
+// settings/access - so a Firebase user that nobody listed reads nothing,
+// which is what makes it safe for the app to create users (sign-up on in the
+// console). Writes need a manager, or an engineer for part corrections. The
+// access document itself is written only by a master, except the first time,
+// when nothing exists yet and whoever is setting up claims it.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+
+    // The one document that says who is what. Read once per request by the
+    // rules themselves (a get() costs one document read, cached within the
+    // request). Missing, it fails closed: nobody is anything.
+    function accessExists() {
+      return exists(/databases/$(database)/documents/settings/access);
+    }
+    function access() {
+      return get(/databases/$(database)/documents/settings/access).data;
+    }
+    function email() { return request.auth.token.email.lower(); }
+    function onList(name) { return email() in access().get(name, []); }
+
+    function manager()  { return signedIn() && onList('managers'); }
+    function engineer() { return signedIn() && onList('engineers'); }
+    function listed()   { return signedIn() && (onList('managers') || onList('engineers') || onList('floor')); }
+
+    // MASTERS are not a role: a master is whatever role they are, and the
+    // only one who may change the lists. With no masters list, or an empty
+    // one, the first manager listed is the master - so the document can be
+    // claimed and then handed on from inside the app.
+    function masters() {
+      let m = access().get('masters', []);
+      return m.size() > 0 ? m : [access().managers[0]];
+    }
+    function master() { return signedIn() && email() in masters(); }
+
+    // Vessel code cross-reference: hand-maintained human decisions.
+    match /vesselCodes/{stellaCode} {
+      allow read:  if listed();
+      allow write: if manager();
+    }
+
+    // Per-job manager decisions, keyed on production number, which is stable
+    // and never reused, so a decision survives the next export upload.
+    match /jobOverrides/{prodNo} {
+      allow read:  if listed();
+      allow write: if manager();
+    }
+
+    // Per-product decisions, keyed on Inventory ID: narrower than a boat,
+    // wider than one order.
+    match /itemOverrides/{itemId} {
+      allow read:  if listed();
+      allow write: if manager();
+    }
+
+    // Published boards. The floor renders the newest of these, so floor
+    // accounts must read them. History is append-only.
+    match /imports/{importId} {
+      allow read:   if listed();
+      allow create: if manager();
+      allow update, delete: if false;
+    }
+
+    // Who did what: one document per edit on the board, append-only.
+    match /activity/{entryId} {
+      allow read:   if listed();
+      allow create: if manager();
+      allow update, delete: if false;
+    }
+
+    // The accounts and their roles. Read by anyone listed; written by a
+    // master, or by anyone signed in the first time, when it does not exist.
+    match /settings/access {
+      allow read:  if listed();
+      allow write: if master() || !accessExists();
+    }
+
+    // Horizon, stock cap, auto-fit. Not the access document - see above.
+    match /settings/{docId} {
+      allow read:  if listed();
+      allow write: if manager() && docId != 'access';
+    }
+
+    // The part list, one document. Everyone listed reads it; the person who
+    // runs the export writes it.
+    match /parts/{docId} {
+      allow read:  if listed();
+      allow write: if manager();
+    }
+
+    // Corrections to part descriptions and bins: drafting and managers make
+    // them, the floor reads them.
+    match /partOverrides/{key} {
+      allow read:  if listed();
+      allow write: if manager() || engineer();
+    }
+
+    // What each parts import did. Append-only.
+    match /partImports/{importId} {
+      allow read:   if listed();
+      allow create: if manager();
+      allow update, delete: if false;
+    }
+
+    // Everything else is closed.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

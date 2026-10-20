@@ -8,7 +8,7 @@ import { CATEGORY_ORDER, PRINT_LAYOUT, EXCLUSION_ORDER, EXCLUSION_GROUP_LABEL,
          TM_CATEGORY_ORDER, INTERNAL_CATEGORY_ORDER, LANE_LABEL, WATERMAKER_CATEGORIES,
          SETTABLE_STATUSES, ERP_CLOSER, isPartOrder } from './rules.js';
 import { stellaCode, labelFor, existingBoats, acceptNewCode, applyTemplate } from './vessel-codes.js';
-import { Auth, ROLE, friendlyAuthError, setManagers, setEngineers, setMasters, managerCount } from './auth.js';
+import { Auth, ROLE, friendlyAuthError, setManagers, setEngineers, setMasters, managerCount, tidyEmail } from './auth.js';
 import { VERSION } from './version.js';
 import { wireHelp } from './help.js';
 import { davitsByBoat, mergeDavits } from './davits.js';
@@ -189,6 +189,7 @@ async function start(st) {
     setManagers(access.managers);
     setEngineers(access.engineers);
     setMasters(access.masters);
+    state.access = access;
   }
   st = { ...st, role: Auth.refreshRole() };
 
@@ -438,6 +439,18 @@ async function loadLastBoard() {
 }
 
 async function startFloor() {
+  // An account on no list reads nothing - the rules see to that - so say so
+  // here rather than letting the first read fail as if the board were empty.
+  const email = tidyEmail(Auth.user?.email);
+  if (Auth.mode === 'firebase' && state.access && !state.access.floor.includes(email)) {
+    const host = $('floorEmpty');
+    host.textContent = '';
+    host.append(el('strong', null, 'This account is not on the access list yet'));
+    host.append(el('div', null, `Signed in as ${email}, but nobody has given it a role. `
+      + 'Ask a master user to add it under their cog; it works from your next page load.'));
+    host.hidden = false;
+    return;
+  }
   const published = await Store.latestBoard();
   if (!published?.jobs?.length) {
     $('floorEmpty').hidden = false;

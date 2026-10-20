@@ -165,6 +165,22 @@ export const Auth = {
     await fa.updatePassword(user, next);
   },
 
+  /**
+   * Make a Firebase user from the app, as a master. Done on a second auth
+   * (see firebase.js) so the master stays signed in. Needs "Enable create
+   * (sign-up)" ON in the console: with it off Firebase answers
+   * auth/operation-not-allowed, and the rules make sign-up harmless anyway,
+   * since a user nobody listed reads nothing.
+   */
+  async createAccount(email, password) {
+    if (this.mode === 'local') throw new Error('Local mode \u2014 there are no accounts.');
+    const { secondaryAuth } = await import('./firebase.js');
+    const auth2 = await secondaryAuth();
+    const { fa } = this._fb;
+    await fa.createUserWithEmailAndPassword(auth2, tidyEmail(email), password);
+    await fa.signOut(auth2);
+  },
+
   get isManager() { return this.role === ROLE.MANAGER; },
   /** May change the accounts and their roles. Not a role; see setMasters. */
   get isMaster() { return this.mode === 'firebase' && Boolean(this.user?.email) && isMasterEmail(this.user.email); },
@@ -184,6 +200,8 @@ export function friendlyAuthError(e) {
   if (code.includes('invalid-credential') || code.includes('wrong-password')
       || code.includes('user-not-found')) return 'Wrong email or password.';
   if (code.includes('weak-password')) return 'Firebase wants a stronger password \u2014 at least six characters.';
+  if (code.includes('operation-not-allowed')) return 'Making accounts from the app is switched off in the Firebase console (Authentication, Sign-in method, Email/Password, "Enable create").';
+  if (code.includes('email-already-in-use')) return 'That address already has a Firebase user.';
   if (code.includes('requires-recent-login')) return 'Sign out, sign in again, and then change it.';
   if (code.includes('invalid-email')) return 'That does not look like an email address.';
   if (code.includes('too-many-requests')) return 'Too many attempts — wait a minute and try again.';

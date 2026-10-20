@@ -354,9 +354,12 @@ export const Store = {
       const snap = await getDoc(doc(this._db, 'settings', 'access'));
       const d = snap.exists() ? snap.data() : {};
       const list = (k) => (Array.isArray(d?.[k]) ? d[k] : []);
-      // `floor` lists the floor accounts for the Accounts panel only; `masters`
-      // are the ones who may change the lists. Neither decides a role here.
-      return { managers: list('managers'), engineers: list('engineers'), floor: list('floor'), masters: list('masters') };
+      // `floor` is the floor accounts (the rules read it too: unlisted reads
+      // nothing); `masters` are who may change the lists. With no masters the
+      // first manager is one - the same default the rules apply.
+      const out = { managers: list('managers'), engineers: list('engineers'), floor: list('floor'), masters: list('masters') };
+      if (!out.masters.length && out.managers.length) out.masters = [out.managers[0]];
+      return out;
     } catch (e) {
       // Fail closed and loudly: an unreadable list must not promote anybody.
       console.error('[access]', e.message);
@@ -503,16 +506,12 @@ export const Store = {
       { managers: emails, updatedAt: new Date().toISOString() }, { merge: true });
   },
 
-  /**
-   * The role lists, from the Settings cog. Never the masters: those are set
-   * in the console, and a merge leaves them as they are. The rules let only a
-   * master write this document.
-   */
-  async saveAccess({ managers, engineers, floor }) {
+  /** All four lists, from the Settings cog. The rules let only a master write this. */
+  async saveAccess({ managers, engineers, floor, masters }) {
     if (this.mode === 'local') return;
     const { doc, setDoc } = this._fs;
     await setDoc(doc(this._db, 'settings', 'access'),
-      { managers, engineers, floor: floor ?? [], updatedAt: new Date().toISOString() }, { merge: true });
+      { managers, engineers, floor: floor ?? [], masters: masters ?? [], updatedAt: new Date().toISOString() }, { merge: true });
   },
 
   /**
