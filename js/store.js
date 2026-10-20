@@ -478,6 +478,14 @@ export const Store = {
       { managers: emails, updatedAt: new Date().toISOString() }, { merge: true });
   },
 
+  /** Both lists at once, from the Settings cog. Same document, same rule. */
+  async saveAccess({ managers, engineers }) {
+    if (this.mode === 'local') return;
+    const { doc, setDoc } = this._fs;
+    await setDoc(doc(this._db, 'settings', 'access'),
+      { managers, engineers, updatedAt: new Date().toISOString() }, { merge: true });
+  },
+
   /**
    * What is known about each item code — description and hulls — accumulated
    * across imports so the cheat sheet is a total product list rather than a

@@ -20,7 +20,9 @@
 let managerEmails = [];
 let engineerEmails = [];
 
-const tidy = (emails) => (emails ?? []).map((e) => String(e).trim().toLowerCase()).filter(Boolean);
+export const tidyEmail = (e) => String(e ?? '').trim().toLowerCase();
+export const isEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e ?? ''));
+const tidy = (emails) => (emails ?? []).map(tidyEmail).filter(Boolean);
 
 /**
  * @param {string[]} emails from Firestore `settings/access`.

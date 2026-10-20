@@ -8,7 +8,7 @@
 <link rel="apple-touch-icon" href="assets/logo.png">
 <title>Production Board — Stella Marine</title>
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="css/style.css?v=2026-10-20.1">
+<link rel="stylesheet" href="css/style.css?v=2026-10-20.2">
 <style id="pageRule"></style>  <!-- the paper's orientation; app.js switches it with the sheet -->
 </head>
 <body>
@@ -53,8 +53,7 @@
     <button class="navlink" id="helpBtn" title="Explanations, in one place">Help</button>
   </nav>
   <span class="who" id="whoami"></span>
-  <button class="mini" id="pwBtn" hidden title="Change the password of the account signed in here">Password</button>
-  <button class="mini" id="signOut" hidden>Sign out</button>
+  <button class="cog" id="settingsBtn" title="Settings: your account, password, sign out" aria-label="Settings">&#9881;</button>
 </header>
 
 <main>
@@ -450,6 +449,6 @@
 
 </div><!-- /#appShell -->
 
-<script type="module" src="js/app.js?v=2026-10-20.1"></script>
+<script type="module" src="js/app.js?v=2026-10-20.2"></script>
 </body>
 </html>

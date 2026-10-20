@@ -111,13 +111,8 @@ function notify(msg) {
   setTimeout(() => { t.classList.remove('show'); t.hidden = true; }, 3200);
 }
 
-/**
- * Wire the header's Password button. Hidden in local mode, where there is no
- * account to have a password.
- * @param {HTMLElement} btn
- */
-export function wirePasswordButton(btn) {
-  if (!btn) return;
-  btn.hidden = Auth.mode !== 'firebase';
-  btn.addEventListener('click', open);
+/** Open the dialog - from the Settings cog. Nothing to do in local mode. */
+export function openPasswordDialog() {
+  if (Auth.mode !== 'firebase') return;
+  open();
 }

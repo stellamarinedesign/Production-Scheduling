@@ -14,7 +14,7 @@ import { wireHelp } from './help.js';
 import { readStockExport } from './adapters/stock.js';
 import { downloadWorkbook } from './adapters/drafting-xlsx.js';
 import { closeOnBackdrop } from './dialog.js';
-import { wirePasswordButton } from './password.js';
+import { wireSettings } from './settings.js';
 import {
   transformParts, validateStockExport, diffParts, unknownFamilies,
   buildIndex, search, browse, familyCounts, familyOf, hasBin, effective,
@@ -82,9 +82,7 @@ function booting(what) {
   document.body.classList.toggle('role-manager', role === ROLE.MANAGER);
   const whoami = $('whoami');
   whoami.textContent = Auth.mode === 'local' ? 'Local mode' : (who ?? '');
-  $('signOut').hidden = Auth.mode === 'local';
-  $('signOut').addEventListener('click', () => Auth.signOut().then(() => location.reload()));
-  wirePasswordButton($('pwBtn'));
+  wireSettings($('settingsBtn'), { onSignOut: () => location.reload() });
 
   if (role === ROLE.NONE) {
     booting(false);

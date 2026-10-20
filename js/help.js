@@ -256,11 +256,23 @@ export const HELP = [
       {
         q: 'How do I change my password?',
         a: [
-          'Password, next to Sign out, on the board and on the parts page. Type '
-          + 'the current password and the new one twice. It changes there and then; '
-          + 'nothing is emailed and nobody else sees it.',
+          'The cog, top right, then Password. Type the current password and the '
+          + 'new one twice. It changes there and then; nothing is emailed and nobody '
+          + 'else sees it. Sign out is under the same cog.',
           'Forgotten it? Ask a manager: a password is reset in the Firebase console '
           + 'in a minute, with a temporary one you then change here.',
+        ],
+      },
+      {
+        q: 'How is somebody given access?',
+        a: [
+          'Two steps. The Firebase user is made in the console, with a temporary '
+          + 'password to pass on (self-signup stays off, so an account is a deliberate '
+          + 'act). Then the cog, Settings, Accounts: add the address as a manager or '
+          + 'an engineer. That list is the one place a role lives - the security '
+          + 'rules read it too - and it takes effect for them on their next page '
+          + 'load. Anyone signed in and on neither list is floor: current orders and '
+          + 'the part list, read-only. A manager cannot remove themselves.',
         ],
       },
       {
