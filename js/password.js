@@ -42,7 +42,7 @@ function build() {
   };
   box.append(field('pwCurrent', 'Current password', 'current-password'));
   box.append(field('pwNew', 'New password', 'new-password',
-    `At least ${MIN_LENGTH} characters. Nobody else sees it, and nothing is emailed.`));
+    `At least ${MIN_LENGTH} characters.`));
   box.append(field('pwAgain', 'New password, again', 'new-password'));
   box.append(el('div', 'form-err'));
   const acts = el('div', 'actions');
