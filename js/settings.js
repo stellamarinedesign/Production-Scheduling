@@ -134,7 +134,7 @@ function renderAccounts() {
 
   const table = el('div', 'acct-table');
   const head = el('div', 'acct-row acct-head-row');
-  head.append(el('span', null, 'Account'), el('span', null, 'Role'), el('span', null, 'Master'), el('span', null, ''));
+  head.append(el('span', null, 'Account'), el('span', null, 'Role'), el('span', null, 'Master'), el('span', null, 'Firebase user'), el('span', null, ''));
   table.append(head);
   const rows = accountRows(access);
   if (!rows.length) table.append(el('div', 'acct-none', 'nobody listed yet'));
@@ -159,6 +159,15 @@ function renderAccounts() {
         tick.checked ? `${r.email} is now a master.` : `${r.email} is no longer a master.`));
     }
     row.append(tick);
+
+    // The Firebase user, separately from the listing: for an address listed
+    // before sign-up was on, or by an older build, or whose temporary
+    // password went unseen.
+    const mk = el('button', 'mini', 'Make user');
+    mk.title = 'Make the Firebase user for this address, temporary password shown once. If it already exists, says so and offers the ways round.';
+    if (self) { mk.disabled = true; mk.title = 'Your own account exists: you are signed in with it.'; }
+    else mk.addEventListener('click', () => makeUser(r.email, mk));
+    row.append(mk);
 
     const rm = el('button', 'mini', 'Remove');
     if (self) { rm.disabled = true; rm.title = 'You cannot remove yourself; another master can.'; }
@@ -190,7 +199,7 @@ function renderAccounts() {
   err.id = 'acctErr';
   card.append(err);
 
-  if (fresh) card.append(freshBox(fresh));
+  if (fresh) { const fb = freshBox(fresh); card.append(fb); fb.scrollIntoView({ block: 'nearest' }); }
 }
 
 /**
@@ -221,10 +230,11 @@ async function addAccount(email, role, btn) {
     } catch (e) {
       const code = e?.code ?? '';
       if (code.includes('email-already-in-use')) {
-        notify(`${email} listed. Its Firebase user already existed, so its password is unchanged.`);
+        fresh = { email, exists: true };
       } else {
-        overlay.querySelector('#acctErr').textContent = `${email} is listed, but its Firebase user could not be made: ${friendlyAuthError(e)}`;
+        fresh = { email, failed: friendlyAuthError(e) };
       }
+      renderAccounts();
     }
     return true;
   } finally {
@@ -232,9 +242,52 @@ async function addAccount(email, role, btn) {
   }
 }
 
-/** The temporary password of the account just made, shown once with a Copy. */
-function freshBox({ email, password }) {
+/** The Firebase user for a listed address, from its row. */
+async function makeUser(email, btn) {
+  btn.disabled = true;
+  const password = tempPassword();
+  try {
+    await Auth.createAccount(email, password);
+    fresh = { email, password };
+    log(`${email}: Firebase user made.`);
+  } catch (e) {
+    const code = e?.code ?? '';
+    fresh = code.includes('email-already-in-use') ? { email, exists: true } : { email, failed: friendlyAuthError(e) };
+  } finally {
+    btn.disabled = false;
+    renderAccounts();
+  }
+}
+
+/**
+ * What became of the Firebase user: made, with its temporary password shown
+ * once and a Copy; already there, with the ways round a lost password; or
+ * not made, with why and what to press.
+ */
+function freshBox({ email, password, exists, failed }) {
   const box = el('div', 'acct-fresh');
+  if (exists) {
+    box.append(el('div', 'acct-fresh-head', `${email} already has a Firebase user`));
+    box.append(el('div', 'settings-row-sub',
+      'Its password is unchanged. If that password is lost: delete the user in the Firebase console '
+      + '(Authentication, Users) and press Make user here again for a fresh temporary one - or email a reset link, '
+      + 'which can land in junk and take its time.'));
+    const line = el('div', 'acct-fresh-line');
+    const mail = el('button', 'mini', 'Email a reset link');
+    mail.addEventListener('click', async () => {
+      mail.disabled = true;
+      try { await Auth.sendPasswordReset(email); mail.textContent = 'Sent, if the user exists'; }
+      catch (e) { mail.textContent = friendlyAuthError(e); }
+    });
+    line.append(mail);
+    box.append(line);
+    return box;
+  }
+  if (failed) {
+    box.append(el('div', 'acct-fresh-head', `${email} is listed, but its Firebase user was not made`));
+    box.append(el('div', 'settings-row-sub', `${failed} Press Make user on its row to try again.`));
+    return box;
+  }
   box.append(el('div', 'acct-fresh-head', `Account made for ${email}`));
   const line = el('div', 'acct-fresh-line');
   line.append(el('span', null, 'Temporary password: '), el('code', null, password));

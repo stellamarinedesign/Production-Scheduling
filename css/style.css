@@ -928,7 +928,7 @@ header .cog:hover { border-color: var(--red-bright); color: var(--white); }
 .acct-add { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 .acct-add input { flex: 1; min-width: 180px; }
 .acct-table { margin-top: 12px; }
-.acct-row { display: grid; grid-template-columns: minmax(0, 1fr) 112px 56px 78px; align-items: center; gap: 10px; }
+.acct-row { display: grid; grid-template-columns: minmax(0, 1fr) 108px 52px 92px 78px; align-items: center; gap: 8px; }
 .acct-master { justify-self: center; width: 16px; height: 16px; }
 .acct-fresh { margin-top: 12px; padding: 10px 12px; border: 1.5px solid var(--red-deep); border-radius: 10px; background: var(--black-night); }
 .acct-fresh-head { font-weight: 700; margin-bottom: 6px; }
@@ -945,7 +945,7 @@ header .cog:hover { border-color: var(--red-bright); color: var(--white); }
   padding: 0 5px; letter-spacing: .08em; margin-left: 6px; vertical-align: middle;
 }
 @media screen and (max-width: 760px) {
-  .acct-row { grid-template-columns: minmax(0, 1fr) 96px 40px 70px; gap: 6px; }
+  .acct-row { grid-template-columns: minmax(0, 1fr) 90px 36px 84px 70px; gap: 5px; }
 }
 /* The activity log under History: when, who, what. */
 .hist-cat-head.is-static { cursor: default; }
