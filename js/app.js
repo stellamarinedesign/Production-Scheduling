@@ -14,6 +14,7 @@ import { wireHelp } from './help.js';
 import { davitsByBoat, mergeDavits } from './davits.js';
 import { itemFacts, mergeItemFacts } from './vessel-codes.js';
 import { closeOnBackdrop } from './dialog.js';
+import { wirePasswordButton } from './password.js';
 import { Store, packRows, unpackRows, isNewerImport } from './store.js';
 import { renderPrint, renderWarehouse, measure, fitToPage, pageRule, PAPER,
          renderLanePrint, fitLaneToPage } from './print.js';
@@ -201,6 +202,7 @@ async function start(st) {
     st.role === ROLE.MANAGER ? 'MANAGER' : st.role === ROLE.ENGINEER ? 'ENGINEER' : 'FLOOR');
   who.append(chip);
   $('signOut').hidden = st.mode === 'local';
+  $('pwBtn').hidden = st.mode === 'local';
 
   if (started) { rebuild(); return; }
   started = true;
@@ -507,6 +509,7 @@ function wireAuth() {
     $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
   }
   $('signOut').addEventListener('click', () => Auth.signOut());
+  wirePasswordButton($('pwBtn'));
 }
 
 // ---------------------------------------------------------------------------

@@ -136,6 +136,23 @@ export const Auth = {
     await fa.sendPasswordResetEmail(auth, email.trim());
   },
 
+  /**
+   * Change the signed-in account's password, here, with no email in the loop.
+   *
+   * Firebase will not change a password on a stale sign-in, so the current
+   * password is proved first by signing in with it again; a wrong one fails
+   * there, before anything changes. A forgotten password is the one thing this
+   * cannot do - that is a console job, in the private SETUP notes.
+   */
+  async changePassword(current, next) {
+    if (this.mode === 'local') throw new Error('Local mode \u2014 there are no accounts.');
+    const { fa, auth } = this._fb;
+    const user = auth.currentUser;
+    if (!user?.email) throw new Error('Not signed in.');
+    await fa.reauthenticateWithCredential(user, fa.EmailAuthProvider.credential(user.email, current));
+    await fa.updatePassword(user, next);
+  },
+
   get isManager() { return this.role === ROLE.MANAGER; },
   get isEngineer() { return this.role === ROLE.ENGINEER; },
   get isFloor() { return this.role === ROLE.FLOOR; },
@@ -152,6 +169,8 @@ export function friendlyAuthError(e) {
   const code = e?.code ?? '';
   if (code.includes('invalid-credential') || code.includes('wrong-password')
       || code.includes('user-not-found')) return 'Wrong email or password.';
+  if (code.includes('weak-password')) return 'Firebase wants a stronger password \u2014 at least six characters.';
+  if (code.includes('requires-recent-login')) return 'Sign out, sign in again, and then change it.';
   if (code.includes('invalid-email')) return 'That does not look like an email address.';
   if (code.includes('too-many-requests')) return 'Too many attempts — wait a minute and try again.';
   if (code.includes('network-request-failed')) return 'No connection to Firebase. Check the network.';

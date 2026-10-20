@@ -254,6 +254,16 @@ export const HELP = [
         ],
       },
       {
+        q: 'How do I change my password?',
+        a: [
+          'Password, next to Sign out, on the board and on the parts page. Type '
+          + 'the current password and the new one twice. It changes there and then; '
+          + 'nothing is emailed and nobody else sees it.',
+          'Forgotten it? Ask a manager: a password is reset in the Firebase console '
+          + 'in a minute, with a temporary one you then change here.',
+        ],
+      },
+      {
         q: 'Where are the row buttons?',
         a: [
           'Hide stays on the row, since it is the one used in passing. The rest - '
