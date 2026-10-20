@@ -925,8 +925,23 @@ header .cog:hover { border-color: var(--red-bright); color: var(--white); }
 .acct-none { font-size: 12.5px; color: var(--text-dim); font-style: italic; }
 .acct-row { display: flex; align-items: center; gap: 10px; padding: 5px 0; border-top: 1px solid var(--line); }
 .acct-row .acct-email { flex: 1; font-size: 13.5px; }
-.acct-add { display: flex; gap: 8px; margin-top: 8px; }
-.acct-add input { flex: 1; min-width: 0; }
+.acct-add { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.acct-add input { flex: 1; min-width: 180px; }
+.acct-table { margin-top: 12px; }
+.acct-row { display: grid; grid-template-columns: minmax(0, 1fr) 118px 78px; align-items: center; gap: 10px; }
+.acct-head-row {
+  border-top: 0; padding-bottom: 2px; font-size: 10.5px; font-weight: 700; letter-spacing: .13em;
+  text-transform: uppercase; color: var(--text-dim);
+}
+.acct-row .acct-email { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acct-role { width: 100%; font-size: 12.5px; }
+.master-chip {
+  font-size: 9.5px; color: var(--red-bright); border: 1px solid var(--red-deep); border-radius: 5px;
+  padding: 0 5px; letter-spacing: .08em; margin-left: 6px; vertical-align: middle;
+}
+@media screen and (max-width: 760px) {
+  .acct-row { grid-template-columns: minmax(0, 1fr) 100px 72px; gap: 6px; }
+}
 /* The activity log under History: when, who, what. */
 .hist-cat-head.is-static { cursor: default; }
 .activity { padding: 4px 0 10px; }

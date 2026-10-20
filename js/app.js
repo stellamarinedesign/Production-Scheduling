@@ -8,7 +8,7 @@ import { CATEGORY_ORDER, PRINT_LAYOUT, EXCLUSION_ORDER, EXCLUSION_GROUP_LABEL,
          TM_CATEGORY_ORDER, INTERNAL_CATEGORY_ORDER, LANE_LABEL, WATERMAKER_CATEGORIES,
          SETTABLE_STATUSES, ERP_CLOSER, isPartOrder } from './rules.js';
 import { stellaCode, labelFor, existingBoats, acceptNewCode, applyTemplate } from './vessel-codes.js';
-import { Auth, ROLE, friendlyAuthError, setManagers, setEngineers, managerCount } from './auth.js';
+import { Auth, ROLE, friendlyAuthError, setManagers, setEngineers, setMasters, managerCount } from './auth.js';
 import { VERSION } from './version.js';
 import { wireHelp } from './help.js';
 import { davitsByBoat, mergeDavits } from './davits.js';
@@ -188,6 +188,7 @@ async function start(st) {
     const access = await Store.loadAccess();
     setManagers(access.managers);
     setEngineers(access.engineers);
+    setMasters(access.masters);
   }
   st = { ...st, role: Auth.refreshRole() };
 

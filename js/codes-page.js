@@ -14,7 +14,7 @@ import { Store, unpackRows } from './store.js';
 import { resolveDisplays, boatRows, itemFacts, factsFromStore,
          factsAreStale } from './vessel-codes.js';
 import { classify } from './rules.js';
-import { Auth, ROLE, setManagers, setEngineers } from './auth.js';
+import { Auth, ROLE, setManagers, setEngineers, setMasters } from './auth.js';
 import { VERSION } from './version.js';
 import { fitCodesSheet, TYPE_STEPS } from './codes-print.js';
 import { davitsByBoat } from './davits.js';
@@ -56,6 +56,7 @@ let davits = [];    // boat -> davits, straight from the export
   const access = await Store.loadAccess();
   setManagers(access.managers);
   setEngineers(access.engineers);
+  setMasters(access.masters);
   const role = Auth.refreshRole();
   document.body.classList.toggle('role-engineer', role === ROLE.ENGINEER);
 

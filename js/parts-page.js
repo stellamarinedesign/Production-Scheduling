@@ -8,7 +8,7 @@
 // Everything that decides is in parts.js; this draws and wires.
 
 import { Store } from './store.js';
-import { Auth, ROLE, setManagers, setEngineers } from './auth.js';
+import { Auth, ROLE, setManagers, setEngineers, setMasters } from './auth.js';
 import { VERSION } from './version.js';
 import { wireHelp } from './help.js';
 import { readStockExport } from './adapters/stock.js';
@@ -74,6 +74,7 @@ function booting(what) {
   const access = await Store.loadAccess();
   setManagers(access.managers);
   setEngineers(access.engineers);
+  setMasters(access.masters);
   role = Auth.refreshRole();
   who = first.email ?? null;
 

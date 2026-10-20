@@ -19,6 +19,7 @@
 // fail-closed default as before, now covering the not-yet-loaded case too.
 let managerEmails = [];
 let engineerEmails = [];
+let masterEmails = [];
 
 export const tidyEmail = (e) => String(e ?? '').trim().toLowerCase();
 export const isEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e ?? ''));
@@ -40,6 +41,15 @@ export function setManagers(emails) { managerEmails = tidy(emails); }
 export function setEngineers(emails) { engineerEmails = tidy(emails); }
 
 export const managerCount = () => managerEmails.length;
+
+/**
+ * MASTERS are not a role. A master is whatever role they are - a manager,
+ * today - and additionally the only one who may change the accounts and
+ * their roles. The list is set in the console and nowhere else, so nobody
+ * can promote themselves to it.
+ */
+export function setMasters(emails) { masterEmails = tidy(emails); }
+export const isMasterEmail = (email) => masterEmails.includes(tidyEmail(email));
 
 /**
  * Anyone signed in who is not on that list gets the floor view: the board,
@@ -156,6 +166,8 @@ export const Auth = {
   },
 
   get isManager() { return this.role === ROLE.MANAGER; },
+  /** May change the accounts and their roles. Not a role; see setMasters. */
+  get isMaster() { return this.mode === 'firebase' && Boolean(this.user?.email) && isMasterEmail(this.user.email); },
   get isEngineer() { return this.role === ROLE.ENGINEER; },
   get isFloor() { return this.role === ROLE.FLOOR; },
   /** The reference pages: vessel codes, parts. Managers and engineers. */

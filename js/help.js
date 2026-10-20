@@ -268,11 +268,16 @@ export const HELP = [
         a: [
           'Two steps. The Firebase user is made in the console, with a temporary '
           + 'password to pass on (self-signup stays off, so an account is a deliberate '
-          + 'act). Then the cog, Settings, Accounts: add the address as a manager or '
-          + 'an engineer. That list is the one place a role lives - the security '
-          + 'rules read it too - and it takes effect for them on their next page '
-          + 'load. Anyone signed in and on neither list is floor: current orders and '
-          + 'the part list, read-only. A manager cannot remove themselves.',
+          + 'act). Then a master user opens the cog, Settings, Accounts, and adds the '
+          + 'address with a role from the dropdown: manager, engineer or floor. That '
+          + 'list is the one place a role lives - the security rules read it too - '
+          + 'and it takes effect for them on their next page load. A role is changed '
+          + 'the same way, on its row; nothing has to be deleted and remade.',
+          'A master user is an ordinary account - a manager, today - that is also on '
+          + 'the masters list, which is set in the Firebase console and nowhere else. '
+          + 'Everyone else sees under the cog only their own account, Password and '
+          + 'Sign out, and who the masters are. A master cannot change or remove '
+          + 'their own entry; another master can.',
         ],
       },
       {

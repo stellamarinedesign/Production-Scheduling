@@ -348,19 +348,19 @@ export const Store = {
    * a project that has never named one simply has none.
    */
   async loadAccess() {
-    if (this.mode === 'local') return { managers: ['*'], engineers: [] };
+    if (this.mode === 'local') return { managers: ['*'], engineers: [], floor: [], masters: [] };
     try {
       const { doc, getDoc } = this._fs;
       const snap = await getDoc(doc(this._db, 'settings', 'access'));
       const d = snap.exists() ? snap.data() : {};
-      return {
-        managers: Array.isArray(d?.managers) ? d.managers : [],
-        engineers: Array.isArray(d?.engineers) ? d.engineers : [],
-      };
+      const list = (k) => (Array.isArray(d?.[k]) ? d[k] : []);
+      // `floor` lists the floor accounts for the Accounts panel only; `masters`
+      // are the ones who may change the lists. Neither decides a role here.
+      return { managers: list('managers'), engineers: list('engineers'), floor: list('floor'), masters: list('masters') };
     } catch (e) {
       // Fail closed and loudly: an unreadable list must not promote anybody.
       console.error('[access]', e.message);
-      return { managers: [], engineers: [] };
+      return { managers: [], engineers: [], floor: [], masters: [] };
     }
   },
 
@@ -503,12 +503,16 @@ export const Store = {
       { managers: emails, updatedAt: new Date().toISOString() }, { merge: true });
   },
 
-  /** Both lists at once, from the Settings cog. Same document, same rule. */
-  async saveAccess({ managers, engineers }) {
+  /**
+   * The role lists, from the Settings cog. Never the masters: those are set
+   * in the console, and a merge leaves them as they are. The rules let only a
+   * master write this document.
+   */
+  async saveAccess({ managers, engineers, floor }) {
     if (this.mode === 'local') return;
     const { doc, setDoc } = this._fs;
     await setDoc(doc(this._db, 'settings', 'access'),
-      { managers, engineers, updatedAt: new Date().toISOString() }, { merge: true });
+      { managers, engineers, floor: floor ?? [], updatedAt: new Date().toISOString() }, { merge: true });
   },
 
   /**
