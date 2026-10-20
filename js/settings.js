@@ -12,6 +12,7 @@ import { Auth, ROLE, setManagers, setEngineers, tidyEmail, isEmail } from './aut
 import { Store } from './store.js';
 import { closeOnBackdrop } from './dialog.js';
 import { openPasswordDialog } from './password.js';
+import { activityEntry, ACTION } from './activity.js';
 
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
@@ -170,6 +171,8 @@ async function save(next, note) {
   err.textContent = 'Saving…';
   try {
     await Store.saveAccess(next);
+    Store.logActivity(activityEntry({ action: ACTION.access, text: note, by: Auth.user?.email }))
+      .catch((e) => console.warn('[activity]', e.message));
     lists = next;
     setManagers(next.managers);
     setEngineers(next.engineers);

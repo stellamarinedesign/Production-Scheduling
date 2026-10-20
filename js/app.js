@@ -15,6 +15,7 @@ import { davitsByBoat, mergeDavits } from './davits.js';
 import { itemFacts, mergeItemFacts } from './vessel-codes.js';
 import { closeOnBackdrop } from './dialog.js';
 import { wireSettings } from './settings.js';
+import { describeOverride, describeItemOverride, activityEntry, whoShort, whenShort, ACTION } from './activity.js';
 import { Store, packRows, unpackRows, isNewerImport } from './store.js';
 import { renderPrint, renderWarehouse, measure, fitToPage, pageRule, PAPER,
          renderLanePrint, fitLaneToPage } from './print.js';
@@ -1566,6 +1567,7 @@ function renderHistory(lane = 'production') {
   if (!done.length) {
     host.append(el('div', 'state', 'Nothing completed yet. Jobs marked done here '
       + 'or on the Gantt land in this list.'));
+    if (lane === 'production') renderActivity(host);
     return;
   }
 
@@ -1627,6 +1629,7 @@ function renderHistory(lane = 'production') {
         reopen.title = 'Put it back on the board';
         reopen.addEventListener('click', async () => {
           await Store.setCompleted([j.prod_no], false, Auth.user?.email);
+          logChange({ action: ACTION.reopen, text: 'reopened from History' }, j.prod_no, j.inventory_id, jobTitle(j));
           state.overrides = await Store.loadOverrides();
           rebuild();
           toast(`${j.prod_no} reopened.`);
@@ -1639,6 +1642,45 @@ function renderHistory(lane = 'production') {
     }
     host.append(block);
   }
+  // Who did what, under the completed list. On the board's History only; it
+  // covers every lane.
+  if (lane === 'production') renderActivity(host);
+}
+
+/** The activity log, newest first, loaded when History opens. */
+function renderActivity(host) {
+  const block = el('div', 'hist-cat');
+  const head = el('div', 'hist-cat-head is-static');
+  head.append(el('h2', null, 'Who did what'));
+  block.append(head);
+  const list = el('div', 'activity');
+  list.append(el('div', 'state', 'Loading\u2026'));
+  block.append(list);
+  host.append(block);
+  Store.listActivity(100).then((rows) => {
+    list.textContent = '';
+    if (!rows.length) {
+      list.append(el('div', 'state', 'Nothing logged yet. A status change, Done, Hide, a label, '
+        + 'a hull or a part mark lands here with a name and a time.'));
+      return;
+    }
+    for (const r of rows) {
+      const line = el('div', 'act-row');
+      line.append(el('span', 'act-when', whenShort(r.at)));
+      line.append(el('span', 'act-who', whoShort(r.by)));
+      const what = el('span', 'act-text');
+      const key = r.prodNo ?? r.inventoryId ?? '';
+      if (key) what.append(el('b', null, key), document.createTextNode(' '));
+      if (r.label && r.label !== key) what.append(document.createTextNode(`${r.label} \u2014 `));
+      what.append(document.createTextNode(r.text ?? ''));
+      line.append(what);
+      list.append(line);
+    }
+    if (rows.length >= 100) list.append(el('div', 'state', 'The last 100. Older entries are kept, not shown.'));
+  }).catch((e) => {
+    list.textContent = '';
+    list.append(el('div', 'state', `Could not load the log \u2014 ${e.message}`));
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1722,6 +1764,7 @@ async function confirmComplete() {
     const snaps = Object.fromEntries(
       completing.filter((e) => e.ticked).map((e) => [e.job.prod_no, snapshotOf(e.job)]));
     await Store.setCompleted(picked, true, Auth.user?.email, snaps);
+    for (const p of picked) logChange({ action: ACTION.done, text: 'marked done' }, p);
     state.overrides = await Store.loadOverrides();
     $('completeOverlay').classList.remove('show');
     rebuild();
@@ -2833,6 +2876,7 @@ async function setItemOverride(inventoryId, patch) {
   else delete state.itemOverrides[inventoryId];
 
   await Store.setItemOverride(inventoryId, patch);
+  logChange(describeItemOverride(patch), null, inventoryId);
   rebuild();
 }
 
@@ -2930,7 +2974,29 @@ async function setOverride(prodNo, patch) {
   else delete state.overrides[prodNo];
 
   await Store.setOverride(prodNo, patch);
+  logChange(describeOverride(patch), prodNo);
   rebuild();
+}
+
+/**
+ * A line in the activity log for the edit just made: who, when, which job,
+ * what. Fire and forget - a log write that fails must not undo or delay the
+ * edit it describes, so it is warned about and nothing more.
+ */
+function logChange(desc, prodNo = null, inventoryId = null, label = null) {
+  if (!desc) return;
+  const b = state.board ?? {};
+  const job = prodNo
+    ? [...(b.jobs ?? []), ...(b.internal ?? []), ...(b.tm ?? []), ...(b.completed ?? [])].find((j) => j.prod_no === prodNo)
+    : null;
+  const entry = activityEntry({
+    ...desc,
+    by: Auth.user?.email ?? 'local',
+    prodNo,
+    inventoryId: inventoryId ?? job?.inventory_id ?? null,
+    label: label ?? (job ? jobTitle(job) : null),
+  });
+  Store.logActivity(entry).catch((e) => console.warn('[activity]', e.message));
 }
 
 // ---------------------------------------------------------------------------

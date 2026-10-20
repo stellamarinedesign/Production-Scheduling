@@ -463,6 +463,31 @@ export const Store = {
     await addDoc(collection(this._db, 'partImports'), summary);
   },
 
+  // ---- the activity log -------------------------------------------------
+  //
+  // Who did what on the board: one document per edit, append-only, like the
+  // import logs. Written after the edit it describes and never read back to
+  // decide anything, so a failed log write is a warning, not a lost edit.
+
+  async logActivity(entry) {
+    if (this.mode === 'local') {
+      const all = lsGet('activity', []);
+      all.unshift(entry);
+      lsSet('activity', all.slice(0, 300));
+      return;
+    }
+    const { collection, addDoc } = this._fs;
+    await addDoc(collection(this._db, 'activity'), entry);
+  },
+
+  /** Newest first. */
+  async listActivity(max = 100) {
+    if (this.mode === 'local') return lsGet('activity', []).slice(0, max);
+    const { collection, getDocs, query, orderBy, limit } = this._fs;
+    const snap = await getDocs(query(collection(this._db, 'activity'), orderBy('at', 'desc'), limit(max)));
+    return snap.docs.map((d) => ({ _id: d.id, ...d.data() }));
+  },
+
   /**
    * Write the manager list.
    *

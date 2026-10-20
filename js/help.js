@@ -276,6 +276,16 @@ export const HELP = [
         ],
       },
       {
+        q: 'Who changed that?',
+        a: [
+          'History, at the foot: Who did what. Every edit on the board lands there '
+          + 'with a name and a time - a status set or let go, Done and Reopen, Hide '
+          + 'and Show, a label, a hull, a part mark, and a change to the Accounts '
+          + 'lists. The last hundred are shown; older ones are kept. It is a record, '
+          + 'not a control: nothing reads it back.',
+        ],
+      },
+      {
         q: 'Where are the row buttons?',
         a: [
           'Hide stays on the row, since it is the one used in passing. The rest - '

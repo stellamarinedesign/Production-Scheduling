@@ -927,6 +927,20 @@ header .cog:hover { border-color: var(--red-bright); color: var(--white); }
 .acct-row .acct-email { flex: 1; font-size: 13.5px; }
 .acct-add { display: flex; gap: 8px; margin-top: 8px; }
 .acct-add input { flex: 1; min-width: 0; }
+/* The activity log under History: when, who, what. */
+.hist-cat-head.is-static { cursor: default; }
+.activity { padding: 4px 0 10px; }
+.act-row {
+  display: grid; grid-template-columns: 118px 96px minmax(0, 1fr); gap: 12px;
+  padding: 6px 10px; border-top: 1px solid var(--line); font-size: 13px; align-items: baseline;
+}
+.act-when { color: var(--text-dim); font-variant-numeric: tabular-nums; font-size: 12px; }
+.act-who { color: var(--white); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.act-text { overflow-wrap: anywhere; }
+.act-text b { font-variant-numeric: tabular-nums; }
+@media screen and (max-width: 760px) {
+  .act-row { grid-template-columns: 1fr; gap: 2px; }
+}
 header .who .role {
   display: inline-block; border: 1px solid var(--line); border-radius: 5px;
   padding: 1px 6px; margin-left: 6px; font-size: 10.5px; font-weight: 700; letter-spacing: .08em;
