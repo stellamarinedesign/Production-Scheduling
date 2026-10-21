@@ -15,6 +15,7 @@ import { davitsByBoat, mergeDavits } from './davits.js';
 import { itemFacts, mergeItemFacts } from './vessel-codes.js';
 import { closeOnBackdrop } from './dialog.js';
 import { wireSettings } from './settings.js';
+import { openPackageDialog } from './package-dialog.js';
 import { describeOverride, describeItemOverride, activityEntry, whoShort, whenShort, ACTION } from './activity.js';
 import { Store, packRows, unpackRows, isNewerImport } from './store.js';
 import { renderPrint, renderWarehouse, measure, fitToPage, pageRule, PAPER,
@@ -1474,6 +1475,13 @@ function jobRow(j, { full = false } = {}) {
   row.append(acts);
 
   const fold = el('span', 'acts-more');
+  const pkg = el('button', 'mini', 'Package');
+  pkg.addEventListener('click', () => openPackageDialog(j, {
+    who: Auth.user?.email ?? null,
+    onLog: (d) => logChange(d, j.prod_no, j.inventory_id, jobTitle(j)),
+    toast,
+  }));
+  fold.append(pkg);
   const edit = el('button', 'mini', 'Label');
   edit.addEventListener('click', () => openLabelEditor(j));
   fold.append(edit);

@@ -324,6 +324,36 @@ export const Store = {
     if (!after.label && !after.displayCode && after.partOrder == null) await deleteDoc(ref);
   },
 
+  // ---- production packages --------------------------------------------------
+  //
+  // Which folders and documents a job's paperwork comes from: one document per
+  // item code (`item~CODE`) or per job (`job~PRODNO`), see packages.js. Paths
+  // are relative to the Stella Systems folder, never a PC's full path.
+
+  async loadPackages() {
+    if (this.mode === 'local') return lsGet('packages', {});
+    const { collection, getDocs } = this._fs;
+    const snap = await getDocs(collection(this._db, 'packages'));
+    const out = {};
+    snap.forEach((d) => { out[d.id] = d.data(); });
+    return out;
+  },
+
+  /** Write a package, or remove it when it holds nothing. */
+  async savePackage(key, data) {
+    const empty = !data?.sources?.length;
+    const stamped = { ...data, updatedAt: new Date().toISOString() };
+    if (this.mode === 'local') {
+      const all = lsGet('packages', {});
+      if (empty) delete all[key]; else all[key] = stamped;
+      lsSet('packages', all);
+      return;
+    }
+    const { doc, setDoc, deleteDoc } = this._fs;
+    const ref = doc(this._db, 'packages', key);
+    if (empty) await deleteDoc(ref); else await setDoc(ref, stamped);
+  },
+
   // ---- settings -----------------------------------------------------------
 
   async loadSettings() {

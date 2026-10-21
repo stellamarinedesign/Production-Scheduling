@@ -927,6 +927,33 @@ header .cog:hover { border-color: var(--red-bright); color: var(--white); }
 .acct-row .acct-email { flex: 1; font-size: 13.5px; }
 .acct-add { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 .acct-add input { flex: 1; min-width: 180px; }
+
+/* The package dialog: what a job's paperwork comes from, and what was found. */
+.box.wide.package { max-width: 820px; }      /* outranks .box.wide, which comes later */
+.pkg-folder:not(:empty) { margin-bottom: 14px; }
+.pkg-section + .pkg-section { margin-top: 16px; }
+.pkg-scope { min-width: 280px; margin-top: 4px; }
+.pkg-row, .pkg-doc {
+  display: grid; align-items: center; gap: 10px;
+  padding: 6px 0; border-top: 1px solid var(--line); font-size: 13.5px;
+}
+.pkg-row { grid-template-columns: 52px minmax(0, 1fr) auto auto; }
+.pkg-doc { grid-template-columns: 20px 78px minmax(0, 1.3fr) minmax(0, 1fr) 84px; cursor: pointer; }
+.pkg-kind { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-dim); }
+.pkg-path, .pkg-name, .pkg-where { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pkg-where, .pkg-date { color: var(--text-dim); font-size: 12.5px; }
+.pkg-date { font-variant-numeric: tabular-nums; text-align: right; }
+.pkg-row.is-missing .pkg-path { color: var(--red-bright); text-decoration: line-through; }
+.pkg-note { color: var(--red-bright); font-size: 12px; }
+.pkg-none { color: var(--text-dim); font-size: 13px; padding: 6px 0; }
+.drop-zone.pkg-drop { padding: 18px 16px; margin-top: 8px; }
+.drop-zone.pkg-drop strong { font-size: 15px; margin-bottom: 2px; }
+.drop-zone.pkg-drop.is-off { opacity: .5; }
+.pkg-suggest:not(:empty) { margin-top: 12px; }
+@media screen and (max-width: 760px) {
+  .pkg-doc { grid-template-columns: 20px minmax(0, 1fr) 84px; }
+  .pkg-doc .pkg-kind, .pkg-doc .pkg-where { display: none; }
+}
 .acct-table { margin-top: 12px; }
 .acct-row { display: grid; grid-template-columns: minmax(0, 1fr) 108px 52px 92px 78px; align-items: center; gap: 8px; }
 .acct-master { justify-self: center; width: 16px; height: 16px; }

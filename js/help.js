@@ -293,9 +293,29 @@ export const HELP = [
         q: 'Where are the row buttons?',
         a: [
           'Hide stays on the row, since it is the one used in passing. The rest - '
-          + 'Label, Part, the status and Done - are folded beneath: click the row, '
+          + 'Package, Label, Part, the status and Done - are folded beneath: click the row, '
           + 'or its caret, and they come out under it; click again to put them away. '
           + 'A row stays open through an edit.',
+        ],
+      },
+      {
+        q: 'What is a package?',
+        a: [
+          'The paperwork a job goes to the floor with: its laser checklists and its '
+          + 'combined drawing sets. Open a row and press Package.',
+          'What goes in it is dragged in from File Explorer, from inside the Stella '
+          + 'Systems folder: a vessel folder, a lock mechanism folder, or a single '
+          + 'document. A folder is searched every time for its current checklist, the '
+          + 'one in Build Forms, and its drawing set, the ...Combined.pdf, so a new '
+          + 'revision is picked up by itself; Archive folders are skipped. A package is '
+          + 'kept for every job on the item code, or for one job only, which is where a '
+          + 'custom job starts. Once some packages exist, a new job is offered the '
+          + 'folders beside theirs that carry its vessel code or name.',
+          'Print drawings puts every drawing set into one PDF in a new tab, to print '
+          + 'from there. Download checklists saves each checklist with the production '
+          + 'number and due date written in, to open and print in Word.',
+          'Each PC connects its own Stella Systems folder once, in Edge or Chrome. The '
+          + 'browser may ask again for permission now and then; Allow is one click.',
         ],
       },
       {

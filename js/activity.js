@@ -9,7 +9,7 @@
 /** The verbs in the log, so a reader (or a filter) can rely on them. */
 export const ACTION = {
   status: 'status', hide: 'hide', show: 'show', label: 'label', hull: 'hull',
-  part: 'part', done: 'done', reopen: 'reopen', access: 'access',
+  part: 'part', done: 'done', reopen: 'reopen', access: 'access', package: 'package',
 };
 
 /**

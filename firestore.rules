@@ -64,6 +64,14 @@ service cloud.firestore {
       allow write: if manager();
     }
 
+    // Production packages: which folders and documents a job's paperwork
+    // comes from, per item code or per job. Paths below the Stella Systems
+    // folder, never a PC's own.
+    match /packages/{key} {
+      allow read:  if listed();
+      allow write: if manager();
+    }
+
     // Published boards. The floor renders the newest of these, so floor
     // accounts must read them. History is append-only.
     match /imports/{importId} {
