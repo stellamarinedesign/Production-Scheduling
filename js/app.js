@@ -17,7 +17,7 @@ import { closeOnBackdrop } from './dialog.js';
 import { wireSettings } from './settings.js';
 import { describeOverride, describeItemOverride, activityEntry, whoShort, whenShort, ACTION } from './activity.js';
 import { Store, packRows, unpackRows, isNewerImport } from './store.js';
-import { renderPrint, renderWarehouse, renderWatermakers, measure, fitToPage, pageRule,
+import { renderPrint, fitWarehouse, renderWatermakers, measure, fitToPage, fitHorizon, pageRule,
          WAREHOUSE_PAPER, renderLanePrint, fitLaneToPage } from './print.js';
 import { renderGantt } from './gantt.js';
 import { balanceColumns } from './print.js';
@@ -940,7 +940,7 @@ function renderPrintSheet() {
     b.setAttribute('aria-pressed', String(p === state.warehousePaper));
   }
   const wp = $('waterSheet');
-  wp.closest('.ctrl').hidden = lane !== 'production';
+  wp.closest('.ctrl').hidden = !(lane === 'production' || isWarehouse);
   wp.textContent = state.waterPage ? 'Watermakers on' : 'Watermakers off';
   wp.classList.toggle('on', state.waterPage);
   wp.setAttribute('aria-pressed', String(state.waterPage));
@@ -960,11 +960,15 @@ function renderPrintSheet() {
     state.laneFit = null;
     state.variantFit = null;
   } else if (lane === 'warehouse') {
-    // The fitted board again, with tick boxes: on A4 as many landscape pages
-    // as it takes, on A3 one sheet with the type stepped down to hold it. It is
-    // never refitted on its own - that would move the horizon under the board
-    // on screen - so it pages or shrinks instead, and the status line says.
-    state.variantFit = renderWarehouse(host, state.board, { onePage: page.onePage });
+    // On A4 the fitted board again, with tick boxes, on as many landscape pages
+    // as it takes - never refitted on its own, which would move the horizon
+    // under the board on screen. On A3 one sheet with a horizon of its own,
+    // trimmed from the setting to hold it. Its watermaker page likewise.
+    state.variantFit = fitWarehouse(host, {
+      board: state.board, build: state.buildAt, onePage: page.onePage,
+      startWeeks: state.settings.horizonWeeks, minWeeks: 4,
+      autoFit: state.settings.autoFit, water: state.waterPage,
+    });
     state.laneFit = null;
   } else {
     state.variantFit = null;
@@ -983,17 +987,21 @@ function renderPrintSheet() {
 
 /**
  * The board's second page: watermakers, when the Print tab asks for one and
- * the board is the sheet on its way to the printer. Nothing to list means no
- * page - a blank second sheet is worse than none - and the status line says.
+ * the board is the sheet on its way to the printer (the warehouse copy draws
+ * its own, inside its pages). A horizon of its own, trimmed from the setting
+ * until the page holds. Nothing to list means no page - a blank second sheet
+ * is worse than none - and the status line says.
  */
 function renderWaterPage() {
   const host = $('printSecond');
   const on = state.waterPage && state.printLane === 'production';
   if (!on) { host.hidden = true; state.waterFit = null; return; }
   host.hidden = false;                  // laid out before it is measured
-  const jobs = renderWatermakers(host, state.board, { horizon: true });
-  state.waterFit = { jobs, ...measure(host) };
-  host.hidden = !jobs;
+  state.waterFit = fitHorizon(state.buildAt, (b) => {
+    const jobs = renderWatermakers(host, b, { horizon: true });
+    return { jobs, ...measure(host) };
+  }, { startWeeks: state.settings.horizonWeeks, minWeeks: 4, autoFit: state.settings.autoFit });
+  host.hidden = !state.waterFit.jobs;
 }
 
 function setPrintLane(lane, { render = true } = {}) {
@@ -1037,6 +1045,7 @@ function rebuild() {
     hidePartOrders: !state.showPartOrders,
   };
   const build = (weeks) => buildBoard(state.rows, { ...opts, horizonWeeks: weeks });
+  state.buildAt = build;      // the sheets with a horizon of their own refit from it
 
   // Reveal BEFORE measuring: a [hidden] ancestor gives the print host no
   // layout, and an unmeasured board would claim to fit at any horizon. Not
@@ -1857,19 +1866,23 @@ function renderFitStatus() {
     return;
   }
 
-  const f = state.fit;
+  // The A3 warehouse copy has a horizon of its own, so its line describes its
+  // own board; every other sheet describes the board as fitted.
+  const v = state.variantFit;
+  const f = v?.onePage ? v : state.fit;
+  const shown = v?.onePage ? v.board : state.board;
   box.classList.toggle('trimmed', Boolean(f.trimmedFrom));
 
-  const range = state.board.meta.horizon_end
-    ? `${toAU(toDateOnly(state.board.meta.as_of))} — ${toAU(toDateOnly(state.board.meta.horizon_end))}`
+  const range = shown.meta.horizon_end
+    ? `${toAU(toDateOnly(shown.meta.as_of))} — ${toAU(toDateOnly(shown.meta.horizon_end))}`
     : 'no horizon';
 
   box.append(el('span', null, `Covering `), el('b', null, range));
   box.append(el('span', null, `·`));
-  const printed = state.board.meta.print_count;
-  const total = state.board.meta.job_count;
+  const printed = shown.meta.print_count;
+  const total = shown.meta.job_count;
   const rows = el('b', null, `${printed} of ${total} jobs`);
-  const heldBack = state.board.meta.part_orders_hidden ?? 0;
+  const heldBack = shown.meta.part_orders_hidden ?? 0;
   rows.title = (total === printed ? ''
     : `${total - printed} on the board but off the sheet — watermakers, `
       + 'work past the horizon, or stock beyond the cap')
@@ -1877,13 +1890,25 @@ function renderFitStatus() {
   box.append(rows);
   box.append(el('span', null, `·`));
 
-  // The warehouse copy: the same board, paged rather than fitted - or on A3
-  // one sheet, the type stepped down to hold it.
-  if (state.variantFit) {
-    const v = state.variantFit;
+  // The warehouse copy: on A4 the same board, paged rather than fitted; on A3
+  // one sheet with a horizon of its own, and the type stepped down only when
+  // the floor of the horizon would not hold it.
+  if (v) {
     if (!v.measured) box.append(el('span', null, 'the warehouse copy could not be measured'));
-    else if (v.onePage && !v.fits) box.append(el('span', null, `the warehouse copy will not fit one A3 page even at ${v.pt}pt type`));
-    else if (v.onePage) box.append(el('span', null, `the warehouse copy fits one A3 page${v.shrunk ? ` with the type at ${v.pt}pt` : ''}`));
+    else if (v.onePage) {
+      const type = v.shrunk ? ` with the type at ${v.pt}pt` : '';
+      if (!state.settings.autoFit) {
+        box.append(el('span', null, v.fits
+          ? `the warehouse copy fits one A3 page at ${v.weeks} weeks`
+          : 'the warehouse copy will not fit one A3 page — auto-fit is off'));
+      } else if (!v.fits) {
+        box.append(el('span', null, `the warehouse copy will not fit one A3 page even at ${v.weeks} weeks and ${v.pt}pt type`));
+      } else if (v.trimmedFrom) {
+        box.append(el('span', null, 'Auto-fit reduced the horizon from '));
+        box.append(el('b', null, `${v.trimmedFrom} weeks to ${v.weeks}`));
+        box.append(el('span', null, ` to hold one A3 page${type}.`));
+      } else box.append(el('span', null, `the warehouse copy fits one A3 page at ${v.weeks} weeks${type}`));
+    }
     else if (v.pages === 1) box.append(el('span', null, 'the warehouse copy fits one landscape page'));
     else {
       box.append(el('span', null, 'the warehouse copy runs to '), el('b', null, `${v.pages} landscape pages`));
@@ -1891,6 +1916,7 @@ function renderFitStatus() {
         ? `, and ${v.split.join(', ')} had to be split \u2014 too tall for a page on its own`
         : ', no category split across two'));
     }
+    waterStatus(box, v.water, { second: false });
     return;
   }
 
@@ -1908,15 +1934,29 @@ function renderFitStatus() {
       `Lower the stock cap, or hide some jobs.`));
   }
 
-  // The second page, when the board carries one.
-  const w = state.waterFit;
+  waterStatus(box, state.waterFit, { second: true });
+}
+
+/**
+ * The watermaker page's line, after its sheet's own: the board's second page,
+ * or the warehouse copy's last. It has a horizon of its own, so it says when
+ * that was trimmed, and when even the floor would not hold it.
+ */
+function waterStatus(box, w, { second }) {
   if (!w) return;
   box.append(el('span', null, `·`));
-  if (!w.jobs) box.append(el('span', null, 'no watermaker jobs for a second page'));
-  else {
-    box.append(el('span', null, 'plus a second page of '));
-    box.append(el('b', null, `${w.jobs} watermaker job${w.jobs === 1 ? '' : 's'}`));
-    if (w.measured && !w.fits) box.append(el('span', null, `, which runs to ${w.pages} pages`));
+  if (!w.jobs) {
+    box.append(el('span', null, second ? 'no watermaker jobs for a second page' : 'no watermaker jobs for a page of their own'));
+    return;
+  }
+  box.append(el('span', null, second ? 'plus a second page of ' : 'plus a watermaker page of '));
+  box.append(el('b', null, `${w.jobs} ${second ? 'watermaker ' : ''}job${w.jobs === 1 ? '' : 's'}`));
+  if (!w.measured) return;
+  if (w.trimmedFrom) box.append(el('span', null, `, its horizon trimmed from ${w.trimmedFrom} weeks to ${w.weeks} to hold one page`));
+  else if (!w.fits) {
+    box.append(el('span', null, state.settings.autoFit
+      ? `, which will not fit one page even at ${w.weeks} weeks`
+      : ', which runs past one page — auto-fit is off'));
   }
 }
 

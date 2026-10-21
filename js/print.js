@@ -196,14 +196,39 @@ export const ticksFor = (category) =>
 const shortDate = (display) => String(display ?? '').replace(/^(\d{2}\/\d{2}\/)\d{2}(\d{2})$/, '$1$2');
 
 /**
- * Type sizes the A3 copy tries, largest first. 10pt is the warehouse copy's
- * size on its landscape pages; below 8pt a wall sheet stops being worth
- * printing. The stylesheet reads the one chosen from `--wh-pt` on the host.
+ * Type sizes the A3 copy can fall back to, largest first. 10pt is the warehouse
+ * copy's size, the same on A3 as on the A4 landscape pages: the two papers are
+ * the same width, so the type and the columns come out the same size on
+ * either. Below 8pt a wall sheet stops being worth printing. The stylesheet
+ * reads the one chosen from `--wh-pt` on the host.
  */
 export const WAREHOUSE_TYPE = [10, 9.5, 9, 8.5, 8];
 
+/** A page of the warehouse copy: landscape A4, or portrait A3 for the one-sheet copy. */
+function warehousePage(host, { onePage, asOf, tags, cls = '' }) {
+  const page = el('section', `page${onePage ? ' a3' : ''}${cls ? ` ${cls}` : ''}`);
+  const sheet = el('div', 'sheet');
+  const head = el('div', 'doc-head');
+  head.append(el('div', 'doc-title', 'Current production orders'));
+  for (const t of tags) head.append(el('div', 'doc-tag', t));
+  head.append(el('div', 'doc-range', `as of:  ${asOf}`));
+  sheet.append(head);
+  page.append(sheet);
+  host.append(page);
+  return { page, sheet, head };
+}
+
+/** "page 1 of 3" on every page once there is more than one; nothing on a lone page. */
+function numberPages(host) {
+  const pages = [...host.querySelectorAll('.page')];
+  for (const p of pages) p.querySelector('.doc-page')?.remove();
+  if (pages.length < 2) return;
+  pages.forEach((pg, i) => pg.querySelector('.doc-range')
+    .append(el('span', 'doc-page', `  \u00b7  page ${i + 1} of ${pages.length}`)));
+}
+
 /**
- * Draw the warehouse copy into the host.
+ * Draw the warehouse copy into the host, once, at the type size given.
  *
  * On A4 it is landscape pages. The page box is the stylesheet's (`#printRoot
  * .page`): landscape A4 with the @page margins as padding, and a sheet inside
@@ -211,10 +236,10 @@ export const WAREHOUSE_TYPE = [10, 9.5, 9, 8.5, 8];
  * of paper, so that is the test every placement makes.
  *
  * On A3 (`onePage`) it is one portrait sheet drawn at A3 (`.page.a3`). The
- * test is the same, but there is no second page to go to: the board is drawn
- * again a type size smaller, down WAREHOUSE_TYPE, until it fits. If it never
- * does it is still one page - everything placed, the foot overrun - and
- * `fits` says so, for the status line to repeat rather than paper to hide.
+ * test is the same, but there is no second page to go to: everything is
+ * placed, the foot overrun if it must be, and `fits` says which - for
+ * fitWarehouse to trim the horizon and then the type, and for the status line
+ * to repeat rather than paper to hide.
  *
  * @returns {{pages:number, measured:boolean, split:string[], fits:boolean,
  *   pt:number, onePage:boolean, shrunk:boolean}}  how many pages; whether the
@@ -223,16 +248,10 @@ export const WAREHOUSE_TYPE = [10, 9.5, 9, 8.5, 8];
  *   that had to be split because one alone outran a page; whether it all fits
  *   (always, where it may run on); and the type size it is drawn at.
  */
-export function renderWarehouse(host, board, { onePage = false } = {}) {
+export function renderWarehouse(host, board, { onePage = false, pt = WAREHOUSE_TYPE[0] } = {}) {
   host.dataset.variant = 'warehouse';
-  const steps = onePage ? WAREHOUSE_TYPE : WAREHOUSE_TYPE.slice(0, 1);
-  let out = null;
-  for (const pt of steps) {
-    host.style.setProperty('--wh-pt', `${pt}pt`);
-    out = { ...packWarehouse(host, board, { onePage }), pt, onePage, shrunk: pt !== WAREHOUSE_TYPE[0] };
-    if (out.fits || !out.measured) break;
-  }
-  return out;
+  host.style.setProperty('--wh-pt', `${pt}pt`);
+  return { ...packWarehouse(host, board, { onePage }), pt, onePage, shrunk: pt !== WAREHOUSE_TYPE[0] };
 }
 
 /** One draw of the warehouse copy at the type size set: paged, or on the one sheet. */
@@ -246,18 +265,11 @@ function packWarehouse(host, board, { onePage }) {
   const pages = [];
 
   const newPage = () => {
-    const page = el('section', onePage ? 'page a3' : 'page');   // the A3 copy's page is A3-sized
-    const sheet = el('div', 'sheet');
-    const head = el('div', 'doc-head');
-    head.append(el('div', 'doc-title', 'Current production orders'));
-    head.append(el('div', 'doc-tag', 'WAREHOUSE'));
-    head.append(el('div', 'doc-range', `as of:  ${asOf}`));
+    const { page, sheet, head } = warehousePage(host, { onePage, asOf, tags: ['WAREHOUSE'] });
     const grid = el('div', 'grid');
     const cols = [el('div', 'col'), el('div', 'col')];
     grid.append(...cols);
-    sheet.append(head, grid);
-    page.append(sheet);
-    host.append(page);
+    sheet.append(grid);
     const p = { page, sheet, head, cols, fullWrap: null };
     pages.push(p);
     return p;
@@ -341,11 +353,74 @@ function packWarehouse(host, board, { onePage }) {
     }
   }
 
-  if (pages.length > 1) {
-    pages.forEach((pg, i) => pg.head.querySelector('.doc-range')
-      .append(el('span', 'doc-page', `  \u00b7  page ${i + 1} of ${pages.length}`)));
-  }
+  numberPages(host);
   return { pages: pages.length, measured: measurable, split, fits: !overrun };
+}
+
+/**
+ * The warehouse copy's watermaker page, after the board's pages: the two
+ * watermaker categories with the standard pair of pick boxes, full width, on a
+ * page of their own - the next landscape page on A4, a second portrait sheet
+ * on A3. One page only, so fitWarehouse can trim its horizon to hold it; past
+ * the foot is reported, not paged. Drawing it again replaces the last one.
+ *
+ * @returns {{jobs:number, fits:boolean, measured:boolean}}
+ */
+export function appendWarehouseWater(host, board, { onePage = false } = {}) {
+  for (const old of host.querySelectorAll('.page.water')) old.remove();
+  const asOf = toAU(toDateOnly(board.meta.as_of));
+  const { sheet } = warehousePage(host, { onePage, asOf, tags: ['WAREHOUSE', 'WATERMAKERS'], cls: 'water' });
+
+  const jobs = watermakerJobs(board, { horizon: true });
+  const groups = byCategory(jobs);
+  for (const cat of WATERMAKER_CATEGORIES) {
+    const list = groups.get(cat) ?? [];
+    if (!list.length) continue;
+    const wrap = el('div', 'full');
+    wrap.append(categoryTable(cat, list, { full: true, ticks: WAREHOUSE_TICKS.general }));
+    sheet.append(wrap);
+  }
+  const held = jobs.filter((j) => j.on_hold).length;
+  if (held) sheet.append(el('div', 'hold-note', `${held} job(s) marked ON HOLD — confirm before starting.`));
+
+  numberPages(host);
+  const measured = host.getClientRects().length > 0;
+  return { jobs: jobs.length, fits: !measured || sheet.scrollHeight <= sheet.clientHeight, measured };
+}
+
+/**
+ * The warehouse copy, fitted, with its watermaker page when asked for.
+ *
+ * On A4 the board part is the board as fitted - the same jobs as the board's
+ * own page, on as many landscape pages as it takes. On A3 it has a horizon of
+ * its own: from the setting down, as the board's auto-fit goes, until the one
+ * sheet holds it at the A4 copy's type size; only when the floor of the
+ * horizon will not fit does the type step down, WAREHOUSE_TYPE at that
+ * horizon. The watermaker page has a horizon of its own the same way. With
+ * auto-fit off nothing is trimmed, and the status line says what spilled.
+ *
+ * @param {HTMLElement} host
+ * @param {{board?:Object, build:(weeks:number)=>Object, onePage?:boolean,
+ *   startWeeks?:number, minWeeks?:number, autoFit?:boolean, water?:boolean}} opts
+ *   `board` for the A4 copy, `build` for everything with a horizon of its own
+ */
+export function fitWarehouse(host, { board = null, build, onePage = false, startWeeks = 12, minWeeks = 4,
+                                     autoFit = true, water = false }) {
+  const fit = { startWeeks, minWeeks, autoFit };
+  let out;
+  if (!onePage) {
+    out = { ...renderWarehouse(host, board), board, weeks: null, trimmedFrom: null };
+  } else {
+    out = fitHorizon(build, (b) => renderWarehouse(host, b, { onePage: true }), fit);
+    if (!out.fits && out.measured && autoFit) {
+      for (const pt of WAREHOUSE_TYPE.slice(1)) {
+        out = { ...out, ...renderWarehouse(host, out.board, { onePage: true, pt }) };
+        if (out.fits) break;
+      }
+    }
+  }
+  out.water = water ? fitHorizon(build, (b) => appendWarehouseWater(host, b, { onePage }), fit) : null;
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -624,43 +699,50 @@ export function measure(host) {
 }
 
 /**
- * Shrink the horizon until the board fits one page.
+ * Shrink a horizon until a drawing fits one page.
  *
- * The browser can measure, so it does — render, compare against the page box,
- * step down if it spills. No row-budget guessing.
+ * The browser can measure, so it does: `draw(board)` draws the board at that
+ * horizon and says whether it fits and whether it could be measured, and the
+ * horizon steps down while it spills. No row-budget guessing. The board's own
+ * page, the warehouse copy on A3 and the watermaker pages all fit this way.
  *
- * @param {HTMLElement} host        the print container (must be laid out, not display:none)
+ * Nothing is shrunk towards if the page could not be measured - trimming on an
+ * unmeasurable render would cut the board for a reason that says more about
+ * the layout than the page. With auto-fit off it draws once at the start and
+ * reports.
+ *
  * @param {(weeks:number)=>Object} build   returns a board for a given horizon
- * @param {{startWeeks:number, minWeeks:number}} opts
- * @returns {{board, weeks, fits, pages, trimmedFrom: number|null, steps: Array}}
+ * @param {(board:Object)=>{fits:boolean, measured:boolean}} draw
+ * @param {{startWeeks?:number, minWeeks?:number, autoFit?:boolean}} opts
+ * @returns {{board, weeks, fits, measured, trimmedFrom: number|null, steps: Array}}
+ *   plus whatever else the last draw reported
  */
-export function fitToPage(host, build, { startWeeks = 12, minWeeks = 4 } = {}) {
+export function fitHorizon(build, draw, { startWeeks = 12, minWeeks = 4, autoFit = true } = {}) {
   const steps = [];
   let weeks = startWeeks;
   let board = build(weeks);
-  renderPrint(host, board);
-  let m = measure(host);
+  let m = draw(board);
   steps.push({ weeks, jobs: board.meta.job_count, ...m });
-
-  // Nothing to shrink towards if the page could not be measured — shrinking on
-  // an unmeasurable render would trim the board for no reason.
-  if (!m.measured) return { board, weeks, fits: false, pages: null, measured: false, trimmedFrom: null, steps };
+  if (!m.measured || !autoFit) return { board, weeks, ...m, trimmedFrom: null, steps };
 
   while (!m.fits && weeks - 1 >= minWeeks) {
     weeks -= 1;
     board = build(weeks);
-    renderPrint(host, board);
-    m = measure(host);
+    m = draw(board);
     steps.push({ weeks, jobs: board.meta.job_count, ...m });
   }
+  return { board, weeks, ...m, trimmedFrom: weeks === startWeeks ? null : startWeeks, steps };
+}
 
-  return {
-    board,
-    weeks,
-    fits: m.fits,
-    pages: m.pages,
-    measured: true,
-    trimmedFrom: weeks === startWeeks ? null : startWeeks,
-    steps,
-  };
+/**
+ * Shrink the horizon until the board fits one page: fitHorizon over the
+ * regular sheet, measured against the A4 content box.
+ *
+ * @param {HTMLElement} host        the print container (must be laid out, not display:none)
+ * @param {(weeks:number)=>Object} build   returns a board for a given horizon
+ * @param {{startWeeks?:number, minWeeks?:number, autoFit?:boolean}} opts
+ * @returns {{board, weeks, fits, pages, measured, trimmedFrom: number|null, steps: Array}}
+ */
+export function fitToPage(host, build, opts = {}) {
+  return fitHorizon(build, (board) => { renderPrint(host, board); return measure(host); }, opts);
 }

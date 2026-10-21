@@ -340,15 +340,18 @@ export const HELP = [
           + '(power pack) each started and completed. Then the production number, '
           + 'vessel and a short date. It is a size smaller than the board and '
           + 'carries a WAREHOUSE tag so the two sheets are never confused on the wall.',
-          'It is the board as fitted - same jobs, same horizon - and printing it '
-          + 'changes nothing about the regular sheet or the board on screen. It is '
-          + 'the one sheet with a paper choice, because its two papers are two '
-          + 'different sheets. On A4 it runs to as many landscape pages as it '
-          + 'takes, keeping each category whole on a page; only a category too tall '
-          + 'for a page on its own is split, under a banner that says continued. On '
-          + 'A3 it is one portrait page, the type stepped down a little where it has '
-          + 'to be to hold the whole board. The status line says which, and how '
-          + 'many pages. Remembered on this device.',
+          'Printing it changes nothing about the regular sheet or the board on '
+          + 'screen. It is the one sheet with a paper choice, because its two papers '
+          + 'are two different sheets. On A4 it is the board as fitted - same jobs, '
+          + 'same horizon - on as many landscape pages as it takes, keeping each '
+          + 'category whole on a page; only a category too tall for a page on its '
+          + 'own is split, under a banner that says continued. On A3 it is one '
+          + 'portrait page with a horizon of its own: from the Horizon setting down, '
+          + 'as the board\'s auto-fit goes, until the sheet holds it at the same type '
+          + 'size as the A4 copy, and only if four weeks will not fit does the type '
+          + 'step down. Second page, Watermakers adds the watermaker page after it, '
+          + 'with the two pick boxes. The status line says which, and how many '
+          + 'pages. Remembered on this device.',
         ],
       },
       {
@@ -375,9 +378,11 @@ export const HELP = [
           + 'sheet, it is past the horizon, or the stock cap already took enough of its '
           + 'category. The count above the preview says how many of each.',
           'Watermakers are the category with no column, and they can have a page of '
-          + 'their own after the board instead: Print tab, Second page, Watermakers. '
-          + 'The board\'s own page does not change for it, and the status line says '
-          + 'when a second page is printing. Remembered on this device.',
+          + 'their own after the board or the warehouse copy instead: Print tab, '
+          + 'Second page, Watermakers. That page has a horizon of its own, trimmed '
+          + 'from the Horizon setting until it holds one page; the board\'s own page '
+          + 'does not change for it, and the status line says when it is printing. '
+          + 'Remembered on this device.',
         ],
       },
       {
