@@ -17,8 +17,8 @@ import { closeOnBackdrop } from './dialog.js';
 import { wireSettings } from './settings.js';
 import { describeOverride, describeItemOverride, activityEntry, whoShort, whenShort, ACTION } from './activity.js';
 import { Store, packRows, unpackRows, isNewerImport } from './store.js';
-import { renderPrint, renderWarehouse, measure, fitToPage, pageRule, PAPER,
-         renderLanePrint, fitLaneToPage } from './print.js';
+import { renderPrint, renderWarehouse, renderWatermakers, measure, fitToPage, pageRule,
+         WAREHOUSE_PAPER, renderLanePrint, fitLaneToPage } from './print.js';
 import { renderGantt } from './gantt.js';
 import { balanceColumns } from './print.js';
 
@@ -40,17 +40,29 @@ function loadGanttPrefs() {
 }
 const saveGanttPrefs = (v) => { try { localStorage.setItem(GANTT_KEY, JSON.stringify(v)); } catch {} };
 
-// The paper a sheet prints on is a property of the printer at hand, so it is
-// remembered per device rather than shared with the other managers.
 // Whether part orders - numbered parts on customer orders - are on the board.
 // A view of the moment, so per device, like the paper; see rules.js isPartOrder.
 const PART_ORDERS_KEY = 'stella.board.partOrders';
 const loadShowPartOrders = () => { try { return localStorage.getItem(PART_ORDERS_KEY) !== 'hidden'; } catch { return true; } };
 const saveShowPartOrders = (on) => { try { localStorage.setItem(PART_ORDERS_KEY, on ? 'shown' : 'hidden'); } catch {} };
 
-const PAPER_KEY = 'stella.board.paper';
-const loadPaper = () => { try { return PAPER[localStorage.getItem(PAPER_KEY)] ? localStorage.getItem(PAPER_KEY) : 'a3'; } catch { return 'a3'; } };
-const savePaper = (p) => { try { localStorage.setItem(PAPER_KEY, p); } catch {} };
+// The paper the warehouse copy prints on, and whether the board takes its
+// watermaker page: properties of the printer at hand and of the moment, so
+// remembered per device rather than shared with the other managers.
+const WAREHOUSE_PAPER_KEY = 'stella.board.warehousePaper';
+const loadWarehousePaper = () => {
+  try {
+    // The paper used to apply to every sheet, under its own key. A value from
+    // then says nothing about the warehouse copy, so it is dropped, not read.
+    localStorage.removeItem('stella.board.paper');
+    const p = localStorage.getItem(WAREHOUSE_PAPER_KEY);
+    return WAREHOUSE_PAPER[p] ? p : 'a4';
+  } catch { return 'a4'; }
+};
+const saveWarehousePaper = (p) => { try { localStorage.setItem(WAREHOUSE_PAPER_KEY, p); } catch {} };
+const WATER_PAGE_KEY = 'stella.board.watermakerPage';
+const loadWaterPage = () => { try { return localStorage.getItem(WATER_PAGE_KEY) === 'on'; } catch { return false; } };
+const saveWaterPage = (on) => { try { localStorage.setItem(WATER_PAGE_KEY, on ? 'on' : 'off'); } catch {} };
 
 const PUBLISHED_KEY = 'stella.board.publishedAt';
 const publishedAt = () => { try { return localStorage.getItem(PUBLISHED_KEY) ?? ''; } catch { return ''; } };
@@ -70,7 +82,8 @@ const state = {
   // Which list the Print tab is previewing. Follows the tab you came from, so
   // the print button prints what you were just looking at.
   printLane: 'production',
-  paper: loadPaper(),               // 'a4' | 'a3', see PAPER in print.js
+  warehousePaper: loadWarehousePaper(),   // 'a4' | 'a3', see WAREHOUSE_PAPER in print.js
+  waterPage: loadWaterPage(),             // the board's second page, watermakers
   showPartOrders: loadShowPartOrders(),
   board: null,
   fit: null,
@@ -833,13 +846,20 @@ function wireControls() {
   for (const [key, cfg] of Object.entries(SHEET)) {
     $(cfg.btn).addEventListener('click', () => setPrintLane(key));
   }
-  $('paperA4').addEventListener('click', () => setPaper('a4'));
-  $('paperA3').addEventListener('click', () => setPaper('a3'));
+  $('paperA4').addEventListener('click', () => setWarehousePaper('a4'));
+  $('paperA3').addEventListener('click', () => setWarehousePaper('a3'));
+  $('waterSheet').addEventListener('click', () => setWaterPage(!state.waterPage));
 }
 
-function setPaper(paper) {
-  state.paper = PAPER[paper] ? paper : 'a4';
-  savePaper(state.paper);
+function setWarehousePaper(paper) {
+  state.warehousePaper = WAREHOUSE_PAPER[paper] ? paper : 'a4';
+  saveWarehousePaper(state.warehousePaper);
+  if (state.tab === 'print') renderPrintSheet();
+}
+
+function setWaterPage(on) {
+  state.waterPage = on;
+  saveWaterPage(on);
   if (state.tab === 'print') renderPrintSheet();
 }
 
@@ -907,35 +927,44 @@ function renderPrintSheet() {
     b.classList.toggle('on', key === lane);
     b.setAttribute('aria-pressed', String(key === lane));
   }
-  const a3 = state.paper === 'a3';
-  $('printBtn').textContent = SHEET[lane].label + (a3 ? ' on A3' : '');
-  for (const p of Object.keys(PAPER)) {
+  // The paper is the warehouse copy's choice alone: every other sheet is drawn
+  // for the A3 box and scaled by the printer to the paper it holds. The second
+  // page is the board's alone. Each control shows with its sheet.
+  const isWarehouse = lane === 'warehouse';
+  const page = isWarehouse ? WAREHOUSE_PAPER[state.warehousePaper] : { drawn: 'a4', landscape: false };
+  $('printBtn').textContent = SHEET[lane].label + (isWarehouse ? ` on ${page.label}` : '');
+  $('paperPick').closest('.ctrl').hidden = !isWarehouse;
+  for (const p of Object.keys(WAREHOUSE_PAPER)) {
     const b = $(`paper${p.toUpperCase()}`);
-    b.classList.toggle('on', p === state.paper);
-    b.setAttribute('aria-pressed', String(p === state.paper));
+    b.classList.toggle('on', p === state.warehousePaper);
+    b.setAttribute('aria-pressed', String(p === state.warehousePaper));
   }
-  $('paperNote').textContent = a3 ? 'any smaller paper scales it down, like a PDF' : 'exactly the preview, no scaling';
+  const wp = $('waterSheet');
+  wp.closest('.ctrl').hidden = lane !== 'production';
+  wp.textContent = state.waterPage ? 'Watermakers on' : 'Watermakers off';
+  wp.classList.toggle('on', state.waterPage);
+  wp.setAttribute('aria-pressed', String(state.waterPage));
   // The horizon is a property of the board; these lists have no future to
   // narrow, so the control would be answering a question they do not ask.
-  const isBoard = lane === 'production' || lane === 'warehouse';
+  const isBoard = lane === 'production' || isWarehouse;
   $('horizon').closest('.ctrl').hidden = !isBoard;
-  // The warehouse copy prints landscape, and A3 is the next page box up with
-  // the content zoomed to match (see PAPER in print.js). @page cannot be
-  // scoped to an element, so the rule is a one-line stylesheet switched with
-  // the sheet; the zoom keys off data-paper on the preview.
-  $('pageRule').textContent = pageRule({ paper: state.paper, landscape: lane === 'warehouse' });
-  host.dataset.paper = state.paper;
+  // The page box, and whether the drawing is zoomed to fill it (THE PAGE BOX
+  // in print.js). @page cannot be scoped to an element, so the rule is a
+  // one-line stylesheet switched with the sheet; the zoom keys off data-drawn
+  // on the print root, which takes the board's second page with it.
+  $('pageRule').textContent = pageRule(page);
+  $('printRoot').dataset.drawn = page.drawn;
 
   if (lane === 'production') {
     renderPrint(host, state.board);
     state.laneFit = null;
     state.variantFit = null;
   } else if (lane === 'warehouse') {
-    // The fitted board again, with tick boxes, on as many landscape pages as
-    // it takes. It is never refitted on its own - that would move the horizon
-    // under the board on screen - so it pages instead, and the status line
-    // says how many.
-    state.variantFit = renderWarehouse(host, state.board);
+    // The fitted board again, with tick boxes: on A4 as many landscape pages
+    // as it takes, on A3 one sheet with the type stepped down to hold it. It is
+    // never refitted on its own - that would move the horizon under the board
+    // on screen - so it pages or shrinks instead, and the status line says.
+    state.variantFit = renderWarehouse(host, state.board, { onePage: page.onePage });
     state.laneFit = null;
   } else {
     state.variantFit = null;
@@ -948,7 +977,23 @@ function renderPrintSheet() {
       order: SHEET[lane].order,
     });
   }
+  renderWaterPage();
   renderFitStatus();
+}
+
+/**
+ * The board's second page: watermakers, when the Print tab asks for one and
+ * the board is the sheet on its way to the printer. Nothing to list means no
+ * page - a blank second sheet is worse than none - and the status line says.
+ */
+function renderWaterPage() {
+  const host = $('printSecond');
+  const on = state.waterPage && state.printLane === 'production';
+  if (!on) { host.hidden = true; state.waterFit = null; return; }
+  host.hidden = false;                  // laid out before it is measured
+  const jobs = renderWatermakers(host, state.board, { horizon: true });
+  state.waterFit = { jobs, ...measure(host) };
+  host.hidden = !jobs;
 }
 
 function setPrintLane(lane, { render = true } = {}) {
@@ -1023,6 +1068,7 @@ function rebuild() {
   // The board's fit is always computed above; this replaces the preview with a
   // follow-up list when that is what is selected.
   if (state.tab === 'print' && state.printLane !== 'production') renderPrintSheet();
+  else renderWaterPage();
   renderFitStatus();
   renderGanttView();
   renderLane('internal');
@@ -1831,10 +1877,13 @@ function renderFitStatus() {
   box.append(rows);
   box.append(el('span', null, `·`));
 
-  // The warehouse copy: the same board, paged rather than fitted.
+  // The warehouse copy: the same board, paged rather than fitted - or on A3
+  // one sheet, the type stepped down to hold it.
   if (state.variantFit) {
     const v = state.variantFit;
     if (!v.measured) box.append(el('span', null, 'the warehouse copy could not be measured'));
+    else if (v.onePage && !v.fits) box.append(el('span', null, `the warehouse copy will not fit one A3 page even at ${v.pt}pt type`));
+    else if (v.onePage) box.append(el('span', null, `the warehouse copy fits one A3 page${v.shrunk ? ` with the type at ${v.pt}pt` : ''}`));
     else if (v.pages === 1) box.append(el('span', null, 'the warehouse copy fits one landscape page'));
     else {
       box.append(el('span', null, 'the warehouse copy runs to '), el('b', null, `${v.pages} landscape pages`));
@@ -1857,6 +1906,17 @@ function renderFitStatus() {
     box.append(el('span', null,
       `will not fit one page even at ${f.weeks} weeks (${f.pages} pages). ` +
       `Lower the stock cap, or hide some jobs.`));
+  }
+
+  // The second page, when the board carries one.
+  const w = state.waterFit;
+  if (!w) return;
+  box.append(el('span', null, `·`));
+  if (!w.jobs) box.append(el('span', null, 'no watermaker jobs for a second page'));
+  else {
+    box.append(el('span', null, 'plus a second page of '));
+    box.append(el('b', null, `${w.jobs} watermaker job${w.jobs === 1 ? '' : 's'}`));
+    if (w.measured && !w.fits) box.append(el('span', null, `, which runs to ${w.pages} pages`));
   }
 }
 

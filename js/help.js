@@ -338,30 +338,34 @@ export const HELP = [
           + 'Warehouse. Every row starts with tick boxes: Pick started and Pick '
           + 'completed, or for lifters and davits four of them, Lifter and PP '
           + '(power pack) each started and completed. Then the production number, '
-          + 'vessel and a short date. It prints landscape, a size smaller, and '
+          + 'vessel and a short date. It is a size smaller than the board and '
           + 'carries a WAREHOUSE tag so the two sheets are never confused on the wall.',
           'It is the board as fitted - same jobs, same horizon - and printing it '
-          + 'changes nothing about the regular sheet or the board on screen. Where '
-          + 'the regular sheet shrinks the horizon to hold one page, this one runs '
-          + 'to as many landscape pages as it takes, keeping each category whole on '
-          + 'a page. Only a category too tall for a page on its own is split, under '
-          + 'a banner that says continued. The status line says how many pages.',
+          + 'changes nothing about the regular sheet or the board on screen. It is '
+          + 'the one sheet with a paper choice, because its two papers are two '
+          + 'different sheets. On A4 it runs to as many landscape pages as it '
+          + 'takes, keeping each category whole on a page; only a category too tall '
+          + 'for a page on its own is split, under a banner that says continued. On '
+          + 'A3 it is one portrait page, the type stepped down a little where it has '
+          + 'to be to hold the whole board. The status line says which, and how '
+          + 'many pages. Remembered on this device.',
         ],
       },
       {
         q: 'What paper does it print on?',
         a: [
-          'Any. The sheets are drawn on an A3 page box and the printer scales them '
-          + 'down to whatever paper it holds, the way a PDF prints: pick the paper '
-          + 'in the print dialog and leave its scale alone. On A3 the sheet is 1:1; '
-          + 'on A4 it comes out exactly as the preview, because A3 is A4 scaled by '
-          + 'root two. The preview on screen stays A4-proportioned since the layout '
-          + 'is the same at every size.',
+          'Any. The board, the internal and the T&M sheets are drawn on an A3 page '
+          + 'box and the printer scales them down to whatever paper it holds, the '
+          + 'way a PDF prints: pick the paper in the print dialog and leave its '
+          + 'scale alone. On A3 the sheet is 1:1; on A4 it comes out exactly as the '
+          + 'preview, because A3 is A4 scaled by root two. The preview on screen '
+          + 'stays A4-proportioned since the layout is the same at every size.',
           'For a sheet that any viewer can fit to any paper, print with the '
           + 'destination set to Save as PDF: that is the same drawing as a PDF, '
-          + 'text and lines, not a picture. Print tab, Paper, A4 is the fallback for '
-          + 'a printer that will not scale: an A4 page box, exactly the preview, '
-          + 'remembered on this device.',
+          + 'text and lines, not a picture.',
+          'The warehouse copy is the exception: Print tab, Paper, A4 or A3, because '
+          + 'on A3 it is a different sheet - the whole board on one page. See What '
+          + 'is the warehouse copy?',
         ],
       },
       {
@@ -370,6 +374,10 @@ export const HELP = [
           'Three reasons, all about fitting a page: its category has no column on the '
           + 'sheet, it is past the horizon, or the stock cap already took enough of its '
           + 'category. The count above the preview says how many of each.',
+          'Watermakers are the category with no column, and they can have a page of '
+          + 'their own after the board instead: Print tab, Second page, Watermakers. '
+          + 'The board\'s own page does not change for it, and the status line says '
+          + 'when a second page is printing. Remembered on this device.',
         ],
       },
       {

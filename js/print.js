@@ -4,44 +4,60 @@
 // A4 page: an invisible two-column grid holds the four narrow categories,
 // Davits runs full-width underneath because its descriptions are long.
 
-import { PRINT_LAYOUT, ANCHOR_CATEGORY, CATEGORY_ORDER } from './rules.js';
-import { byCategory, toAU, toDateOnly, jobTitle, printJobs } from './transform.js';
+import { PRINT_LAYOUT, ANCHOR_CATEGORY, CATEGORY_ORDER, WATERMAKER_CATEGORIES } from './rules.js';
+import { byCategory, toAU, toDateOnly, jobTitle, printJobs, watermakerJobs } from './transform.js';
 
 // A4 at 96dpi, less the margins in the @page rule.
 const PAGE_H = 1123;
 const CONTENT_H = PAGE_H - Math.round(0.625 * 96) - Math.round(0.49 * 96);   // 1016px
 
 // ---------------------------------------------------------------------------
-// PAPER
+// THE PAGE BOX
 //
-// Every sheet is laid out for A4, and that is what the preview shows. A3 is
-// the same sheet scaled up by root two, as a PDF would be: the @page box is
-// the next size up and the content is zoomed to match, so every rule, font
-// and box is 41% bigger and nothing reflows. The zoom is in the stylesheet
-// (`#printPreview[data-paper="a3"]`, print media only); the page rule that
-// goes with it is written here, because @page cannot be scoped to an element
-// and app.js switches it in with the sheet.
+// Every sheet is laid out for A4, which is what the preview shows, and printed
+// on an A3 page box with the content zoomed by root two, as a PDF would be:
+// every rule, font and box is 41% bigger and nothing reflows. The printer then
+// scales it to whatever paper is in the tray - 1:1 on A3, exactly the preview
+// on A4. The zoom is in the stylesheet (`#printRoot[data-drawn="a4"]`, print
+// media only); the page rule that goes with it is written here, because @page
+// cannot be scoped to an element and app.js switches it in with the sheet.
+//
+// The one sheet drawn at A3 itself is the warehouse copy on A3 paper: one
+// portrait page, not zoomed, with the stylesheet's own margins.
 //
 // The zoom is 1.41 rather than 1.4142 so a sheet measured to the last pixel
 // of A4 has a few pixels in hand on A3: the margins, scaled by root two and
 // rounded down, leave a printable box 1437px tall against 1016 * 1.41 = 1433.
 // ---------------------------------------------------------------------------
-export const PAPER = {
-  a4: { label: 'A4', margin: null },                      // the stylesheet's @page
-  a3: { label: 'A3', margin: '0.88in 0.83in 0.68in' },    // 0.625in 0.59in 0.49in, times root two
+export const DRAWN = {
+  a4: { margin: '0.88in 0.83in 0.68in' },   // 0.625in 0.59in 0.49in, times root two
+  a3: { margin: null },                      // the stylesheet's own, 1:1
 };
 
 /**
- * The @page rule a sheet needs over the stylesheet's A4 portrait: nothing for
- * that, the turned page for landscape, the next size up for A3. An unknown
- * paper is A4.
+ * The @page rule a sheet needs over the stylesheet's A4 portrait: the A3 box
+ * either way, turned for landscape, with the margins scaled to match an A4
+ * drawing. An unknown drawing size is A4.
  */
-export function pageRule({ paper = 'a4', landscape = false } = {}) {
-  const known = PAPER[paper] ? paper : 'a4';
-  if (known === 'a4' && !landscape) return '';
-  const margin = PAPER[known].margin ? ` margin: ${PAPER[known].margin};` : '';
-  return `@page { size: ${known.toUpperCase()} ${landscape ? 'landscape' : 'portrait'};${margin} }`;
+export function pageRule({ drawn = 'a4', landscape = false } = {}) {
+  const d = DRAWN[drawn] ? drawn : 'a4';
+  const margin = DRAWN[d].margin ? ` margin: ${DRAWN[d].margin};` : '';
+  return `@page { size: A3 ${landscape ? 'landscape' : 'portrait'};${margin} }`;
 }
+
+/**
+ * The paper the warehouse copy prints on - the one sheet that offers a choice,
+ * because its two papers are two different sheets.
+ *
+ *   a4  landscape pages, as many as it takes: the A4 drawing zoomed onto the
+ *       A3 box and scaled back down by the printer, which is how it has always
+ *       printed and comes out well.
+ *   a3  one portrait sheet drawn at A3, the type stepped down until it fits.
+ */
+export const WAREHOUSE_PAPER = {
+  a4: { label: 'A4', drawn: 'a4', landscape: true, onePage: false },
+  a3: { label: 'A3', drawn: 'a3', landscape: false, onePage: true },
+};
 
 /**
  * Split the narrow categories across two columns so the page is as short as
@@ -180,21 +196,48 @@ export const ticksFor = (category) =>
 const shortDate = (display) => String(display ?? '').replace(/^(\d{2}\/\d{2}\/)\d{2}(\d{2})$/, '$1$2');
 
 /**
- * Draw the warehouse copy into the host as landscape pages.
- *
- * The page box is the stylesheet's (`#printRoot .page`): landscape A4 with the
- * @page margins as padding, and a sheet inside it that clips. Content past
- * the sheet's foot is what would be a second piece of paper, so that is the
- * test every placement makes.
- *
- * @returns {{pages:number, measured:boolean, split:string[]}}  how many pages;
- *   whether the host could be measured (off-canvas it cannot, and then the
- *   whole board lands on one page as a stand-in until it is drawn again); and
- *   the categories that had to be split because one alone outran a page.
+ * Type sizes the A3 copy tries, largest first. 10pt is the warehouse copy's
+ * size on its landscape pages; below 8pt a wall sheet stops being worth
+ * printing. The stylesheet reads the one chosen from `--wh-pt` on the host.
  */
-export function renderWarehouse(host, board) {
-  host.textContent = '';
+export const WAREHOUSE_TYPE = [10, 9.5, 9, 8.5, 8];
+
+/**
+ * Draw the warehouse copy into the host.
+ *
+ * On A4 it is landscape pages. The page box is the stylesheet's (`#printRoot
+ * .page`): landscape A4 with the @page margins as padding, and a sheet inside
+ * it that clips. Content past the sheet's foot is what would be a second piece
+ * of paper, so that is the test every placement makes.
+ *
+ * On A3 (`onePage`) it is one portrait sheet drawn at A3 (`.page.a3`). The
+ * test is the same, but there is no second page to go to: the board is drawn
+ * again a type size smaller, down WAREHOUSE_TYPE, until it fits. If it never
+ * does it is still one page - everything placed, the foot overrun - and
+ * `fits` says so, for the status line to repeat rather than paper to hide.
+ *
+ * @returns {{pages:number, measured:boolean, split:string[], fits:boolean,
+ *   pt:number, onePage:boolean, shrunk:boolean}}  how many pages; whether the
+ *   host could be measured (off-canvas it cannot, and then the whole board
+ *   lands on one page as a stand-in until it is drawn again); the categories
+ *   that had to be split because one alone outran a page; whether it all fits
+ *   (always, where it may run on); and the type size it is drawn at.
+ */
+export function renderWarehouse(host, board, { onePage = false } = {}) {
   host.dataset.variant = 'warehouse';
+  const steps = onePage ? WAREHOUSE_TYPE : WAREHOUSE_TYPE.slice(0, 1);
+  let out = null;
+  for (const pt of steps) {
+    host.style.setProperty('--wh-pt', `${pt}pt`);
+    out = { ...packWarehouse(host, board, { onePage }), pt, onePage, shrunk: pt !== WAREHOUSE_TYPE[0] };
+    if (out.fits || !out.measured) break;
+  }
+  return out;
+}
+
+/** One draw of the warehouse copy at the type size set: paged, or on the one sheet. */
+function packWarehouse(host, board, { onePage }) {
+  host.textContent = '';
 
   const asOf = toAU(toDateOnly(board.meta.as_of));
   const all = printJobs(board);
@@ -203,7 +246,7 @@ export function renderWarehouse(host, board) {
   const pages = [];
 
   const newPage = () => {
-    const page = el('section', 'page');
+    const page = el('section', onePage ? 'page a3' : 'page');   // the A3 copy's page is A3-sized
     const sheet = el('div', 'sheet');
     const head = el('div', 'doc-head');
     head.append(el('div', 'doc-title', 'Current production orders'));
@@ -235,13 +278,14 @@ export function renderWarehouse(host, board) {
   };
   // Put a table on a page if it fits there, and say whether it did. A narrow
   // table tries the shorter column, then the other; a full-width one the strip
-  // under the grid.
-  const tryPage = (p, table, full) => {
+  // under the grid. `anyway` keeps it in the first slot whether it fits or not,
+  // for the one sheet that has nowhere else to send it.
+  const tryPage = (p, table, full, anyway = false) => {
     const slots = full ? [fullWrap(p)] : [shorter(p)];
     if (!full) slots.push(p.cols.find((c) => c !== slots[0]));
     for (const slot of slots) {
       slot.append(table);
-      if (!spills(p)) return true;
+      if (anyway || !spills(p)) return true;
       table.remove();
     }
     if (full && !p.fullWrap.children.length) { p.fullWrap.remove(); p.fullWrap = null; }
@@ -260,6 +304,7 @@ export function renderWarehouse(host, board) {
   };
 
   let p = newPage();
+  let overrun = false;      // the one sheet, past its foot
   const split = [];
   const items = [
     ...PRINT_LAYOUT.narrow.map((c) => [c, false]),
@@ -273,6 +318,8 @@ export function renderWarehouse(host, board) {
       const opts = { full, ticks, title };
       const table = categoryTable(category, rest, opts);
       if (tryPage(p, table, full)) break;
+      // The one sheet: on it goes, past the foot, and the caller is told.
+      if (onePage) { tryPage(p, table, full, true); overrun = true; break; }
       if (!empty(p)) { p = newPage(); if (tryPage(p, table, full)) break; }
       // Alone on an empty page and still too tall: as many rows as fit here,
       // and the rest carries on under a banner that says so.
@@ -288,14 +335,17 @@ export function renderWarehouse(host, board) {
   if (held) {
     const note = el('div', 'hold-note', `${held} job(s) marked ON HOLD \u2014 confirm before starting.`);
     p.sheet.append(note);
-    if (spills(p)) { note.remove(); p = newPage(); p.sheet.append(note); }
+    if (spills(p)) {
+      if (onePage) overrun = true;
+      else { note.remove(); p = newPage(); p.sheet.append(note); }
+    }
   }
 
   if (pages.length > 1) {
     pages.forEach((pg, i) => pg.head.querySelector('.doc-range')
       .append(el('span', 'doc-page', `  \u00b7  page ${i + 1} of ${pages.length}`)));
   }
-  return { pages: pages.length, measured: measurable, split };
+  return { pages: pages.length, measured: measurable, split, fits: !overrun };
 }
 
 // ---------------------------------------------------------------------------
@@ -500,6 +550,55 @@ export function renderPrint(host, board) {
       `${held} job(s) marked ON HOLD — confirm before starting.`));
   }
   return host;
+}
+
+// ---------------------------------------------------------------------------
+// THE WATERMAKER PAGE
+//
+// Watermakers have no column on the board: PRINT_LAYOUT lists what prints and
+// they are not on it, so on screen they sit at the foot of Current orders
+// under "Not on the printed sheet". This is the one way they reach paper - a
+// second page after the board, when the Print tab asks for one, in the
+// board's own style under a header of its own. The board's page is untouched
+// either way, and the auto-fit never measures this one, so the horizon does
+// not move for it.
+// ---------------------------------------------------------------------------
+
+/**
+ * Draw the watermaker page into its host.
+ *
+ * `horizon` applies the board's own trim - past the horizon, or stock beyond
+ * the cap, stays off - and without it every open watermaker job is listed.
+ *
+ * @returns {number}  how many jobs it lists; none means nothing to print
+ */
+export function renderWatermakers(host, board, { horizon = true } = {}) {
+  host.textContent = '';
+  host.dataset.variant = '';
+
+  const asOf = toAU(toDateOnly(board.meta.as_of));
+  const head = el('div', 'doc-head');
+  head.append(el('div', 'doc-title', 'Current production orders'));
+  head.append(el('div', 'doc-tag', 'WATERMAKERS'));
+  head.append(el('div', 'doc-range', `as of:  ${asOf}`));
+  host.append(head);
+
+  const jobs = watermakerJobs(board, { horizon });
+  const groups = byCategory(jobs);
+  for (const cat of WATERMAKER_CATEGORIES) {
+    const list = groups.get(cat) ?? [];
+    if (!list.length) continue;
+    const wrap = el('div', 'full');
+    wrap.append(categoryTable(cat, list, { full: true }));
+    host.append(wrap);
+  }
+
+  const held = jobs.filter((j) => j.on_hold).length;
+  if (held) {
+    host.append(el('div', 'hold-note',
+      `${held} job(s) marked ON HOLD — confirm before starting.`));
+  }
+  return jobs.length;
 }
 
 /**
