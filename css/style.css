@@ -950,6 +950,11 @@ header .cog:hover { border-color: var(--red-bright); color: var(--white); }
 .drop-zone.pkg-drop strong { font-size: 15px; margin-bottom: 2px; }
 .drop-zone.pkg-drop.is-off { opacity: .5; }
 .pkg-suggest:not(:empty) { margin-top: 12px; }
+.pkg-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.pkg-head .settings-label { margin-bottom: 0; }
+.pkg-head + .pkg-docs { margin-top: 6px; }
+/* Where a package's PDF is printed from: in the page, never seen. */
+.print-frame { position: absolute; width: 0; height: 0; border: 0; visibility: hidden; }
 @media screen and (max-width: 760px) {
   .pkg-doc { grid-template-columns: 20px minmax(0, 1fr) 84px; }
   .pkg-doc .pkg-kind, .pkg-doc .pkg-where { display: none; }

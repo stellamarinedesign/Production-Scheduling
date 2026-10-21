@@ -63,18 +63,27 @@ export async function fillChecklistDocx(bytes, values) {
 
 /**
  * PDFs, one after another, as one PDF.
+ *
+ * At full speed. By default pdf-lib pauses on a timer every hundred or so
+ * objects to keep the page responsive, and a drawing set is thousands of
+ * objects: 48 pauses for three of them. A browser holds a background tab's
+ * timers to about one a second, so the merge that takes a twentieth of a
+ * second in front took twenty behind a tab that had just opened.
+ *
  * @param {Array<ArrayBuffer|Uint8Array>} list
  * @param {{title?: string}} [opts]  shown by the PDF viewer
  * @returns {Promise<Uint8Array>}
  */
 export async function mergePdfs(list, { title = '' } = {}) {
-  const { PDFDocument } = await pdflib();
+  const { PDFDocument, ParseSpeeds } = await pdflib();
   const out = await PDFDocument.create();
   for (const bytes of list) {
-    const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
+    const src = await PDFDocument.load(bytes, {
+      ignoreEncryption: true, updateMetadata: false, parseSpeed: ParseSpeeds.Fastest,
+    });
     const pages = await out.copyPages(src, src.getPageIndices());
     for (const page of pages) out.addPage(page);
   }
   if (title) out.setTitle(title, { showInWindowTitleBar: true });
-  return out.save();
+  return out.save({ objectsPerTick: Infinity });
 }

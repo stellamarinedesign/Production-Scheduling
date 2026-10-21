@@ -311,9 +311,13 @@ export const HELP = [
           + 'kept for every job on the item code, or for one job only, which is where a '
           + 'custom job starts. Once some packages exist, a new job is offered the '
           + 'folders beside theirs that carry its vessel code or name.',
-          'Print drawings puts every drawing set into one PDF in a new tab, to print '
-          + 'from there. Download checklists saves each checklist with the production '
-          + 'number and due date written in, to open and print in Word.',
+          'Print drawings puts every ticked drawing set into one PDF and opens the '
+          + 'print dialog. Download checklists saves each ticked checklist with the '
+          + 'production number and due date written in, to open and print in Word.',
+          'Untick what does not need printing - drawings laminated on the floor, say '
+          + '- and Save as default makes those the starting ticks for every job on the '
+          + 'package. A document changed since it was unticked starts ticked again, '
+          + 'since a laminated copy of an old revision is the one to replace.',
           'Each PC connects its own Stella Systems folder once, in Edge or Chrome. The '
           + 'browser may ask again for permission now and then; Allow is one click.',
         ],

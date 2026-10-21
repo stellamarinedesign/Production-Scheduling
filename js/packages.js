@@ -314,3 +314,27 @@ function rebuildLine(doc, p, label, value, styleTabs) {
 
 /** "P01480 - SL-...-LaserChecklist.docx": the job's number in front. */
 export const filledName = (prodNo, name) => `${prodNo} - ${name}`;
+
+// ---------------------------------------------------------------------------
+// print defaults
+//
+// Plenty of products keep laminated drawings on the floor, so their sets need
+// not print with every job. A package remembers which documents start
+// unticked: `skip`, each with the file's date when it was set aside. A file
+// changed since then starts ticked again - a laminated copy of an old
+// revision is the thing to replace.
+// ---------------------------------------------------------------------------
+
+/** Slack for file dates that round differently on the way back from disk. */
+const SAME_FILE_MS = 2000;
+
+/** Does a document start ticked? */
+export function printsByDefault(path, lastModified, skip) {
+  const s = (skip ?? []).find((x) => x.path === path);
+  return !s || (lastModified ?? 0) > (s.modified ?? 0) + SAME_FILE_MS;
+}
+
+/** The documents left unticked, as a package's `skip`. */
+export const skipFrom = (docs) => (docs ?? [])
+  .filter((d) => !d.checked)
+  .map((d) => ({ path: d.path, modified: d.lastModified ?? 0 }));

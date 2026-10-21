@@ -4,9 +4,10 @@
 // The package is kept per item code or per job (packages.js). Folders and
 // documents go in by dropping them from File Explorer, or by choosing a
 // folder; a folder is searched for its current checklists and drawing set
-// each time the dialog opens. Printing merges the drawing sets into one PDF
-// in a new tab, and downloads each checklist with the production number and
-// due date written in, to print from Word.
+// each time the dialog opens. Which documents start ticked is remembered per
+// package. Printing merges the ticked drawing sets into one PDF and opens
+// the print dialog over the board; checklists download with the production
+// number and due date written in, to print from Word.
 
 import { Store } from './store.js';
 import { closeOnBackdrop } from './dialog.js';
@@ -14,12 +15,13 @@ import { jobTitle } from './transform.js';
 import {
   ROOT_NAME, SCOPE, splitPath, joinPath, parentPath, shortPath, docKind, KIND_LABEL,
   isWordKind, isPdfKind, pickDocuments, packageKey, packageFor, suggestFolders, filledName,
+  printsByDefault, skipFrom,
 } from './packages.js';
 import {
   supported, rootState, allowRoot, chooseRoot, pathWithin, handleAt, listFiles, listFolders,
   droppedHandles,
 } from './stella-folder.js';
-import { fillChecklistDocx, mergePdfs, DOCX_TYPE } from './adapters/package-files.js';
+import { fillChecklistDocx, mergePdfs, DOCX_TYPE, jszip, pdflib } from './adapters/package-files.js';
 
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
@@ -44,6 +46,9 @@ export async function openPackageDialog(job, hooks = {}) {
   $('.form-err').textContent = '';
   overlay.classList.add('show');
   render();
+  // Fetched now, so the first print does not wait on them.
+  jszip().catch(() => {});
+  pdflib().catch(() => {});
   const mine = ctx;
   let packages = {};
   try {
@@ -97,7 +102,12 @@ function build() {
   box.append(src);
 
   const docs = el('div', 'pkg-section');
-  docs.append(el('div', 'settings-label', 'Documents'), el('div', 'pkg-docs'));
+  const head = el('div', 'pkg-head');
+  const keep = el('button', 'mini', 'Save as default');
+  keep.dataset.act = 'defaults';
+  keep.addEventListener('click', saveDefaults);
+  head.append(el('div', 'settings-label', 'Documents'), keep);
+  docs.append(head, el('div', 'pkg-docs'));
   box.append(docs);
 
   box.append(el('div', 'form-err'));
@@ -154,12 +164,13 @@ async function refreshDocs() {
         const h = await handleAt(ctx.root, s.path, s.kind);
         if (s.kind === 'folder') {
           for (const f of pickDocuments(await listFiles(h))) {
-            docs.push({ ...f, where: shortPath(joinPath([...splitPath(s.path), ...f.dirs]), 3) });
+            docs.push({ ...f, path: joinPath([...splitPath(s.path), ...f.dirs, f.name]),
+              where: shortPath(joinPath([...splitPath(s.path), ...f.dirs]), 3) });
           }
         } else {
           const f = await h.getFile();
           docs.push({ name: f.name, kind: docKind(f.name), lastModified: f.lastModified, handle: h,
-            where: shortPath(parentPath(s.path), 2) });
+            path: s.path, where: shortPath(parentPath(s.path), 2) });
         }
       } catch (e) {
         if (e.name === 'NotFoundError' || e.name === 'TypeMismatchError') missing.add(s.path);
@@ -171,9 +182,13 @@ async function refreshDocs() {
   }
   if (ctx !== mine) return;                     // the dialog moved on while this ran
   const seen = new Set();
-  ctx.docs = docs.filter((d) => d.kind && !seen.has(`${d.where}/${d.name}`) && seen.add(`${d.where}/${d.name}`))
+  const skip = ctx.packages[currentKey()]?.skip ?? [];
+  ctx.docs = docs.filter((d) => d.kind && !seen.has(d.path) && seen.add(d.path))
     .sort((a, b) => Number(isPdfKind(a.kind)) - Number(isPdfKind(b.kind)))
-    .map((d) => ({ ...d, checked: true }));
+    .map((d) => {
+      const on = printsByDefault(d.path, d.lastModified, skip);
+      return { ...d, checked: on, defaultOn: on };
+    });
   ctx.missing = missing;
   ctx.suggestions = suggestions;
   render();
@@ -198,14 +213,17 @@ async function findSuggestions() {
 // changing the package
 // ---------------------------------------------------------------------------
 
-async function save(next, note) {
+/** Write the package: its sources, and anything else it keeps (the print defaults) as it was. */
+async function save(next, note, extra = {}) {
   const key = currentKey();
   const data = {
+    ...(ctx.packages[key] ?? {}),
     scope: ctx.scope,
     inventoryId: ctx.job.inventory_id ?? null,
     prodNo: ctx.scope === SCOPE.job ? ctx.job.prod_no : null,
     sources: next,
     updatedBy: ctx.hooks.who ?? null,
+    ...extra,
   };
   try {
     await Store.savePackage(key, data);
@@ -253,6 +271,16 @@ async function removeSource(path) {
   await save(sources().filter((s) => s.path !== path), `package: removed ${splitPath(path).at(-1)}`);
 }
 
+/** The ticks as they stand become the ones every job on this package starts with. */
+async function saveDefaults() {
+  if (!ctx || ctx.busy) return;
+  error('');
+  const skip = skipFrom(ctx.docs);
+  await save(sources(), skip.length
+    ? `package: ${skip.map((s) => splitPath(s.path).at(-1)).join(', ')} unticked by default`
+    : 'package: everything ticked by default', { skip });
+}
+
 /** Point this PC at Stella Systems, or ask again for the folder it knows. */
 async function connect(choose) {
   error('');
@@ -282,24 +310,57 @@ async function printDrawings() {
   const list = picked(isPdfKind);
   if (!list.length || ctx.busy) return;
   error('');
-  // Opened now, while the click still counts, or the browser blocks it.
-  const tab = window.open('', '_blank');
   busy('print');
+  const title = `${ctx.job.prod_no} drawings`;
+  let pdf = null;
   try {
     const parts = [];
     for (const d of list) parts.push(await (await d.handle.getFile()).arrayBuffer());
-    const title = `${ctx.job.prod_no} drawings`;
-    const pdf = await mergePdfs(parts, { title });
-    const url = URL.createObjectURL(new Blob([pdf], { type: 'application/pdf' }));
-    if (tab) tab.location.href = url;
-    else download(url, `${title}.pdf`);
-    setTimeout(() => URL.revokeObjectURL(url), 120000);
+    pdf = parts.length === 1 ? new Uint8Array(parts[0]) : await mergePdfs(parts, { title });
+    await printPdf(pdf);
   } catch (e) {
-    tab?.close();
-    error(`Could not put the drawings together — ${e.message}`);
+    if (pdf) {
+      // The page could not print it: the PDF itself instead, to print from there.
+      const url = URL.createObjectURL(new Blob([pdf], { type: 'application/pdf' }));
+      download(url, `${title}.pdf`);
+      setTimeout(() => URL.revokeObjectURL(url), 120000);
+      ctx?.hooks.toast?.(`Saved as ${title}.pdf to print.`, 5000);
+    } else {
+      error(`Could not put the drawings together — ${e.message}`);
+    }
   } finally {
     if (ctx) busy(false);
   }
+}
+
+let printFrame = null;
+
+/**
+ * Print a PDF from a hidden frame in this page, so the print dialog opens
+ * over the board. A new tab for it put the board in the background, where
+ * the browser slows it down, and showed a blank page meanwhile.
+ */
+function printPdf(bytes) {
+  if (printFrame) { URL.revokeObjectURL(printFrame.src); printFrame.remove(); }
+  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+  const frame = el('iframe', 'print-frame');
+  printFrame = frame;
+  return new Promise((resolve, reject) => {
+    const late = setTimeout(() => reject(new Error('The PDF did not load to print.')), 20000);
+    frame.addEventListener('load', () => {
+      // A moment for the PDF viewer inside the frame to take the document.
+      setTimeout(() => {
+        clearTimeout(late);
+        try {
+          frame.contentWindow.focus();
+          frame.contentWindow.print();
+          resolve();
+        } catch (e) { reject(e); }
+      }, 250);
+    }, { once: true });
+    frame.src = url;
+    document.body.append(frame);
+  });
 }
 
 async function downloadChecklists() {
@@ -422,6 +483,8 @@ function render() {
   }
 
   const act = (name) => overlay.querySelector(`[data-act="${name}"]`);
+  act('defaults').hidden = !ctx.docs.some((d) => d.checked !== d.defaultOn);
+  act('defaults').disabled = Boolean(ctx.busy);
   act('print').disabled = Boolean(ctx.busy) || !picked(isPdfKind).length;
   act('download').disabled = Boolean(ctx.busy) || !picked(isWordKind).length;
   act('print').textContent = ctx.busy === 'print' ? 'Working…' : 'Print drawings';
