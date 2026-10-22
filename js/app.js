@@ -16,6 +16,7 @@ import { itemFacts, mergeItemFacts } from './vessel-codes.js';
 import { closeOnBackdrop } from './dialog.js';
 import { wireSettings } from './settings.js';
 import { openPackageDialog } from './package-dialog.js';
+import { openItemHistory, logImportChanges, wireChangeRow } from './item-history.js';
 import { describeOverride, describeItemOverride, activityEntry, whoShort, whenShort, ACTION } from './activity.js';
 import { Store, packRows, unpackRows, isNewerImport } from './store.js';
 import { renderPrint, fitWarehouse, renderWatermakers, measure, fitToPage, fitHorizon, pageRule,
@@ -607,9 +608,8 @@ async function commitImport() {
   // buildBoard ever sees them, so a job the ERP has finished does not even
   // reach the excluded list - it simply stops being anywhere. Captured here,
   // on the way past, and written to History below.
-  const leaving = state.source
-    ? diffBoards(state.board, staged.board, src.rows).leaving
-    : [];
+  const diff = state.source ? diffBoards(state.board, staged.board, src.rows) : null;
+  const leaving = diff?.leaving ?? [];
 
   // The open order book, not the whole file. See `retainedRows`: carrying the
   // 1047 closed rows in the 01/09 export pushed the import record past
@@ -678,6 +678,13 @@ async function commitImport() {
       toast(`${leaving.length} jobs left the board and could not be saved to `
         + `History - ${e.message}`, 8000);
     }
+  }
+
+  // What the ERP moved on each job, into that job's change history. After the
+  // commit and never awaited: see logImportChanges.
+  if (diff) {
+    logImportChanges(diff, { board: state.board, by: Auth.user?.email ?? 'local',
+      importAt: state.source.retrievedAt, toast });
   }
 
   await publish(keep, 'shared with the other managers');
@@ -1556,6 +1563,10 @@ function jobRow(j, { full = false } = {}) {
   done.title = 'Mark completed \u2014 off the board for good, reversible from History';
   done.addEventListener('click', () => openCompleteDialog([j]));
   fold.append(done);
+
+  const changes = el('button', 'mini', 'Changes');
+  changes.addEventListener('click', () => openItemHistory(j));
+  fold.append(changes);
 
   row.append(fold);
   return row;
@@ -2668,11 +2679,13 @@ function importDetail(b, key, diff = null) {
       const act = el('span', 'fr-act');
       if (st === 'new') act.append(el('span', 'fr-tag is-new', 'new'));
       else if (st === 'changed') {
-        act.append(el('span', 'fr-tag is-changed', diff.changes.get(j.prod_no).join(', ')));
+        act.append(el('span', 'fr-tag is-changed', diff.changes.get(j.prod_no).map((c) => c.field).join(', ')));
       }
       if (key === 'production' && !isPrintable(j)) act.append(el('span', 'fr-note', 'no print'));
       row.append(act);
       t.append(row);
+      // A changed row opens to each field as it was and as it is.
+      if (st === 'changed') wireChangeRow(row, j.prod_no, diff.changes.get(j.prod_no), staged.src.retrievedAt);
     }
     appendGroup(wrap, `${key}:${cat}`, cat, rows.length, t);
   }

@@ -389,6 +389,18 @@ export const DIFF_FIELDS = [
 
 const everyJob = (b) => [...(b?.jobs ?? []), ...(b?.tm ?? []), ...(b?.internal ?? [])];
 
+/**
+ * A value as it is kept in a change record: a blank is null, a Date is its
+ * calendar day. The job fields compared are strings and numbers already, so
+ * this is a guard, not a conversion - a Date written to a record would be
+ * serialised as UTC and read back a day early in Brisbane.
+ */
+const plain = (v) => {
+  if (v === undefined || v === null || v === '') return null;
+  if (v instanceof Date) return toISO(toDateOnly(v));
+  return v;
+};
+
 /** Why a job is coming off the board, in the words of the thing that did it. */
 const leavingWhy = (status) => {
   if (!status) return 'not in this export at all';
@@ -404,9 +416,15 @@ const leavingWhy = (status) => {
  *   built from the retained rows only, so without this a job that the ERP has
  *   completed and one that has vanished from the export look identical.
  * @returns {{state: Map<string, 'new'|'changed'|'same'>,
- *            changes: Map<string, string[]>, leaving: Array<Object>,
+ *            changes: Map<string, Array<{key: string, field: string, from: *, to: *}>>,
+ *            leaving: Array<Object>,
  *            counts: {added: number, changed: number, same: number, leaving: number},
  *            first: boolean}}
+ *   `changes` holds, per changed job, each field that moved: `key` is the job
+ *   field, `field` the name it goes by on screen (DIFF_FIELDS), `from` and `to`
+ *   the values on each side, a date as its yyyy-mm-dd string. The review shows
+ *   them and the import writes them to each job's change history, from the
+ *   one list, so the two never disagree.
  */
 export function diffBoards(prev, next, rows = null) {
   const before = new Map();
@@ -424,7 +442,7 @@ export function diffBoards(prev, next, rows = null) {
     if (!was) { state.set(j.prod_no, 'new'); counts.added += 1; continue; }
     const moved = DIFF_FIELDS
       .filter(([f]) => String(was[f] ?? '') !== String(j[f] ?? ''))
-      .map(([, label]) => label);
+      .map(([key, field]) => ({ key, field, from: plain(was[key]), to: plain(j[key]) }));
     if (moved.length) {
       state.set(j.prod_no, 'changed');
       changes.set(j.prod_no, moved);

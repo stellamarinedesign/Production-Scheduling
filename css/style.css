@@ -1007,6 +1007,35 @@ header .cog:hover { border-color: var(--red-bright); color: var(--white); }
 @media screen and (max-width: 760px) {
   .act-row { grid-template-columns: 1fr; gap: 2px; }
 }
+/* Change history: one job's log, newest first, with what each import moved. */
+.box.wide.history { max-width: 720px; }
+.ih-list { max-height: 62vh; overflow-y: auto; }
+.ih-row {
+  display: grid; grid-template-columns: 112px 92px minmax(0, 1fr); gap: 12px;
+  padding: 7px 0; border-top: 1px solid var(--line); font-size: 13px; align-items: baseline;
+}
+.ih-when { color: var(--text-dim); font-variant-numeric: tabular-nums; font-size: 12px; }
+.ih-who { color: var(--white); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ih-text { overflow-wrap: anywhere; }
+.ih-import { font-weight: 600; margin-bottom: 2px; }
+.ih-none { color: var(--text-dim); font-size: 13px; padding: 10px 0; }
+/* One field per line, what it was and what it is. The same element under an
+   import's line in the dialog and under an opened row of the review. */
+.change-list { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px 12px; font-size: 12.5px; }
+.change-list .ch-field { color: var(--text-dim); }
+.change-list .ch-from { color: var(--text-dim); text-decoration: line-through; }
+.change-list .ch-arrow { color: var(--text-dim); padding: 0 7px; }
+.change-list .ch-to { color: var(--white); }
+/* A changed row of the review opens on a click; its fields sit beneath it,
+   indented to the row's second column. */
+.flag-row.is-changed { cursor: pointer; }
+.flag-row.is-changed.is-open .fr-tag.is-changed { border-color: var(--red-bright); }
+.flag-row-changes { padding: 0 0 8px 98px; }
+@media (max-width: 900px) { .flag-row-changes { padding-left: 90px; } }
+@media screen and (max-width: 760px) {
+  .ih-row { grid-template-columns: 1fr; gap: 2px; }
+  .flag-row-changes { padding-left: 0; }
+}
 header .who .role {
   display: inline-block; border: 1px solid var(--line); border-radius: 5px;
   padding: 1px 6px; margin-left: 6px; font-size: 10.5px; font-weight: 700; letter-spacing: .08em;

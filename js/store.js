@@ -92,6 +92,26 @@ export const isNewerImport = (rec, currentRetrievedAt) => {
   return at > (currentRetrievedAt ?? '');
 };
 
+/** Firestore's ceiling on writes in one batch. */
+export const BATCH_SIZE = 500;
+
+/** A list in pieces of at most `size`, in order. */
+export const chunk = (list, size) => {
+  const out = [];
+  for (let i = 0; i < list.length; i += size) out.push(list.slice(i, i + size));
+  return out;
+};
+
+/**
+ * Is an activity entry about this job? Its own lines, and the item-wide
+ * lines on its code, which are logged with no production number.
+ */
+export const aboutJob = (prodNo, inventoryId = null) => (r) =>
+  r?.prodNo === prodNo || Boolean(!r?.prodNo && inventoryId && r?.inventoryId === inventoryId);
+
+/** Sort by `at`, an ISO timestamp, newest first. */
+export const newestFirst = (a, b) => String(b?.at ?? '').localeCompare(String(a?.at ?? ''));
+
 export const Store = {
   mode: 'local',          // 'firestore' | 'local'
   reason: '',             // why local, when local
@@ -519,6 +539,59 @@ export const Store = {
     const { collection, getDocs, query, orderBy, limit } = this._fs;
     const snap = await getDocs(query(collection(this._db, 'activity'), orderBy('at', 'desc'), limit(max)));
     return snap.docs.map((d) => ({ _id: d.id, ...d.data() }));
+  },
+
+  /**
+   * Many entries at once. An import can move the dates of hundreds of jobs,
+   * and a write per job would be hundreds of round trips after every apply.
+   * Firestore takes up to 500 writes in one batch, so the list goes in
+   * BATCH_SIZE at a time, each batch one request. Append-only, like
+   * logActivity. Resolves to the number written.
+   */
+  async logActivityBatch(entries) {
+    const list = (entries ?? []).filter(Boolean);
+    if (!list.length) return 0;
+    if (this.mode === 'local') {
+      // Newest first, as logActivity keeps the list: the batch is in the order
+      // it was made, so it is reversed on the way in.
+      lsSet('activity', [...list].reverse().concat(lsGet('activity', [])).slice(0, 300));
+      return list.length;
+    }
+    const { collection, doc, writeBatch } = this._fs;
+    const col = collection(this._db, 'activity');
+    for (const part of chunk(list, BATCH_SIZE)) {
+      const batch = writeBatch(this._db);
+      for (const entry of part) batch.set(doc(col), entry);
+      await batch.commit();
+    }
+    return list.length;
+  },
+
+  /**
+   * Every entry about one job, newest first: what was logged against its
+   * production number, and what was logged against its item code for every
+   * job on it (a part mark, an item label), which carries no production
+   * number.
+   *
+   * Two equality reads rather than one read with an order clause. A `where`
+   * on one field with an `orderBy` on another needs a composite index made
+   * in the console, and a job's history is a few dozen lines at most, so it
+   * is sorted here instead.
+   */
+  async listActivityFor(prodNo, inventoryId = null) {
+    const mine = aboutJob(prodNo, inventoryId);
+    if (this.mode === 'local') return lsGet('activity', []).filter(mine).sort(newestFirst);
+    const { collection, getDocs, query, where } = this._fs;
+    const col = collection(this._db, 'activity');
+    const reads = [getDocs(query(col, where('prodNo', '==', prodNo)))];
+    if (inventoryId) {
+      reads.push(getDocs(query(col, where('inventoryId', '==', inventoryId), where('prodNo', '==', null))));
+    }
+    const seen = new Map();
+    for (const snap of await Promise.all(reads)) {
+      snap.forEach((d) => { seen.set(d.id, { _id: d.id, ...d.data() }); });
+    }
+    return [...seen.values()].filter(mine).sort(newestFirst);
   },
 
   /**
