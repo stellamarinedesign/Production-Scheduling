@@ -314,9 +314,11 @@ export const HELP = [
           + 'kept for every job on the item code, or for one job only, which is where a '
           + 'custom job starts. Once some packages exist, a new job is offered the '
           + 'folders beside theirs that carry its vessel code or name.',
-          'Print drawings puts every ticked drawing set into one PDF and opens the '
-          + 'print dialog. Download checklists saves each ticked checklist with the '
-          + 'production number and due date written in, to open and print in Word.',
+          'Print puts everything ticked into one PDF and opens the print dialog: the '
+          + 'checklists first, from the PDF saved beside each Word file, with the '
+          + 'production number and due date written in, then the drawing sets. A '
+          + 'checklist with no PDF, or whose Word file was saved after its PDF, says '
+          + 'so on its row; Download Word saves those filled in, to print from Word.',
           'Untick what does not need printing - drawings laminated on the floor, say '
           + '- and Save as default makes those the starting ticks for every job on the '
           + 'package. A document changed since it was unticked starts ticked again, '

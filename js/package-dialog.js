@@ -5,23 +5,26 @@
 // documents go in by dropping them from File Explorer, or by choosing a
 // folder; a folder is searched for its current checklists and drawing set
 // each time the dialog opens. Which documents start ticked is remembered per
-// package. Printing merges the ticked drawing sets into one PDF and opens
-// the print dialog over the board; checklists download with the production
-// number and due date written in, to print from Word.
+// package. Print puts the ticked checklists - from their PDFs, the
+// production number and due date written on - and drawing sets into one PDF
+// and opens the print dialog over the board. A checklist with no current PDF
+// says so and downloads from Word instead, filled in the same way.
 
 import { Store } from './store.js';
 import { closeOnBackdrop } from './dialog.js';
 import { jobTitle } from './transform.js';
 import {
   ROOT_NAME, SCOPE, splitPath, joinPath, parentPath, shortPath, docKind, KIND_LABEL,
-  isWordKind, isPdfKind, pickDocuments, packageKey, packageFor, suggestFolders, filledName,
-  printsByDefault, skipFrom,
+  isPdfKind, pickDocuments, packageKey, packageFor, suggestFolders, filledName,
+  printsByDefault, skipFrom, checklistDoc, printsAsPdf, downloadsAsWord, WHY_TEXT,
 } from './packages.js';
 import {
   supported, rootState, allowRoot, chooseRoot, pathWithin, handleAt, listFiles, listFolders,
   droppedHandles,
 } from './stella-folder.js';
-import { fillChecklistDocx, mergePdfs, DOCX_TYPE, jszip, pdflib } from './adapters/package-files.js';
+import {
+  fillChecklistDocx, stampChecklistPdf, mergePdfs, DOCX_TYPE, jszip, pdflib, pdfjs,
+} from './adapters/package-files.js';
 
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
@@ -49,6 +52,7 @@ export async function openPackageDialog(job, hooks = {}) {
   // Fetched now, so the first print does not wait on them.
   jszip().catch(() => {});
   pdflib().catch(() => {});
+  pdfjs().catch(() => {});
   const mine = ctx;
   let packages = {};
   try {
@@ -118,8 +122,8 @@ function build() {
     acts.append(b);
     return b;
   };
-  button('primary', 'Print drawings', 'print').addEventListener('click', printDrawings);
-  button('primary', 'Download checklists', 'download').addEventListener('click', downloadChecklists);
+  button('primary', 'Print', 'print').addEventListener('click', printPackage);
+  button('primary', 'Download Word', 'download').addEventListener('click', downloadWord);
   button('ghost', 'Change folder', 'folder').addEventListener('click', () => connect(true));
   button('ghost', 'Close', 'close').addEventListener('click', close);
   box.append(acts);
@@ -164,13 +168,11 @@ async function refreshDocs() {
         const h = await handleAt(ctx.root, s.path, s.kind);
         if (s.kind === 'folder') {
           for (const f of pickDocuments(await listFiles(h))) {
-            docs.push({ ...f, path: joinPath([...splitPath(s.path), ...f.dirs, f.name]),
+            docs.push({ ...f, path: joinPath([...splitPath(s.path), ...f.dirs, f.key ?? f.name]),
               where: shortPath(joinPath([...splitPath(s.path), ...f.dirs]), 3) });
           }
         } else {
-          const f = await h.getFile();
-          docs.push({ name: f.name, kind: docKind(f.name), lastModified: f.lastModified, handle: h,
-            path: s.path, where: shortPath(parentPath(s.path), 2) });
+          docs.push({ ...await fileDoc(h, s.path), path: s.path, where: shortPath(parentPath(s.path), 2) });
         }
       } catch (e) {
         if (e.name === 'NotFoundError' || e.name === 'TypeMismatchError') missing.add(s.path);
@@ -192,6 +194,26 @@ async function refreshDocs() {
   ctx.missing = missing;
   ctx.suggestions = suggestions;
   render();
+}
+
+/**
+ * A document dropped in on its own. A checklist is looked for in both forms
+ * beside it - its PDF next to the Word file, or the other way round - so a
+ * dropped checklist prints from its PDF the same as one found in a folder.
+ */
+async function fileDoc(handle, path) {
+  const f = await handle.getFile();
+  const kind = docKind(f.name);
+  const own = { name: f.name, dirs: [], lastModified: f.lastModified, handle };
+  if (kind !== 'checklist' && kind !== 'checklistPdf') return { ...own, kind };
+  const twin = f.name.replace(/\.(docx|pdf)$/i, kind === 'checklist' ? '.pdf' : '.docx');
+  let other = null;
+  try {
+    const h = await (await handleAt(ctx.root, parentPath(path), 'folder')).getFileHandle(twin);
+    const g = await h.getFile();
+    other = { name: g.name, dirs: [], lastModified: g.lastModified, handle: h };
+  } catch { /* no twin: the one there is */ }
+  return kind === 'checklist' ? checklistDoc(own, other) : checklistDoc(other, own);
 }
 
 /** Folders beside the ones other packages use, that look like this job's. */
@@ -298,7 +320,8 @@ async function connect(choose) {
 // printing
 // ---------------------------------------------------------------------------
 
-const picked = (test) => (ctx?.docs ?? []).filter((d) => d.checked && test(d.kind));
+/** The ticked documents that pass a test. */
+const picked = (test) => (ctx?.docs ?? []).filter((d) => d.checked && test(d));
 
 /** Which action is running, if one is: 'print' or 'download'. */
 function busy(what) {
@@ -306,18 +329,31 @@ function busy(what) {
   render();
 }
 
-async function printDrawings() {
-  const list = picked(isPdfKind);
+/**
+ * Everything ticked that is a PDF, as one PDF to print: checklists first,
+ * each with the production number and due date written on, then drawings.
+ */
+async function printPackage() {
+  const list = picked(printsAsPdf);
   if (!list.length || ctx.busy) return;
   error('');
   busy('print');
-  const title = `${ctx.job.prod_no} drawings`;
+  const job = ctx.job;
+  const title = `${job.prod_no} package`;
+  const plain = [];
   let pdf = null;
   try {
     const parts = [];
-    for (const d of list) parts.push(await (await d.handle.getFile()).arrayBuffer());
+    for (const d of list) {
+      const bytes = await (await d.handle.getFile()).arrayBuffer();
+      if (d.kind !== 'checklist') { parts.push(bytes); continue; }
+      const out = await stampChecklistPdf(bytes, { prodNo: job.prod_no, due: job.due_display });
+      if (!out.filled) plain.push(d.name);
+      parts.push(out.bytes);
+    }
     pdf = parts.length === 1 ? new Uint8Array(parts[0]) : await mergePdfs(parts, { title });
     await printPdf(pdf);
+    if (plain.length) ctx?.hooks.toast?.(`No Production Number box in: ${plain.join(', ')}.`, 6000);
   } catch (e) {
     if (pdf) {
       // The page could not print it: the PDF itself instead, to print from there.
@@ -326,7 +362,7 @@ async function printDrawings() {
       setTimeout(() => URL.revokeObjectURL(url), 120000);
       ctx?.hooks.toast?.(`Saved as ${title}.pdf to print.`, 5000);
     } else {
-      error(`Could not put the drawings together — ${e.message}`);
+      error(`Could not put the package together — ${e.message}`);
     }
   } finally {
     if (ctx) busy(false);
@@ -363,8 +399,9 @@ function printPdf(bytes) {
   });
 }
 
-async function downloadChecklists() {
-  const list = picked(isWordKind);
+/** The ticked checklists that fall back to Word, filled in, to print from Word. */
+async function downloadWord() {
+  const list = picked(downloadsAsWord);
   if (!list.length || ctx.busy) return;
   error('');
   busy('download');
@@ -477,7 +514,10 @@ function render() {
     box.type = 'checkbox';
     box.checked = d.checked;
     box.addEventListener('change', () => { d.checked = box.checked; render(); });
-    row.append(box, el('span', 'pkg-kind', KIND_LABEL[d.kind] ?? ''), el('span', 'pkg-name', d.name),
+    const name = el('span', 'pkg-name', d.name);
+    // A checklist that will not print from a PDF says why, on its row.
+    if (d.kind === 'checklist' && d.use === 'word') name.append(el('span', 'pkg-why', WHY_TEXT[d.why] ?? ''));
+    row.append(box, el('span', 'pkg-kind', KIND_LABEL[d.kind] ?? ''), name,
       el('span', 'pkg-where', d.where), el('span', 'pkg-date', fmtDate(d.lastModified)));
     docs.append(row);
   }
@@ -485,9 +525,10 @@ function render() {
   const act = (name) => overlay.querySelector(`[data-act="${name}"]`);
   act('defaults').hidden = !ctx.docs.some((d) => d.checked !== d.defaultOn);
   act('defaults').disabled = Boolean(ctx.busy);
-  act('print').disabled = Boolean(ctx.busy) || !picked(isPdfKind).length;
-  act('download').disabled = Boolean(ctx.busy) || !picked(isWordKind).length;
-  act('print').textContent = ctx.busy === 'print' ? 'Working…' : 'Print drawings';
-  act('download').textContent = ctx.busy === 'download' ? 'Working…' : 'Download checklists';
+  act('print').disabled = Boolean(ctx.busy) || !picked(printsAsPdf).length;
+  act('print').textContent = ctx.busy === 'print' ? 'Working…' : 'Print';
+  act('download').hidden = !picked(downloadsAsWord).length;
+  act('download').disabled = Boolean(ctx.busy);
+  act('download').textContent = ctx.busy === 'download' ? 'Working…' : 'Download Word';
   act('folder').hidden = !ready();
 }

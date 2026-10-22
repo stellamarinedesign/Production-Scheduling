@@ -964,6 +964,7 @@ header .cog:hover { border-color: var(--red-bright); color: var(--white); }
 .drop-zone.pkg-drop strong { font-size: 15px; margin-bottom: 2px; }
 .drop-zone.pkg-drop.is-off { opacity: .5; }
 .pkg-suggest:not(:empty) { margin-top: 12px; }
+.pkg-why { margin-left: 8px; color: var(--red-bright); font-size: 12px; }
 .pkg-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .pkg-head .settings-label { margin-bottom: 0; }
 .pkg-head + .pkg-docs { margin-top: 6px; }

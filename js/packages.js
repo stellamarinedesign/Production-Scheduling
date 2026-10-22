@@ -45,22 +45,67 @@ export const isArchiveName = (name) => /archiv|supersed/i.test(String(name ?? ''
 /**
  * What a file is to a package. A folder search takes checklists and drawing
  * sets only; a file dropped in on its own may be any Word document or PDF.
- * @returns {'checklist'|'word'|'drawings'|'pdf'|null}
+ * A checklist saved as a PDF beside its Word file is `checklistPdf`.
+ * @returns {'checklist'|'checklistPdf'|'word'|'drawings'|'pdf'|null}
  */
 export function docKind(name) {
   const n = String(name ?? '');
   if (/^~\$/.test(n)) return null;                    // Word's lock file for an open document
-  if (/\.docx$/i.test(n)) return /check\s*-?\s*list/i.test(n) ? 'checklist' : 'word';
+  const checklist = /check\s*-?\s*list/i.test(n);
+  if (/\.docx$/i.test(n)) return checklist ? 'checklist' : 'word';
   if (/\.pdf$/i.test(n)) {
     if (isArchiveName(n)) return null;
+    if (checklist) return 'checklistPdf';
     return /combined/i.test(n) ? 'drawings' : 'pdf';
   }
   return null;
 }
 
-export const KIND_LABEL = { checklist: 'Checklist', word: 'Word', drawings: 'Drawings', pdf: 'PDF' };
-export const isWordKind = (k) => k === 'checklist' || k === 'word';
+export const KIND_LABEL = { checklist: 'Checklist', checklistPdf: 'Checklist', word: 'Word', drawings: 'Drawings', pdf: 'PDF' };
 export const isPdfKind = (k) => k === 'drawings' || k === 'pdf';
+
+// ---------------------------------------------------------------------------
+// checklists: the PDF if there is a current one, the Word file if not
+//
+// Drafting saves each checklist as a PDF beside its Word file when it is made.
+// The PDF prints with the drawings, the production number and due date
+// written onto it; the Word file is the fallback - when there is no PDF, or
+// when the Word file was saved after it, so the PDF may be out of date - and
+// downloads filled in, to print from Word.
+// ---------------------------------------------------------------------------
+
+/** A PDF saved within this long before its Word file still counts as current. */
+export const PDF_SLACK_MS = 60000;
+export const WHY_TEXT = { nopdf: 'Word: no PDF', newer: 'Word: newer than its PDF' };
+
+/**
+ * Which file a checklist prints from.
+ * @returns {{use: 'pdf'|'word'|null, why: 'nopdf'|'newer'|null}}
+ */
+export function checklistSource(word, pdf) {
+  if (pdf && (!word || (word.lastModified ?? 0) <= (pdf.lastModified ?? 0) + PDF_SLACK_MS)) return { use: 'pdf', why: null };
+  if (word) return { use: 'word', why: pdf ? 'newer' : 'nopdf' };
+  return { use: null, why: null };
+}
+
+/** Does this document go into the printed PDF? (A Word checklist downloads instead.) */
+export const printsAsPdf = (d) => isPdfKind(d?.kind) || (d?.kind === 'checklist' && d.use === 'pdf');
+/** Does this document download as Word? */
+export const downloadsAsWord = (d) => d?.kind === 'word' || (d?.kind === 'checklist' && d.use === 'word');
+
+const baseOf = (name) => String(name ?? '').replace(/\.(docx|pdf)$/i, '').toLowerCase();
+
+/**
+ * A checklist's Word file and PDF, as one document: the file it prints from
+ * carries the name, the date and the handle; `word` and `pdf` keep both.
+ */
+export function checklistDoc(word, pdf) {
+  const src = checklistSource(word, pdf);
+  const used = src.use === 'pdf' ? pdf : word;
+  const named = word ?? pdf;
+  return { kind: 'checklist', name: used.name, dirs: named.dirs ?? [], key: named.name,
+    lastModified: used.lastModified, handle: used.handle, word, pdf, ...src };
+}
 
 /**
  * The documents a folder holds, from a listing of it.
@@ -74,21 +119,32 @@ export const isPdfKind = (k) => k === 'drawings' || k === 'pdf';
  */
 export function pickDocuments(entries) {
   const live = (entries ?? []).filter((e) => !(e.dirs ?? []).some(isArchiveName));
-  const found = live.map((e) => ({ ...e, kind: docKind(e.name) }))
-    .filter((e) => e.kind === 'checklist' || e.kind === 'drawings');
+  const found = live.map((e) => ({ ...e, kind: docKind(e.name) }));
   const isBuildForms = (e) => (e.dirs ?? []).some((d) => /^build\s*forms?$/i.test(d));
-  const lists = found.filter((e) => e.kind === 'checklist');
-  const checklists = lists.some(isBuildForms) ? lists.filter(isBuildForms) : lists;
+  const lists = found.filter((e) => e.kind === 'checklist' || e.kind === 'checklistPdf');
+  const inForms = lists.some(isBuildForms) ? lists.filter(isBuildForms) : lists;
   const drawings = found.filter((e) => e.kind === 'drawings');
-  const newest = (list) => {
-    const by = new Map();
-    for (const e of list) {
-      const k = e.name.toLowerCase();
-      if (!by.has(k) || (e.lastModified ?? 0) > (by.get(k).lastModified ?? 0)) by.set(k, e);
-    }
-    return [...by.values()].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
-  };
-  return [...newest(checklists), ...newest(drawings)];
+  const newer = (a, b) => (!a || (b.lastModified ?? 0) > (a.lastModified ?? 0) ? b : a);
+  const byName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true });
+
+  // One checklist per name, Word and PDF taken together: the newest Word
+  // file, and its PDF from the same folder where there is one.
+  const groups = new Map();
+  for (const e of inForms) {
+    const g = groups.get(baseOf(e.name)) ?? [];
+    g.push(e);
+    groups.set(baseOf(e.name), g);
+  }
+  const checklists = [...groups.values()].map((g) => {
+    const word = g.filter((e) => e.kind === 'checklist').reduce(newer, null);
+    const pdfs = g.filter((e) => e.kind === 'checklistPdf');
+    const beside = word ? pdfs.filter((p) => (p.dirs ?? []).join('/') === (word.dirs ?? []).join('/')) : pdfs;
+    return checklistDoc(word, (beside.length ? beside : pdfs).reduce(newer, null));
+  }).sort(byName);
+
+  const sets = new Map();
+  for (const e of drawings) sets.set(e.name.toLowerCase(), newer(sets.get(e.name.toLowerCase()), e));
+  return [...checklists, ...[...sets.values()].sort(byName)];
 }
 
 // ---------------------------------------------------------------------------
@@ -314,6 +370,64 @@ function rebuildLine(doc, p, label, value, styleTabs) {
 
 /** "P01480 - SL-...-LaserChecklist.docx": the job's number in front. */
 export const filledName = (prodNo, name) => `${prodNo} - ${name}`;
+
+/**
+ * Where a checklist PDF takes the production number and due date, from one
+ * page's text in PDF units, y up: [{str, x, y, w, size}].
+ *
+ * Each label is found at the start of its line - spaces ignored, since a PDF
+ * may keep them as text or leave them as gaps - and ends where its colon
+ * does. The blanks after it are covered; both values start together just
+ * past the further colon (the template's two colons sit within a point or two
+ * of each other) and are underlined to an end both share, as the Word fill.
+ * Null when the page has neither label.
+ *
+ * @returns {null | {size, valueX, endX, lines: [{key, baseline, cover: [x0, y0, x1, y1]}]}}
+ */
+export function stampPlan(items) {
+  const rows = [];
+  for (const it of items ?? []) {
+    if (!it?.str) continue;
+    let row = rows.find((r) => Math.abs(r.y - it.y) < 1.5);
+    if (!row) { row = { y: it.y, items: [] }; rows.push(row); }
+    row.items.push(it);
+  }
+  const found = [];
+  for (const [label, key] of FILL_LINES) {
+    const want = label.replace(/\s+/g, '');
+    for (const row of rows) {
+      const its = [...row.items].sort((a, b) => a.x - b.x);
+      if (!its.map((i) => i.str).join('').replace(/\s+/g, '').startsWith(want)) continue;
+      // Walk to the colon, counting characters that are not spaces.
+      let left = want.length;
+      let end = null;
+      let size = null;
+      for (const it of its) {
+        const chars = [...it.str];
+        for (let i = 0; i < chars.length && end === null; i++) {
+          if (/\s/.test(chars[i])) continue;
+          if (--left === 0) { end = it.x + (it.w * (i + 1)) / chars.length; size = it.size; }
+        }
+        if (end !== null) break;
+      }
+      if (end === null) continue;
+      const blanksEnd = Math.max(end, ...its.filter((i) => i.x + i.w > end + 0.5).map((i) => i.x + i.w));
+      found.push({ key, baseline: row.y, end, blanksEnd, size });
+      break;
+    }
+  }
+  if (!found.length) return null;
+  const size = Math.max(...found.map((f) => f.size || 0)) || 12;
+  const valueX = Math.max(...found.map((f) => f.end)) + size * 0.45;
+  const endX = valueX + size * 6.2;
+  return {
+    size, valueX, endX,
+    lines: found.map((f) => ({
+      key: f.key, baseline: f.baseline,
+      cover: [f.end + size * 0.04, f.baseline - size * 0.3, Math.max(f.blanksEnd, endX) + size * 0.1, f.baseline + size * 0.95],
+    })),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // print defaults
