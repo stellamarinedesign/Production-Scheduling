@@ -282,15 +282,14 @@ export const HELP = [
       {
         q: 'Who changed that?',
         a: [
-          'History, at the foot: the Activity log. Every edit on the board lands there '
+          'Recent changes, beside History on Current orders: the Activity log. Every edit on the board lands there '
           + 'with a name and a time - a status set or let go, Done and Reopen, Hide '
           + 'and Show, a label, a hull, a part mark, a package, and what an import '
           + 'changed. The newest fifty are shown; Show older brings the next fifty. '
           + 'The row above it narrows the list to edits or to imports. Changes to the '
           + 'Accounts lists are shown to master users only. It is a record, not a '
           + 'control: nothing reads it back.',
-          'Recent changes, beside History, opens straight to it. Each line of History '
-          + 'says under Last changed who last touched the job and when.',
+          'Each line of History says under Last changed who last touched the job and when.',
         ],
       },
       {

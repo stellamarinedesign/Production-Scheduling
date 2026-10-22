@@ -1,6 +1,6 @@
-// activity-log.js - the Activity log under History: a box that scrolls, the
-// newest entries at the top, older ones fetched a page at a time, a filter
-// row above.
+// activity-log.js - the Activity log, behind Recent changes: a box that
+// scrolls, the newest entries at the top, older ones fetched a page at a
+// time, a filter row above.
 //
 // The store hands back pages; this keeps what has been fetched so a redraw -
 // every edit redraws, and so does a colleague's - refreshes what is on screen

@@ -833,7 +833,7 @@ function wireControls() {
   for (const b of document.querySelectorAll('[id^=history][data-lane]')) {
     b.addEventListener('click', () => toggleHistory(b.dataset.lane));
   }
-  $('recentChanges').addEventListener('click', showRecentChanges);
+  $('recentChanges').addEventListener('click', toggleRecent);
 
   $('completePastDue').addEventListener('click', () =>
     openCompleteDialog(state.board.warnings.pastDue ?? []));
@@ -1096,6 +1096,7 @@ function rebuild() {
   renderLane('internal');
   renderLane('tm');
   for (const lane of Object.keys(HISTORY_HOST)) renderHistory(lane);
+  renderRecent();
 }
 
 function renderProvenance() {
@@ -1637,15 +1638,29 @@ const historyOpen = new Set();
 
 function toggleHistory(lane) {
   if (historyOpen.has(lane)) historyOpen.delete(lane); else historyOpen.add(lane);
-  if (lane === 'production' && !historyOpen.has(lane)) forgetActivityLog();
+  // One panel in the board's place at a time.
+  if (lane === 'production' && historyOpen.has(lane) && recentOpen) { recentOpen = false; renderRecent(); }
   renderHistory(lane);
 }
 
-/** The board's History panel, open and scrolled to the log at its foot. */
-function showRecentChanges() {
-  historyOpen.add('production');
-  renderHistory('production');
-  $(HISTORY_HOST.production).querySelector('.act-block')?.scrollIntoView({ block: 'start' });
+// Recent changes: the activity log, a panel of its own beside History and in
+// the board's place like it. History keeps to the completed lists.
+let recentOpen = false;
+
+function toggleRecent() {
+  recentOpen = !recentOpen;
+  if (recentOpen && historyOpen.has('production')) { historyOpen.delete('production'); renderHistory('production'); }
+  if (!recentOpen) forgetActivityLog();
+  renderRecent();
+}
+
+function renderRecent() {
+  const host = $('recentChangesPanel');
+  $('recentChanges').setAttribute('aria-pressed', String(recentOpen));
+  $(HISTORY_BODY.production).hidden = recentOpen || historyOpen.has('production');
+  host.hidden = !recentOpen;
+  host.textContent = '';
+  if (recentOpen) renderActivityLog(host, { master: Auth.isMaster });
 }
 
 function renderHistory(lane = 'production') {
@@ -1656,7 +1671,7 @@ function renderHistory(lane = 'production') {
   const btn = $(HISTORY_BTN[lane]);
   btn.textContent = done.length ? `History (${done.length})` : 'History';
   btn.setAttribute('aria-pressed', String(open));
-  $(HISTORY_BODY[lane]).hidden = open;
+  $(HISTORY_BODY[lane]).hidden = open || (lane === 'production' && recentOpen);
   host.hidden = !open;
   if (!open) return;
 
@@ -1664,7 +1679,6 @@ function renderHistory(lane = 'production') {
   if (!done.length) {
     host.append(el('div', 'state', 'Nothing completed yet. Jobs marked done here '
       + 'or on the Gantt land in this list.'));
-    if (lane === 'production') renderActivityLog(host, { master: Auth.isMaster });
     return;
   }
 
@@ -1742,9 +1756,6 @@ function renderHistory(lane = 'production') {
     }
     host.append(block);
   }
-  // The activity log, under the completed list. On the board's History only;
-  // it covers every lane.
-  if (lane === 'production') renderActivityLog(host, { master: Auth.isMaster });
 }
 
 // ---------------------------------------------------------------------------
