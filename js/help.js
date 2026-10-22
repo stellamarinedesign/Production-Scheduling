@@ -496,6 +496,19 @@ export const HELP = [
           'Reopen puts it back on the board.',
         ],
       },
+      {
+        q: 'What has changed on a job?',
+        a: [
+          'Open the row and press Changes: every change to the job, newest first. A '
+          + 'status set by hand, Done and Reopen, Hide and Show, a label, a hull and a '
+          + 'part mark are the lines the log already keeps. An import adds a line for '
+          + 'each job it moved — the start and end dates, the quantity, the description, '
+          + 'a status the ERP changed — each field as it was and as it is, with the date '
+          + 'of the import and who applied it.',
+          'In the import review, a changed row opens on a click to show the same fields, '
+          + 'old and new, before the import is applied.',
+        ],
+      },
     ],
   },
 ];
