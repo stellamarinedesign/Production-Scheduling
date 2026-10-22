@@ -533,14 +533,6 @@ export const Store = {
     await addDoc(collection(this._db, 'activity'), entry);
   },
 
-  /** Newest first. */
-  async listActivity(max = 100) {
-    if (this.mode === 'local') return lsGet('activity', []).slice(0, max);
-    const { collection, getDocs, query, orderBy, limit } = this._fs;
-    const snap = await getDocs(query(collection(this._db, 'activity'), orderBy('at', 'desc'), limit(max)));
-    return snap.docs.map((d) => ({ _id: d.id, ...d.data() }));
-  },
-
   /**
    * Many entries at once. An import can move the dates of hundreds of jobs,
    * and a write per job would be hundreds of round trips after every apply.
@@ -592,6 +584,14 @@ export const Store = {
       snap.forEach((d) => { seen.set(d.id, { _id: d.id, ...d.data() }); });
     }
     return [...seen.values()].filter(mine).sort(newestFirst);
+  },
+
+  /** Newest first. */
+  async listActivity(max = 100) {
+    if (this.mode === 'local') return lsGet('activity', []).slice(0, max);
+    const { collection, getDocs, query, orderBy, limit } = this._fs;
+    const snap = await getDocs(query(collection(this._db, 'activity'), orderBy('at', 'desc'), limit(max)));
+    return snap.docs.map((d) => ({ _id: d.id, ...d.data() }));
   },
 
   /**

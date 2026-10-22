@@ -16,13 +16,13 @@ import { itemFacts, mergeItemFacts } from './vessel-codes.js';
 import { closeOnBackdrop } from './dialog.js';
 import { wireSettings } from './settings.js';
 import { openPackageDialog } from './package-dialog.js';
-import { openItemHistory, logImportChanges, wireChangeRow } from './item-history.js';
 import { describeOverride, describeItemOverride, activityEntry, whoShort, whenShort, ACTION } from './activity.js';
 import { Store, packRows, unpackRows, isNewerImport } from './store.js';
 import { renderPrint, fitWarehouse, renderWatermakers, measure, fitToPage, fitHorizon, pageRule,
          WAREHOUSE_PAPER, renderLanePrint, fitLaneToPage } from './print.js';
 import { renderGantt } from './gantt.js';
 import { balanceColumns } from './print.js';
+import { openItemHistory, logImportChanges, wireChangeRow } from './item-history.js';
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => {

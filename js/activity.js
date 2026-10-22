@@ -10,8 +10,6 @@
 export const ACTION = {
   status: 'status', hide: 'hide', show: 'show', label: 'label', hull: 'hull',
   part: 'part', done: 'done', reopen: 'reopen', access: 'access', package: 'package',
-  // What an ERP import moved on a job; the entry carries `changes`, see
-  // item-history.js. One per changed job per import.
   import: 'import',
 };
 

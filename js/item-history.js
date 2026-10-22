@@ -45,7 +45,7 @@ export function changeValue(v) {
 export const describeChanges = (changes) =>
   (changes ?? []).map((c) => `${c.field} ${changeValue(c.from)} → ${changeValue(c.to)}`).join(', ');
 
-/** The line the log shows for an import's entry. `day` is a date-only value. */
+/** The line the log shows for an import's entry (`text`). `day` is a date-only value. */
 export const importSentence = (changes, day) => `Import ${toAU(day)}: ${describeChanges(changes)}`;
 
 /**
@@ -79,7 +79,6 @@ export function importChangeEntries(diff, { board, by, importAt = null, at = new
         label: job ? jobTitle(job) : null,
         inventoryId: job?.inventory_id ?? null,
       }),
-      what: text,
       changes,
       importAt: importAt ?? null,
     });
@@ -197,7 +196,7 @@ function historyRow(r) {
     what.append(el('div', 'ih-import', 'Import'));
     what.append(renderChangeList(r.changes));
   } else {
-    what.textContent = r.what ?? r.text ?? '';
+    what.textContent = r.text ?? '';
   }
   row.append(what);
   return row;
