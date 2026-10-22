@@ -4,11 +4,14 @@
 // The package is kept per item code or per job (packages.js). Folders and
 // documents go in by dropping them from File Explorer, or by choosing a
 // folder; a folder is searched for its current checklists and drawing set
-// each time the dialog opens. Which documents start ticked is remembered per
-// package. Print puts the ticked checklists - from their PDFs, the
-// production number and due date written on - and drawing sets into one PDF
-// and opens the print dialog over the board. A checklist with no current PDF
-// says so and downloads from Word instead, filled in the same way.
+// each time the dialog opens. Standard items - a lock, say, shared by many
+// products - come from the library under Manage: a category's default, or
+// another item of the same group chosen for this package, or none. Which
+// documents start ticked is remembered per package. Print puts the ticked
+// checklists - from their PDFs, the production number and due date written
+// on - and drawing sets into one PDF and opens the print dialog over the
+// board. A checklist with no current PDF says so and downloads from Word
+// instead, filled in the same way.
 
 import { Store } from './store.js';
 import { closeOnBackdrop } from './dialog.js';
@@ -17,6 +20,8 @@ import {
   ROOT_NAME, SCOPE, splitPath, joinPath, parentPath, shortPath, docKind, KIND_LABEL,
   isPdfKind, pickDocuments, packageKey, packageFor, suggestFolders, filledName,
   printsByDefault, skipFrom, checklistDoc, printsAsPdf, downloadsAsWord, WHY_TEXT,
+  ownSources, skipFor, isEmptyPackage, LIBRARY_KEY, NONE, normaliseLibrary, newItemId, groupsOf,
+  standardFor, withChoice, withStandardSources, withItem, withoutItem, withCategoryDefault,
 } from './packages.js';
 import {
   supported, rootState, allowRoot, chooseRoot, pathWithin, handleAt, listFiles, listFolders,
@@ -35,7 +40,9 @@ const el = (tag, cls, text) => {
 const $ = (sel) => overlay.querySelector(sel);
 
 let overlay = null;
-let ctx = null;     // { job, hooks, packages, scope, root, state, docs, missing, suggestions, busy }
+// { job, hooks, packages, library, scope, root, state, docs, missing, suggestions, busy,
+//   manage: library panel open, pending: a dropped item waiting for its name and group }
+let ctx = null;
 
 /**
  * @param {Object} job  a board job
@@ -43,8 +50,8 @@ let ctx = null;     // { job, hooks, packages, scope, root, state, docs, missing
  */
 export async function openPackageDialog(job, hooks = {}) {
   if (!overlay) build();
-  ctx = { job, hooks, packages: {}, scope: SCOPE.item, root: null, state: 'none',
-    docs: [], missing: new Set(), suggestions: [], busy: false };
+  ctx = { job, hooks, packages: {}, library: normaliseLibrary(null), scope: SCOPE.item, root: null,
+    state: 'none', docs: [], missing: new Set(), suggestions: [], busy: false, manage: false, pending: null };
   $('.lede').textContent = `${job.prod_no} — ${jobTitle(job)}, due ${job.due_display}`;
   $('.form-err').textContent = '';
   overlay.classList.add('show');
@@ -62,6 +69,7 @@ export async function openPackageDialog(job, hooks = {}) {
   }
   if (ctx !== mine) return;                     // closed, or opened for another job, meanwhile
   ctx.packages = packages;
+  ctx.library = normaliseLibrary(packages[LIBRARY_KEY]);
   ctx.scope = packageFor(job, packages).scope;
   await refreshRoot();
   await refreshDocs();
@@ -105,6 +113,34 @@ function build() {
   src.append(drop, el('div', 'pkg-suggest'));
   box.append(src);
 
+  // Standard items: a row per group in effect, the library behind Manage.
+  const std = el('div', 'pkg-section');
+  const stdHead = el('div', 'pkg-head');
+  const manage = el('button', 'mini', 'Manage');
+  manage.dataset.act = 'manage';
+  manage.addEventListener('click', () => {
+    ctx.manage = !ctx.manage;
+    if (!ctx.manage) ctx.pending = null;
+    render();
+  });
+  stdHead.append(el('div', 'settings-label', 'Standard items'), manage);
+  const lib = el('div', 'pkg-lib');
+  const libDrop = el('div', 'drop-zone pkg-drop pkg-lib-drop');
+  libDrop.append(el('strong', null, 'Drop a folder or document here'), el('div', 'hint', 'or click to choose a folder'));
+  libDrop.addEventListener('dragover', (e) => { e.preventDefault(); libDrop.classList.add('dragover'); });
+  libDrop.addEventListener('dragleave', () => libDrop.classList.remove('dragover'));
+  libDrop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    libDrop.classList.remove('dragover');
+    droppedHandles(e).then(stageItem).catch((err) => error(err.message));
+  });
+  libDrop.addEventListener('click', chooseItemFolder);
+  const groups = el('datalist');
+  groups.id = 'pkgGroups';
+  lib.append(el('div', 'pkg-lib-rows'), libDrop, el('div', 'pkg-lib-new'), el('div', 'pkg-lib-cats'), groups);
+  std.append(stdHead, el('div', 'pkg-std-rows'), el('div', 'pkg-std-add'), lib);
+  box.append(std);
+
   const docs = el('div', 'pkg-section');
   const head = el('div', 'pkg-head');
   const keep = el('button', 'mini', 'Save as default');
@@ -140,7 +176,12 @@ function build() {
 
 const ready = () => ctx?.state === 'granted' && ctx.root;
 const currentKey = () => packageKey(ctx.scope, ctx.job);
+/** The package's own folders and documents. */
 const sources = () => ctx.packages[currentKey()]?.sources ?? [];
+/** The ones its documents come from: a job's code's, where the job has none of its own. */
+const shownSources = () => ownSources(ctx.job, ctx.packages, ctx.scope);
+const standardRows = () => standardFor(ctx.job, ctx.packages, ctx.library, ctx.scope);
+const itemById = (id) => ctx.library.items.find((i) => i.id === id);
 
 function error(msg) {
   if (overlay) $('.form-err').textContent = msg ?? '';
@@ -163,16 +204,18 @@ async function refreshDocs() {
   const missing = new Set();
   let suggestions = [];
   if (ready()) {
-    for (const s of sources()) {
+    for (const s of withStandardSources(shownSources(), standardRows(), ctx.library)) {
+      // A standard item's documents say which item they are; the rest, where they are.
+      const item = s.standard ? itemById(s.standard)?.name : null;
       try {
         const h = await handleAt(ctx.root, s.path, s.kind);
         if (s.kind === 'folder') {
           for (const f of pickDocuments(await listFiles(h))) {
             docs.push({ ...f, path: joinPath([...splitPath(s.path), ...f.dirs, f.key ?? f.name]),
-              where: shortPath(joinPath([...splitPath(s.path), ...f.dirs]), 3) });
+              where: item ?? shortPath(joinPath([...splitPath(s.path), ...f.dirs]), 3) });
           }
         } else {
-          docs.push({ ...await fileDoc(h, s.path), path: s.path, where: shortPath(parentPath(s.path), 2) });
+          docs.push({ ...await fileDoc(h, s.path), path: s.path, where: item ?? shortPath(parentPath(s.path), 2) });
         }
       } catch (e) {
         if (e.name === 'NotFoundError' || e.name === 'TypeMismatchError') missing.add(s.path);
@@ -180,11 +223,11 @@ async function refreshDocs() {
         else { error(`Could not read ${shortPath(s.path, 2)} — ${e.message}`); }
       }
     }
-    if (!sources().length) suggestions = await findSuggestions().catch(() => []);
+    if (!shownSources().length) suggestions = await findSuggestions().catch(() => []);
   }
   if (ctx !== mine) return;                     // the dialog moved on while this ran
   const seen = new Set();
-  const skip = ctx.packages[currentKey()]?.skip ?? [];
+  const skip = skipFor(ctx.job, ctx.packages, ctx.scope);
   ctx.docs = docs.filter((d) => d.kind && !seen.has(d.path) && seen.add(d.path))
     .sort((a, b) => Number(isPdfKind(a.kind)) - Number(isPdfKind(b.kind)))
     .map((d) => {
@@ -235,7 +278,11 @@ async function findSuggestions() {
 // changing the package
 // ---------------------------------------------------------------------------
 
-/** Write the package: its sources, and anything else it keeps (the print defaults) as it was. */
+/**
+ * Write the package: its sources, and anything else it keeps (the print
+ * defaults, the standard items) as it was. A package left with nothing in it
+ * is removed.
+ */
 async function save(next, note, extra = {}) {
   const key = currentKey();
   const data = {
@@ -247,33 +294,41 @@ async function save(next, note, extra = {}) {
     updatedBy: ctx.hooks.who ?? null,
     ...extra,
   };
+  const empty = isEmptyPackage(data);
   try {
-    await Store.savePackage(key, data);
+    await Store.savePackage(key, empty ? null : data);
   } catch (e) {
     error(`Could not save — ${e.message}`);
     return;
   }
-  if (next.length) ctx.packages[key] = data; else delete ctx.packages[key];
+  if (empty) delete ctx.packages[key]; else ctx.packages[key] = data;
   ctx.hooks.onLog?.({ action: 'package', text: note });
   await refreshDocs();
+}
+
+/** Where a dropped folder or document is in Stella Systems; null, and why, if it cannot go in. */
+async function placeOf(h) {
+  let path;
+  try { path = await pathWithin(ctx.root, h); } catch (e) { error(e.message); return null; }
+  if (path === null) { error(`"${h.name}" is not inside the ${ROOT_NAME} folder.`); return null; }
+  if (path === '') { error(`Drop a folder inside ${ROOT_NAME}, not ${ROOT_NAME} itself.`); return null; }
+  const kind = h.kind === 'directory' ? 'folder' : 'file';
+  if (kind === 'file' && !docKind(h.name)) { error('Only Word documents and PDFs go in a package.'); return null; }
+  return { kind, path };
 }
 
 async function addHandles(handles) {
   error('');
   if (!ready()) { error(`Connect the ${ROOT_NAME} folder first.`); return; }
-  const next = [...sources()];
+  // A job adding to the folders it has from its code starts its own list from them.
+  const next = [...shownSources()];
   const added = [];
   for (const h of handles) {
     if (!h) continue;
-    let path;
-    try { path = await pathWithin(ctx.root, h); } catch (e) { error(e.message); continue; }
-    if (path === null) { error(`"${h.name}" is not inside the ${ROOT_NAME} folder.`); continue; }
-    if (path === '') { error(`Drop a folder inside ${ROOT_NAME}, not ${ROOT_NAME} itself.`); continue; }
-    const kind = h.kind === 'directory' ? 'folder' : 'file';
-    if (kind === 'file' && !docKind(h.name)) { error('Only Word documents and PDFs go in a package.'); continue; }
-    if (next.some((s) => s.path === path)) continue;
-    next.push({ kind, path });
-    added.push(splitPath(path).at(-1));
+    const place = await placeOf(h);
+    if (!place || next.some((s) => s.path === place.path)) continue;
+    next.push(place);
+    added.push(splitPath(place.path).at(-1));
   }
   if (added.length) await save(next, `package: added ${added.join(', ')}`);
 }
@@ -291,6 +346,87 @@ async function chooseFolder() {
 
 async function removeSource(path) {
   await save(sources().filter((s) => s.path !== path), `package: removed ${splitPath(path).at(-1)}`);
+}
+
+/** This package's choice for a group: an item id, NONE to leave it out, '' for the default. */
+async function setStandard(group, value) {
+  if (!ctx || ctx.busy) return;
+  error('');
+  const standard = withChoice(ctx.packages[currentKey()]?.standard, group, value);
+  const what = value === NONE ? 'left out' : value ? `set to ${itemById(value)?.name ?? value}` : 'back to the default';
+  await save(sources(), `package: ${group} ${what}`, { standard });
+}
+
+// ---------------------------------------------------------------------------
+// the standard items library
+// ---------------------------------------------------------------------------
+
+/**
+ * Change the library. It is read again first and the change made to that, so
+ * another manager's change since this dialog opened is kept.
+ * @param {(library) => Object} change
+ */
+async function changeLibrary(change, note) {
+  if (!ctx) return false;
+  error('');
+  const mine = ctx;
+  let next;
+  try {
+    next = { ...change(normaliseLibrary(await Store.loadPackage(LIBRARY_KEY))), updatedBy: ctx.hooks.who ?? null };
+    await Store.savePackage(LIBRARY_KEY, next);
+  } catch (e) {
+    error(`Could not save — ${e.message}`);
+    return false;
+  }
+  if (ctx !== mine) return false;
+  ctx.packages[LIBRARY_KEY] = next;
+  ctx.library = normaliseLibrary(next);
+  ctx.hooks.onLog?.({ action: 'package', text: note });
+  await refreshDocs();
+  return true;
+}
+
+/** A folder or document dropped to become a standard item, named and grouped before it goes in. */
+async function stageItem(handles) {
+  error('');
+  if (!ready()) { error(`Connect the ${ROOT_NAME} folder first.`); return; }
+  const h = handles.find(Boolean);
+  const place = h ? await placeOf(h) : null;
+  if (!place || !ctx) return;
+  ctx.pending = { ...place, name: h.name.replace(/\.(docx|pdf)$/i, ''), group: '' };
+  render();
+  overlay.querySelector('.pkg-lib-new input')?.focus();
+}
+
+async function chooseItemFolder() {
+  error('');
+  if (!ready()) { await connect(false); if (!ready()) return; }
+  try {
+    const h = await window.showDirectoryPicker({ id: 'stella-standard', startIn: ctx.root, mode: 'read' });
+    await stageItem([h]);
+  } catch (e) {
+    if (e.name !== 'AbortError') error(e.message);
+  }
+}
+
+async function addItem() {
+  const p = ctx?.pending;
+  const name = p?.name.trim();
+  const group = p?.group.trim();
+  if (!name || !group) return;
+  const item = { id: newItemId(), name, group, kind: p.kind, path: p.path };
+  if (await changeLibrary((lib) => withItem(lib, item), `package: standard item ${name} (${group}) added`)) {
+    ctx.pending = null;
+    render();
+  }
+}
+
+/** A library item's name or group, changed where it is listed. */
+function renameItem(item, field, value) {
+  const v = value.trim();
+  if (!v || v === item[field]) { render(); return; }
+  changeLibrary((lib) => withItem(lib, { ...(lib.items.find((i) => i.id === item.id) ?? item), [field]: v }),
+    `package: standard item ${item.name} ${field === 'name' ? 'renamed' : 'moved to group'} ${v}`);
 }
 
 /** The ticks as they stand become the ones every job on this package starts with. */
@@ -445,8 +581,39 @@ const fmtDate = (ms) => {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 };
 
+const option = (parent, value, text) => {
+  const o = el('option', null, text);
+  o.value = value;
+  parent.append(o);
+  return o;
+};
+
+const textInput = (key, value, placeholder) => {
+  const i = el('input');
+  i.type = 'text';
+  i.value = value;
+  i.placeholder = placeholder;
+  i.dataset.key = key;
+  return i;
+};
+
+/** Draw the dialog again, without losing the field being typed in. */
 function render() {
   if (!overlay || !ctx) return;
+  const f = document.activeElement;
+  const key = overlay.contains(f) ? f.dataset.key : null;
+  const typed = key && f.tagName === 'INPUT' ? { value: f.value, start: f.selectionStart, end: f.selectionEnd } : null;
+  draw();
+  const g = key ? overlay.querySelector(`[data-key="${CSS.escape(key)}"]`) : null;
+  if (!g) return;
+  if (typed) {
+    g.value = typed.value;
+    g.setSelectionRange(typed.start, typed.end);
+  }
+  g.focus();
+}
+
+function draw() {
   const { job } = ctx;
 
   // The folder: nothing to show once it is ready.
@@ -469,21 +636,27 @@ function render() {
     sel.append(o);
   }
 
+  // A job with none of its own lists its code's, which are removed from there.
   const list = $('.pkg-sources');
   list.textContent = '';
-  for (const s of sources()) {
+  const own = sources().length > 0;
+  for (const s of shownSources()) {
     const row = el('div', `pkg-row${ctx.missing.has(s.path) ? ' is-missing' : ''}`);
     row.append(el('span', 'pkg-kind', s.kind === 'folder' ? 'Folder' : 'File'));
     const path = el('span', 'pkg-path', shortPath(s.path, 3));
     path.title = s.path;
     row.append(path);
     if (ctx.missing.has(s.path)) row.append(el('span', 'pkg-note', 'not found'));
-    const rm = el('button', 'mini', 'Remove');
-    rm.addEventListener('click', () => removeSource(s.path));
-    row.append(rm);
+    if (own) {
+      const rm = el('button', 'mini', 'Remove');
+      rm.addEventListener('click', () => removeSource(s.path));
+      row.append(rm);
+    } else {
+      row.append(el('span', 'pkg-from', `from ${job.inventory_id}`));
+    }
     list.append(row);
   }
-  $('.pkg-drop').classList.toggle('is-off', !ready());
+  for (const d of overlay.querySelectorAll('.pkg-drop')) d.classList.toggle('is-off', !ready());
 
   const sug = $('.pkg-suggest');
   sug.textContent = '';
@@ -503,10 +676,14 @@ function render() {
     }
   }
 
+  drawStandard();
+  drawLibrary();
+
   const docs = $('.pkg-docs');
   docs.textContent = '';
   if (!ctx.docs.length) {
-    docs.append(el('div', 'pkg-none', ready() && sources().length ? 'No checklists or drawing sets found.' : '—'));
+    const any = shownSources().length || standardRows().some((r) => r.id);
+    docs.append(el('div', 'pkg-none', ready() && any ? 'No checklists or drawing sets found.' : '—'));
   }
   for (const d of ctx.docs) {
     const row = el('label', 'pkg-doc');
@@ -531,4 +708,137 @@ function render() {
   act('download').disabled = Boolean(ctx.busy);
   act('download').textContent = ctx.busy === 'download' ? 'Working…' : 'Download Word';
   act('folder').hidden = !ready();
+  act('manage').textContent = ctx.manage ? 'Done' : 'Manage';
+}
+
+/**
+ * A row per group the package has a standard item for: its own choice, or
+ * the default it inherits, named in the first option. Then the library's
+ * other items, to add one.
+ */
+function drawStandard() {
+  const rows = standardRows();
+  const list = $('.pkg-std-rows');
+  list.textContent = '';
+  for (const r of rows) {
+    const it = itemById(r.id);
+    const gone = it && ctx.missing.has(it.path);
+    const row = el('div', `pkg-row pkg-std${gone ? ' is-missing' : ''}`);
+    row.append(el('span', 'pkg-kind pkg-group', r.group));
+    const pick = el('select', 'pkg-pick');
+    pick.dataset.key = `std:${r.group}`;
+    option(pick, '', `Default (${itemById(r.inherited)?.name ?? 'none'})`);
+    for (const i of ctx.library.items.filter((x) => x.group === r.group)) option(pick, i.id, i.name);
+    option(pick, NONE, 'None');
+    pick.value = r.own ?? '';
+    pick.addEventListener('change', () => setStandard(r.group, pick.value));
+    row.append(pick);
+    if (gone) row.append(el('span', 'pkg-note', 'not found'));
+    list.append(row);
+  }
+
+  const add = $('.pkg-std-add');
+  add.textContent = '';
+  const shown = new Set(rows.map((r) => r.group));
+  const spare = ctx.library.items.filter((i) => !shown.has(i.group));
+  if (spare.length) {
+    const pick = el('select', 'pkg-pick');
+    pick.dataset.key = 'std:add';
+    option(pick, '', 'Add…');
+    for (const g of groupsOf({ items: spare })) {
+      const set = el('optgroup');
+      set.label = g;
+      for (const i of spare.filter((x) => x.group === g)) option(set, i.id, i.name);
+      pick.append(set);
+    }
+    pick.addEventListener('change', () => {
+      const i = itemById(pick.value);
+      if (i) setStandard(i.group, i.id);
+    });
+    add.append(pick);
+  }
+  if (!rows.length && !spare.length && !ctx.manage) list.append(el('div', 'pkg-none', '—'));
+}
+
+/** The library, under Manage: its items, adding one, and the job's category's defaults. */
+function drawLibrary() {
+  const { job, library } = ctx;
+  const lib = $('.pkg-lib');
+  lib.hidden = !ctx.manage;
+  if (!ctx.manage) return;
+  const byName = (a, b) => a.localeCompare(b, undefined, { numeric: true });
+
+  const rows = $('.pkg-lib-rows');
+  rows.textContent = '';
+  for (const it of [...library.items].sort((a, b) => byName(a.group, b.group) || byName(a.name, b.name))) {
+    const row = el('div', 'pkg-row pkg-item');
+    const name = textInput(`lib:${it.id}:name`, it.name, 'Name');
+    name.addEventListener('change', () => renameItem(it, 'name', name.value));
+    const group = textInput(`lib:${it.id}:group`, it.group, 'Group');
+    group.setAttribute('list', 'pkgGroups');
+    group.addEventListener('change', () => renameItem(it, 'group', group.value));
+    const path = el('span', 'pkg-path', shortPath(it.path, 3));
+    path.title = it.path;
+    const rm = el('button', 'mini', 'Remove');
+    rm.addEventListener('click', () => changeLibrary((l) => withoutItem(l, it.id), `package: standard item ${it.name} removed`));
+    row.append(name, group, path, rm);
+    rows.append(row);
+  }
+
+  const fresh = $('.pkg-lib-new');
+  fresh.textContent = '';
+  const p = ctx.pending;
+  if (p) {
+    const row = el('div', 'pkg-row pkg-item');
+    const name = textInput('new:name', p.name, 'Name');
+    const group = textInput('new:group', p.group, 'Group');
+    group.setAttribute('list', 'pkgGroups');
+    const path = el('span', 'pkg-path', shortPath(p.path, 3));
+    path.title = p.path;
+    const btns = el('span', 'pkg-btns');
+    const ok = el('button', 'mini', 'Add');
+    const sync = () => {
+      p.name = name.value;
+      p.group = group.value;
+      ok.disabled = !p.name.trim() || !p.group.trim();
+    };
+    for (const i of [name, group]) {
+      i.addEventListener('input', sync);
+      i.addEventListener('keydown', (e) => { if (e.key === 'Enter') addItem(); });
+    }
+    sync();
+    ok.addEventListener('click', addItem);
+    const cancel = el('button', 'mini', 'Cancel');
+    cancel.addEventListener('click', () => { ctx.pending = null; render(); });
+    btns.append(ok, cancel);
+    row.append(name, group, path, btns);
+    fresh.append(row);
+  }
+
+  const cats = $('.pkg-lib-cats');
+  cats.textContent = '';
+  const groups = groupsOf(library);
+  if (groups.length && job.category) {
+    cats.append(el('div', 'settings-label', `Defaults for ${job.category}`));
+    for (const g of groups) {
+      const row = el('div', 'pkg-row pkg-std');
+      row.append(el('span', 'pkg-kind pkg-group', g));
+      const pick = el('select', 'pkg-pick');
+      pick.dataset.key = `cat:${g}`;
+      option(pick, '', 'None');
+      for (const i of library.items.filter((x) => x.group === g)) option(pick, i.id, i.name);
+      pick.value = library.categories[job.category]?.[g] ?? '';
+      pick.addEventListener('change', () => {
+        const id = pick.value || null;
+        changeLibrary((l) => withCategoryDefault(l, job.category, g, id),
+          `package: ${job.category} ${g} default ${id ? `set to ${itemById(id)?.name ?? id}` : 'cleared'}`);
+      });
+      row.append(pick);
+      cats.append(row);
+    }
+  }
+
+  const list = overlay.querySelector('#pkgGroups');
+  list.textContent = '';
+  for (const g of groups) option(list, g, g);
 }

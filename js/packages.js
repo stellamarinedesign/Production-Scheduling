@@ -170,9 +170,125 @@ export function packageKey(scope, job) {
 export function packageFor(job, packages) {
   for (const scope of [SCOPE.job, SCOPE.item]) {
     const p = packages?.[packageKey(scope, job)];
-    if (p?.sources?.length) return { ...p, scope, sources: p.sources };
+    if (p && !isEmptyPackage(p)) return { ...p, scope, sources: p.sources ?? [] };
   }
   return { scope: isOneOff(job) ? SCOPE.job : SCOPE.item, sources: [] };
+}
+
+/**
+ * The folders and files a package's documents come from: its own, or - a
+ * job's package that has none, kept for a standard item swapped on that job
+ * alone - its code's.
+ */
+export function ownSources(job, packages, scope) {
+  const mine = packages?.[packageKey(scope, job)]?.sources ?? [];
+  if (mine.length || scope === SCOPE.item) return mine;
+  return packages?.[packageKey(SCOPE.item, job)]?.sources ?? [];
+}
+
+/** The print defaults a package's documents start with: its own, else - a job's - its code's. */
+export function skipFor(job, packages, scope) {
+  const mine = packages?.[packageKey(scope, job)];
+  if (mine?.skip || scope === SCOPE.item) return mine?.skip ?? [];
+  return packages?.[packageKey(SCOPE.item, job)]?.skip ?? [];
+}
+
+/** A package with nothing left in it is removed rather than kept. */
+export const isEmptyPackage = (p) => !p?.sources?.length && !Object.keys(p?.standard ?? {}).length
+  && !p?.skip?.length && !p?.plinthModel;
+
+// ---------------------------------------------------------------------------
+// standard items
+//
+// Folders and documents that many products share - a lock mechanism, a power
+// pack frame - kept once, in a library, by name and by group. A category of
+// the board takes one item per group by default (every cylinder lifter gets
+// the standard lock), and a product or a job can swap it for another in the
+// same group (a bigger lock for a heavier lift) or leave the group out. The
+// library is one document beside the packages, `packages/library`.
+// ---------------------------------------------------------------------------
+
+export const LIBRARY_KEY = 'library';
+export const NONE = 'none';
+
+/** The library as the app holds it: items, and each category's defaults. */
+export function normaliseLibrary(d) {
+  const items = (Array.isArray(d?.items) ? d.items : [])
+    .filter((i) => i?.id && i.path && i.group && i.name)
+    .map((i) => ({ id: String(i.id), name: String(i.name), group: String(i.group), kind: i.kind === 'file' ? 'file' : 'folder', path: String(i.path) }));
+  const ids = new Set(items.map((i) => i.id));
+  const categories = {};
+  for (const [cat, groups] of Object.entries(d?.categories ?? {})) {
+    const kept = Object.fromEntries(Object.entries(groups ?? {}).filter(([, id]) => ids.has(id)));
+    if (Object.keys(kept).length) categories[cat] = kept;
+  }
+  return { ...(d ?? {}), items, categories };
+}
+
+export const newItemId = (now = Date.now()) => `s${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+export const groupsOf = (library) => [...new Set((library?.items ?? []).map((i) => i.group))]
+  .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+
+/**
+ * The standard items of a package, a row per group: the package's own choice
+ * where it made one, else what it inherits - a job's, its code's choice; then
+ * either, its category's default. A choice naming an item no longer in the
+ * library counts as no choice.
+ * @returns {Array<{group, id: string|null, own: string|undefined, inherited: string|null}>}
+ *   `id` the item that goes in (null: none), `own` the package's choice (an
+ *   id, or NONE to leave the group out), `inherited` what it would be without
+ */
+export function standardFor(job, packages, library, scope = SCOPE.job) {
+  const known = new Set((library?.items ?? []).map((i) => i.id));
+  const real = (id) => (id === NONE || known.has(id) ? id : undefined);
+  const cat = library?.categories?.[job?.category] ?? {};
+  const item = packages?.[packageKey(SCOPE.item, job)]?.standard ?? {};
+  const own = scope === SCOPE.job ? packages?.[packageKey(SCOPE.job, job)]?.standard ?? {} : item;
+  const above = scope === SCOPE.job ? [item, cat] : [cat];
+  const groups = new Set([cat, item, own].flatMap((m) => Object.keys(m).filter((g) => real(m[g]) !== undefined)));
+  return [...groups].map((group) => {
+    const mine = real(own[group]);
+    const inherited = above.map((m) => real(m[group])).find((id) => id !== undefined) ?? NONE;
+    const id = mine ?? inherited;
+    return { group, id: id === NONE ? null : id, own: mine, inherited: inherited === NONE ? null : inherited };
+  }).sort((a, b) => a.group.localeCompare(b.group, undefined, { numeric: true }));
+}
+
+/** A package's standard choices with one changed: `value` an item id, NONE, or '' to inherit. */
+export function withChoice(standard, group, value) {
+  const next = { ...(standard ?? {}) };
+  if (value) next[group] = value; else delete next[group];
+  return next;
+}
+
+/** The standard items chosen, as sources, after the package's own; each path once. */
+export function withStandardSources(own, rows, library) {
+  const items = new Map((library?.items ?? []).map((i) => [i.id, i]));
+  const out = [...(own ?? [])];
+  for (const r of rows ?? []) {
+    const it = items.get(r.id);
+    if (it && !out.some((o) => o.path === it.path)) out.push({ kind: it.kind, path: it.path, standard: it.id });
+  }
+  return out;
+}
+
+/** The library with an item added (or replaced, by id). */
+export const withItem = (library, item) => normaliseLibrary({
+  ...library, items: [...(library?.items ?? []).filter((i) => i.id !== item.id), item],
+});
+
+/** The library without an item, and without any category default that named it. */
+export const withoutItem = (library, id) => normaliseLibrary({
+  ...library, items: (library?.items ?? []).filter((i) => i.id !== id),
+});
+
+/** The library with a category's default for a group set, or cleared (null). */
+export function withCategoryDefault(library, category, group, id) {
+  const categories = { ...(library?.categories ?? {}) };
+  const groups = { ...(categories[category] ?? {}) };
+  if (id) groups[group] = id; else delete groups[group];
+  categories[category] = groups;
+  return normaliseLibrary({ ...library, categories });
 }
 
 // ---------------------------------------------------------------------------

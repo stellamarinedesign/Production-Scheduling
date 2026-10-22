@@ -307,13 +307,20 @@ export const HELP = [
           'The paperwork a job goes to the floor with: its laser checklists and its '
           + 'combined drawing sets. Open a row and press Package.',
           'What goes in it is dragged in from File Explorer, from inside the Stella '
-          + 'Systems folder: a vessel folder, a lock mechanism folder, or a single '
-          + 'document. A folder is searched every time for its current checklist, the '
+          + 'Systems folder: a vessel folder, or a single document. A folder is '
+          + 'searched every time for its current checklist, the '
           + 'one in Build Forms, and its drawing set, the ...Combined.pdf, so a new '
           + 'revision is picked up by itself; Archive folders are skipped. A package is '
           + 'kept for every job on the item code, or for one job only, which is where a '
           + 'custom job starts. Once some packages exist, a new job is offered the '
           + 'folders beside theirs that carry its vessel code or name.',
+          'Standard items are the folders many products share - a lock mechanism, '
+          + 'say. Each goes into the library once, under Manage, with a name and a '
+          + 'group, such as Lock. A board category takes one item of a group by '
+          + 'default, also set under Manage, for the open job\'s category. A product, '
+          + 'or a single job, can swap it for another item of the same group - a '
+          + 'larger lock for a heavier lift - or leave the group out. Default, in the '
+          + 'list, is the category\'s choice; for a single job, the product\'s.',
           'Print puts everything ticked into one PDF and opens the print dialog: the '
           + 'checklists first, from the PDF saved beside each Word file, with the '
           + 'production number and due date written in, then the drawing sets. A '

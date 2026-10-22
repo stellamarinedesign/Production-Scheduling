@@ -366,19 +366,29 @@ export const Store = {
     return out;
   },
 
-  /** Write a package, or remove it when it holds nothing. */
+  /** One package, or the library, as it is now; null if there is none. */
+  async loadPackage(key) {
+    if (this.mode === 'local') return lsGet('packages', {})[key] ?? null;
+    const { doc, getDoc } = this._fs;
+    return (await getDoc(doc(this._db, 'packages', key))).data() ?? null;
+  },
+
+  /**
+   * Write a package, or remove it (`data` null). The same collection holds the
+   * standard items library, under `library`; which document is empty enough
+   * to remove is packages.js's call, not this one's.
+   */
   async savePackage(key, data) {
-    const empty = !data?.sources?.length;
-    const stamped = { ...data, updatedAt: new Date().toISOString() };
+    const stamped = data ? { ...data, updatedAt: new Date().toISOString() } : null;
     if (this.mode === 'local') {
       const all = lsGet('packages', {});
-      if (empty) delete all[key]; else all[key] = stamped;
+      if (stamped) all[key] = stamped; else delete all[key];
       lsSet('packages', all);
       return;
     }
     const { doc, setDoc, deleteDoc } = this._fs;
     const ref = doc(this._db, 'packages', key);
-    if (empty) await deleteDoc(ref); else await setDoc(ref, stamped);
+    if (stamped) await setDoc(ref, stamped); else await deleteDoc(ref);
   },
 
   // ---- settings -----------------------------------------------------------

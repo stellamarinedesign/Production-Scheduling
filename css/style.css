@@ -968,11 +968,25 @@ header .cog:hover { border-color: var(--red-bright); color: var(--white); }
 .pkg-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .pkg-head .settings-label { margin-bottom: 0; }
 .pkg-head + .pkg-docs { margin-top: 6px; }
+.pkg-from { color: var(--text-dim); font-size: 12px; }
+/* Standard items: a group and its choice; the library under Manage. */
+.pkg-head + .pkg-std-rows { margin-top: 6px; }
+.pkg-row.pkg-std { grid-template-columns: 110px minmax(0, 340px) auto; }
+.pkg-row.pkg-item { grid-template-columns: minmax(0, 1fr) 150px minmax(0, 1fr) auto; }
+.pkg-pick, .pkg-item input[type=text] { font-size: 13.5px; padding: 5px 9px; border-radius: 7px; min-width: 0; }
+.pkg-row.pkg-std.is-missing .pkg-pick { border-color: var(--red-bright); }
+.pkg-std-add:not(:empty) { margin-top: 8px; }
+.pkg-lib { margin-top: 10px; padding: 4px 12px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--black-night); }
+.pkg-lib-new:not(:empty) { margin-top: 8px; }
+.pkg-lib-cats:not(:empty) { margin-top: 14px; }
+.pkg-btns { display: flex; gap: 6px; }
 /* Where a package's PDF is printed from: in the page, never seen. */
 .print-frame { position: absolute; width: 0; height: 0; border: 0; visibility: hidden; }
 @media screen and (max-width: 760px) {
   .pkg-doc { grid-template-columns: 20px minmax(0, 1fr) 84px; }
   .pkg-doc .pkg-kind, .pkg-doc .pkg-where { display: none; }
+  .pkg-row.pkg-item { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; }
+  .pkg-item .pkg-path { display: none; }
 }
 .acct-table { margin-top: 12px; }
 .acct-row { display: grid; grid-template-columns: minmax(0, 1fr) 108px 52px 92px 78px; align-items: center; gap: 8px; }
