@@ -17,6 +17,7 @@ import { closeOnBackdrop } from './dialog.js';
 import { wireSettings } from './settings.js';
 import { openPackageDialog } from './package-dialog.js';
 import { plinthControl } from './plinth-control.js';
+import { Undo, inverseOf, bindUndoKeys } from './undo.js';
 import { isDavit, PLINTHS_KEY } from './plinths.js';
 import { describeOverride, describeItemOverride, activityEntry, ACTION, lastChanged } from './activity.js';
 import { renderActivityLog, touchedCell, loadedEntries, forgetActivityLog } from './activity-log.js';
@@ -1761,10 +1762,14 @@ function renderHistory(lane = 'production') {
         const reopen = el('button', 'mini', 'Reopen');
         reopen.title = 'Put it back on the board';
         reopen.addEventListener('click', async () => {
-          await Store.setCompleted([j.prod_no], false, Auth.user?.email);
-          logChange({ action: ACTION.reopen, text: 'reopened from History' }, j.prod_no, j.inventory_id, jobTitle(j));
-          state.overrides = await Store.loadOverrides();
-          rebuild();
+          // The snapshot leaves with the completion record; kept so a redo can complete it again.
+          const snap = { [j.prod_no]: state.overrides[j.prod_no]?.snapshot ?? snapshotOf(j) };
+          await markReopened([j.prod_no]);
+          Undo.record({
+            label: `${j.prod_no} reopened`,
+            undo: () => markDone([j.prod_no], snap),
+            redo: () => markReopened([j.prod_no]),
+          });
           toast(`${j.prod_no} reopened.`);
         });
         acts.append(reopen);
@@ -1857,17 +1862,37 @@ async function confirmComplete() {
     // long after the ERP stops exporting it.
     const snaps = Object.fromEntries(
       completing.filter((e) => e.ticked).map((e) => [e.job.prod_no, snapshotOf(e.job)]));
-    await Store.setCompleted(picked, true, Auth.user?.email, snaps);
-    for (const p of picked) logChange({ action: ACTION.done, text: 'marked done' }, p);
-    state.overrides = await Store.loadOverrides();
+    await markDone(picked, snaps);
     $('completeOverlay').classList.remove('show');
-    rebuild();
+    Undo.record({
+      label: `${picked.length === 1 ? picked[0] : `${picked.length} jobs`} marked done`,
+      undo: () => markReopened(picked),
+      redo: () => markDone(picked, snaps),
+    });
     toast(`${picked.length} marked complete. Stored in History.`);
   } catch (e) {
     toast(`Could not save — ${e.message}`, 6000);
   } finally {
     $('completeConfirm').disabled = false;
   }
+}
+
+/**
+ * Mark jobs done, or put them back. The dialog, History's Reopen and Ctrl+Z
+ * all come through here, so the board and the log agree whichever did it.
+ */
+async function markDone(prodNos, snaps) {
+  await Store.setCompleted(prodNos, true, Auth.user?.email, snaps);
+  for (const p of prodNos) logChange({ action: ACTION.done, text: 'marked done' }, p);
+  state.overrides = await Store.loadOverrides();
+  rebuild();
+}
+
+async function markReopened(prodNos) {
+  await Store.setCompleted(prodNos, false, Auth.user?.email);
+  for (const p of prodNos) logChange({ action: ACTION.reopen, text: 'reopened from History' }, p);
+  state.overrides = await Store.loadOverrides();
+  rebuild();
 }
 
 function renderFitStatus() {
@@ -2976,6 +3001,12 @@ function wireOverlays() {
     $('completeOverlay').classList.remove('show');
     flushDeferredRebuild();
   });
+  // Ctrl+Z and Ctrl+Y for the board's own edits, when nothing else has them:
+  // not in a field, not with a dialog open, and only for a manager.
+  bindUndoKeys({
+    blocked: () => !Auth.isManager || Boolean(document.querySelector('.overlay.show')),
+    say: toast,
+  });
 }
 
 async function saveLabel() {
@@ -3011,6 +3042,7 @@ async function saveLabel() {
 }
 
 async function setItemOverride(inventoryId, patch) {
+  const inverse = inverseOf(state.itemOverrides[inventoryId], patch);
   const next = { ...(state.itemOverrides[inventoryId] ?? {}), ...patch };
   for (const k of ['label', 'displayCode', 'partOrder']) if (next[k] === null) delete next[k];
   if (next.label || next.displayCode || next.partOrder != null) state.itemOverrides[inventoryId] = next;
@@ -3019,6 +3051,11 @@ async function setItemOverride(inventoryId, patch) {
   await Store.setItemOverride(inventoryId, patch);
   logChange(describeItemOverride(patch), null, inventoryId);
   rebuild();
+  Undo.record({
+    label: `${inventoryId} \u2014 ${describeItemOverride(patch)?.text ?? 'edited'}`,
+    undo: () => setItemOverride(inventoryId, inverse),
+    redo: () => setItemOverride(inventoryId, patch),
+  });
 }
 
 function closeLabel() {
@@ -3106,6 +3143,8 @@ async function unhide(job) {
 }
 
 async function setOverride(prodNo, patch) {
+  // What this overwrites, so Ctrl+Z can put it back through this same path.
+  const inverse = inverseOf(state.overrides[prodNo], patch);
   const next = { ...(state.overrides[prodNo] ?? {}), ...patch };
   if (patch.labelOverride === null) delete next.labelOverride;
   if (patch.hullOverride === null) delete next.hullOverride;
@@ -3118,6 +3157,11 @@ async function setOverride(prodNo, patch) {
   await Store.setOverride(prodNo, patch, Auth.user?.email ?? 'local');
   logChange(describeOverride(patch), prodNo);
   rebuild();
+  Undo.record({
+    label: `${prodNo} \u2014 ${describeOverride(patch)?.text ?? 'edited'}`,
+    undo: () => setOverride(prodNo, inverse),
+    redo: () => setOverride(prodNo, patch),
+  });
 }
 
 /**

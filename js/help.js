@@ -515,6 +515,18 @@ export const HELP = [
         ],
       },
       {
+        q: 'Can I undo a change?',
+        a: [
+          'Ctrl+Z undoes the last edit made on this device since the page was opened '
+          + '— a status, Hide and Show, a label, a hull, a part mark, a plinth, Done and '
+          + 'Reopen — and Ctrl+Y, or Ctrl+Shift+Z, redoes it. On a Mac, Cmd in place of '
+          + 'Ctrl. Each reversal is written to the log as the edit it is.',
+          'An import cannot be undone this way; the review before Apply is its check. '
+          + 'Edits made by somebody else, or before this page was opened, are not in '
+          + 'the list.',
+        ],
+      },
+      {
         q: 'Where did a completed job go?',
         a: [
           'History, behind the button beside each list. Each lane keeps its own, because '
