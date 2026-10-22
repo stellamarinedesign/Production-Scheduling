@@ -16,7 +16,8 @@ import { itemFacts, mergeItemFacts } from './vessel-codes.js';
 import { closeOnBackdrop } from './dialog.js';
 import { wireSettings } from './settings.js';
 import { openPackageDialog } from './package-dialog.js';
-import { describeOverride, describeItemOverride, activityEntry, whoShort, whenShort, ACTION } from './activity.js';
+import { describeOverride, describeItemOverride, activityEntry, ACTION, lastChanged } from './activity.js';
+import { renderActivityLog, touchedCell, loadedEntries, forgetActivityLog } from './activity-log.js';
 import { Store, packRows, unpackRows, isNewerImport } from './store.js';
 import { renderPrint, fitWarehouse, renderWatermakers, measure, fitToPage, fitHorizon, pageRule,
          WAREHOUSE_PAPER, renderLanePrint, fitLaneToPage } from './print.js';
@@ -779,15 +780,25 @@ const openRows = new Set();
 function toggleRow(row) {
   const open = row.classList.toggle('is-open');
   if (row.dataset.prod) { if (open) openRows.add(row.dataset.prod); else openRows.delete(row.dataset.prod); }
+  // The caret says what the row is doing, whichever of the two was clicked.
+  const caret = row.querySelector('.more');
+  if (caret) caret.textContent = open ? '\u25be' : '\u25b8';
 }
 
+// Once per page. Both boot paths call this, and a second listener would undo
+// the first on every click - the row would open and shut in the same tap.
+let rowTapsWired = false;
 function wireRowTaps() {
+  if (rowTapsWired) return;
+  rowTapsWired = true;
   document.addEventListener('click', (e) => {
     const row = e.target.closest('.job, .lane-row');
     if (!row || row.classList.contains('col-head')) return;
     // A control inside the row is the thing being used, not the row itself -
     // otherwise opening the status select would also collapse what it sits in.
     if (e.target.closest('button, select, input, textarea, a, label')) return;
+    // A drag to copy a number ends in a click too; that one is not a tap.
+    if (window.getSelection?.()?.toString()) return;
     if (!row.querySelector('.acts button')) return;
     toggleRow(row);
   });
@@ -822,6 +833,7 @@ function wireControls() {
   for (const b of document.querySelectorAll('[id^=history][data-lane]')) {
     b.addEventListener('click', () => toggleHistory(b.dataset.lane));
   }
+  $('recentChanges').addEventListener('click', showRecentChanges);
 
   $('completePastDue').addEventListener('click', () =>
     openCompleteDialog(state.board.warnings.pastDue ?? []));
@@ -1525,7 +1537,7 @@ function jobRow(j, { full = false } = {}) {
   const more = el('button', 'mini more', openRows.has(j.prod_no) ? '\u25be' : '\u25b8');
   more.title = 'Label, part, status, done';
   more.setAttribute('aria-label', 'More');
-  more.addEventListener('click', () => { toggleRow(row); more.textContent = row.classList.contains('is-open') ? '\u25be' : '\u25b8'; });
+  more.addEventListener('click', () => toggleRow(row));
   acts.append(more);
   row.append(acts);
 
@@ -1625,7 +1637,15 @@ const historyOpen = new Set();
 
 function toggleHistory(lane) {
   if (historyOpen.has(lane)) historyOpen.delete(lane); else historyOpen.add(lane);
+  if (lane === 'production' && !historyOpen.has(lane)) forgetActivityLog();
   renderHistory(lane);
+}
+
+/** The board's History panel, open and scrolled to the log at its foot. */
+function showRecentChanges() {
+  historyOpen.add('production');
+  renderHistory('production');
+  $(HISTORY_HOST.production).querySelector('.act-block')?.scrollIntoView({ block: 'start' });
 }
 
 function renderHistory(lane = 'production') {
@@ -1644,7 +1664,7 @@ function renderHistory(lane = 'production') {
   if (!done.length) {
     host.append(el('div', 'state', 'Nothing completed yet. Jobs marked done here '
       + 'or on the Gantt land in this list.'));
-    if (lane === 'production') renderActivity(host);
+    if (lane === 'production') renderActivityLog(host, { master: Auth.isMaster });
     return;
   }
 
@@ -1679,7 +1699,7 @@ function renderHistory(lane = 'production') {
       const hdr = el('div', 'hist-row hist-head');
       hdr.append(el('span', null, 'Prod Nbr'), el('span', null, lane === 'production' ? 'Vessel' : 'Job'),
         el('span', null, lane === 'production' ? 'Due' : 'Opened'),
-        el('span', null, 'Completed'), el('span', null, ''));
+        el('span', null, 'Completed'), el('span', null, 'Last changed'), el('span', null, ''));
       table.append(hdr);
 
       // Most recently completed first within a category.
@@ -1700,6 +1720,9 @@ function renderHistory(lane = 'production') {
           : '\u2014');
         if (j.completed_by) stamp.title = `Marked by ${j.completed_by}`;
         row.append(stamp);
+        // Who last touched it: the override's stamp, else the completion, else
+        // the log's newest line for it once the log has loaded.
+        row.append(touchedCell(lastChanged({ override: state.overrides[j.prod_no], job: j, rows: loadedEntries() }), j.prod_no));
 
         const acts = el('span', 'acts');
         const reopen = el('button', 'mini', 'Reopen');
@@ -1719,45 +1742,9 @@ function renderHistory(lane = 'production') {
     }
     host.append(block);
   }
-  // Who did what, under the completed list. On the board's History only; it
-  // covers every lane.
-  if (lane === 'production') renderActivity(host);
-}
-
-/** The activity log, newest first, loaded when History opens. */
-function renderActivity(host) {
-  const block = el('div', 'hist-cat');
-  const head = el('div', 'hist-cat-head is-static');
-  head.append(el('h2', null, 'Who did what'));
-  block.append(head);
-  const list = el('div', 'activity');
-  list.append(el('div', 'state', 'Loading\u2026'));
-  block.append(list);
-  host.append(block);
-  Store.listActivity(100).then((rows) => {
-    list.textContent = '';
-    if (!rows.length) {
-      list.append(el('div', 'state', 'Nothing logged yet. A status change, Done, Hide, a label, '
-        + 'a hull or a part mark lands here with a name and a time.'));
-      return;
-    }
-    for (const r of rows) {
-      const line = el('div', 'act-row');
-      line.append(el('span', 'act-when', whenShort(r.at)));
-      line.append(el('span', 'act-who', whoShort(r.by)));
-      const what = el('span', 'act-text');
-      const key = r.prodNo ?? r.inventoryId ?? '';
-      if (key) what.append(el('b', null, key), document.createTextNode(' '));
-      if (r.label && r.label !== key) what.append(document.createTextNode(`${r.label} \u2014 `));
-      what.append(document.createTextNode(r.text ?? ''));
-      line.append(what);
-      list.append(line);
-    }
-    if (rows.length >= 100) list.append(el('div', 'state', 'The last 100. Older entries are kept, not shown.'));
-  }).catch((e) => {
-    list.textContent = '';
-    list.append(el('div', 'state', `Could not load the log \u2014 ${e.message}`));
-  });
+  // The activity log, under the completed list. On the board's History only;
+  // it covers every lane.
+  if (lane === 'production') renderActivityLog(host, { master: Auth.isMaster });
 }
 
 // ---------------------------------------------------------------------------
@@ -3095,7 +3082,7 @@ async function setOverride(prodNo, patch) {
   if (Object.keys(next).length) state.overrides[prodNo] = next;
   else delete state.overrides[prodNo];
 
-  await Store.setOverride(prodNo, patch);
+  await Store.setOverride(prodNo, patch, Auth.user?.email ?? 'local');
   logChange(describeOverride(patch), prodNo);
   rebuild();
 }

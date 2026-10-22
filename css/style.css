@@ -993,13 +993,21 @@ header .cog:hover { border-color: var(--red-bright); color: var(--white); }
 @media screen and (max-width: 760px) {
   .acct-row { grid-template-columns: minmax(0, 1fr) 90px 36px 84px 70px; gap: 5px; }
 }
-/* The activity log under History: when, who, what. */
+/* The activity log under History: when, who, what. A box that scrolls, the
+   newest at the top, older pages fetched on request from its foot. */
 .hist-cat-head.is-static { cursor: default; }
-.activity { padding: 4px 0 10px; }
+.act-filters { display: inline-flex; gap: 6px; margin-left: auto; align-self: center; }
+.activity {
+  margin: 4px 0 10px; max-height: min(70vh, 560px); overflow-y: auto;
+  border: 1px solid var(--line); border-radius: 8px;
+}
+.activity .state { padding: 24px 16px; }
 .act-row {
   display: grid; grid-template-columns: 118px 96px minmax(0, 1fr); gap: 12px;
   padding: 6px 10px; border-top: 1px solid var(--line); font-size: 13px; align-items: baseline;
 }
+.act-row:first-child { border-top: 0; }
+.act-foot { display: flex; justify-content: center; padding: 8px; border-top: 1px solid var(--line); }
 .act-when { color: var(--text-dim); font-variant-numeric: tabular-nums; font-size: 12px; }
 .act-who { color: var(--white); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .act-text { overflow-wrap: anywhere; }
@@ -1258,10 +1266,16 @@ button.linkish:disabled { opacity: .5; cursor: default; }
 .hist-cat-head .n { font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .hist-cat.is-collapsed .hist-cat-head { border-bottom-color: var(--line); }
 .hist-row {
-  display: grid; grid-template-columns: 78px 1.5fr 96px 104px 92px;
+  display: grid; grid-template-columns: 78px 1.5fr 96px 104px 128px 92px;
   gap: 12px; align-items: baseline;
   padding: 8px 8px; border-bottom: 1px solid var(--line);
 }
+/* Last changed: a short name over a short time, in the one narrow column. */
+.hist-row .touched {
+  display: grid; line-height: 1.3; font-size: 12px; color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.hist-row .touched b { color: var(--white); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hist-row:hover { background: rgba(255,255,255,.03); }
 .hist-head {
   font-size: 10.5px; font-weight: 700; letter-spacing: .13em;
