@@ -189,18 +189,24 @@
         <label for="sheetBoard">Which sheet</label>
         <div class="ctrl-row" id="sheetPick">
           <button class="mini on" id="sheetBoard" aria-pressed="true">Board</button>
-          <button class="mini" id="sheetWarehouse" aria-pressed="false" title="The board for the pickers: tick boxes down the left of every row, printed landscape">Warehouse</button>
+          <button class="mini" id="sheetWarehouse" aria-pressed="false" title="The board for the pickers: tick boxes down the left of every row">Warehouse</button>
           <button class="mini" id="sheetInternal" aria-pressed="false">Internal</button>
           <button class="mini" id="sheetTm" aria-pressed="false">T&amp;M</button>
         </div>
       </div>
 
-      <div class="ctrl">
+      <div class="ctrl" hidden>
         <label for="paperA4">Paper</label>
         <div class="ctrl-row" id="paperPick">
-          <button class="mini on" id="paperA3" aria-pressed="true" title="Drawn on an A3 page box. Any smaller paper scales it down, as a PDF would be">A3</button>
-          <button class="mini" id="paperA4" aria-pressed="false" title="An A4 page box, exactly as the preview. The printer will not scale it">A4</button>
-          <span class="val" id="paperNote"></span>
+          <button class="mini on" id="paperA4" aria-pressed="true">A4</button>
+          <button class="mini" id="paperA3" aria-pressed="false">A3</button>
+        </div>
+      </div>
+
+      <div class="ctrl">
+        <label for="waterSheet">Second page</label>
+        <div class="ctrl-row">
+          <button class="mini" id="waterSheet" aria-pressed="false">Watermakers off</button>
         </div>
       </div>
 
@@ -208,7 +214,7 @@
       <button class="primary" id="printBtn">Print board</button>
     </div>
       <div class="fit-status" id="fitStatus"></div>
-      <div id="printRoot"><div id="printPreview"></div></div>
+      <div id="printRoot"><div id="printPreview"></div><div id="printSecond" hidden></div></div>
     </section>
 
   </div>

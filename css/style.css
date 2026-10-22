@@ -426,18 +426,20 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
   font-family: Calibri, "Segoe UI", -apple-system, sans-serif;
 }
 
-/* On screen the print view is a preview: an A4-proportioned sheet. */
+/* On screen the print view is a preview: an A4-proportioned sheet, which is
+   A3-proportioned too; the printer scales it to the paper it holds. */
 /* On screen this is a whole A4 sheet, not a box that shrinks to its contents:
    min-height is the full page so the margins above and below the board are
-   visible and the preview shows what actually comes out of the printer. */
-#printPreview {
+   visible and the preview shows what actually comes out of the printer.
+   #printSecond is the board's second page, watermakers, drawn the same way. */
+#printPreview, #printSecond {
   margin: 0 auto 40px; background: #fff;
   width: 794px;                 /* A4 at 96dpi */
   min-height: 1123px;           /* ...and the matching page height */
   padding: 60px 57px 47px;      /* 0.625in top, 0.59in sides, 0.49in bottom */
   box-shadow: 0 6px 30px rgba(0,0,0,.55);
 }
-@media print { #printPreview { min-height: 0; } }
+@media print { #printPreview, #printSecond { min-height: 0; } }
 
 /* Colour, first pass — brand palette, used sparingly so the sheet still reads
    as a workshop document rather than a brochure. Upsdell Red for the category
@@ -498,8 +500,9 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 }
 
 /* THE WAREHOUSE COPY. The board again for the people picking it: tick boxes
-   down the left of every row, landscape, as many pages as it takes with no
-   category cut in two. print.js builds the pages itself, measuring against
+   down the left of every row. On A4 it is landscape, as many pages as it takes
+   with no category cut in two; on A3 it is one portrait sheet. print.js builds
+   the pages itself, measuring against
    the page box below, and marks the preview data-variant; everything here is
    scoped to that, so the regular sheet is untouched. A size smaller, with
    short dates, because the boxes take the width. */
@@ -512,14 +515,22 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
   padding: 60px 57px 51px;      /* the @page margins, with 4px of safety at the foot */
   margin: 0 auto; background: #fff; box-shadow: 0 6px 30px rgba(0,0,0,.55);
 }
+/* The A3 copy: one portrait sheet drawn at A3 itself, so the page is A3-sized
+   and nothing is zoomed on the way to the printer. The width of a landscape
+   A4 page, twice its height, the same margins. */
+#printRoot .page.a3 { height: 1587px; }
 #printRoot .page + .page { margin-top: 28px; }
 #printRoot .page .sheet { height: 100%; overflow: hidden; }   /* past this foot is a second sheet */
 #printRoot .doc-tag {
   font-size: 9pt; font-weight: 700; letter-spacing: .14em; color: #AF1F24;
   border: 1.5px solid #AF1F24; border-radius: 3px; padding: 1px 7px; align-self: center;
 }
-#printRoot [data-variant="warehouse"] table { font-size: 10pt; }
-#printRoot [data-variant="warehouse"] .banner { font-size: 12pt; padding: 2px 6px; }
+/* The type size is a variable so the A3 copy can step it down to hold one
+   sheet: print.js sets --wh-pt on the preview from WAREHOUSE_TYPE. The banner
+   and the tick headings keep their proportion to it; the boxes and the column
+   widths stay as they are, because a hand ticking a box does not shrink. */
+#printRoot [data-variant="warehouse"] table { font-size: var(--wh-pt, 10pt); }
+#printRoot [data-variant="warehouse"] .banner { font-size: calc(var(--wh-pt, 10pt) * 1.2); padding: 2px 6px; }
 #printRoot [data-variant="warehouse"] th,
 #printRoot [data-variant="warehouse"] td { padding: 2px 4px; }
 /* Fixed widths, so the vessel takes whatever a table's ticks leave it. Each
@@ -531,7 +542,7 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 #printRoot [data-variant="warehouse"] .c-prod { width: 52px; }
 #printRoot [data-variant="warehouse"] .c-due { width: 66px; }
 #printRoot [data-variant="warehouse"] thead th.c-tick {
-  font-size: 7pt; letter-spacing: .02em; line-height: 1.15; padding: 2px 1px;
+  font-size: calc(var(--wh-pt, 10pt) * .7); letter-spacing: .02em; line-height: 1.15; padding: 2px 1px;
   text-align: center; vertical-align: bottom; white-space: pre-line;
 }
 #printRoot [data-variant="warehouse"] td.tick { text-align: center; padding: 2px 0; }
@@ -591,11 +602,14 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
   }
 
   #printRoot { display: block !important; }
-  #printPreview { width: auto; padding: 0; box-shadow: none; margin: 0; }
-  /* A3: the A4 sheet scaled up by root two, nothing reflowed. The @page box to
-     match comes from app.js; the number and its slack are explained at PAPER
-     in print.js. */
-  #printPreview[data-paper="a3"] { zoom: 1.41; }
+  #printPreview, #printSecond { width: auto; padding: 0; box-shadow: none; margin: 0; }
+  /* The board's second page, when it has one. */
+  #printSecond { break-before: page; }
+  /* Every sheet is the A4 drawing scaled up by root two onto the A3 page box,
+     nothing reflowed - except the one drawn at A3 (data-drawn="a3"). The @page
+     box to match comes from app.js; the number and its slack are explained at
+     THE PAGE BOX in print.js. On the root, so the second page scales with it. */
+  #printRoot[data-drawn="a4"] { zoom: 1.41; }
   #printRoot table, #printRoot tr { page-break-inside: avoid; }
   #printRoot .col { break-inside: avoid; }
   /* A trailing margin on the last block is enough to tip onto a second page. */
@@ -606,7 +620,7 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 
   /* The warehouse copy's pages: one sheet each, the paper's own margins. The
      orientation comes from the @page rule app.js switches in with the sheet. */
-  #printRoot .page { width: auto; height: auto; padding: 0; margin: 0; box-shadow: none; break-after: page; }
+  #printRoot .page, #printRoot .page.a3 { width: auto; height: auto; padding: 0; margin: 0; box-shadow: none; break-after: page; }
   #printRoot .page:last-child { break-after: auto; }
   #printRoot .page + .page { margin-top: 0; }   /* outranks the screen gap between pages */
   #printRoot .page .sheet { height: auto; overflow: visible; }

@@ -539,6 +539,18 @@ export const isPrintable = (j) =>
 export const printJobs = (board) =>
   (board?.jobs ?? []).filter((j) => !j.hidden && !j.completed && isPrintable(j));
 
+const WATER = new Set(WATERMAKER_CATEGORIES);
+
+/**
+ * The watermaker jobs for the board's second page, in board order: open and
+ * not hidden, as the board's own are. With `horizon` the board's trim applies
+ * too - past the horizon, or stock beyond the cap, stays off - and without it
+ * every open watermaker job is listed.
+ */
+export const watermakerJobs = (board, { horizon = true } = {}) =>
+  (board?.jobs ?? []).filter((j) => WATER.has(j.category) && !j.hidden && !j.completed
+    && (!horizon || (!j.beyond_horizon && !j.over_stock_cap)));
+
 // ---------------------------------------------------------------------------
 // T&M and internal jobs
 //
