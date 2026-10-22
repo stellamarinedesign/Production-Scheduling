@@ -10,6 +10,7 @@
 export const ACTION = {
   status: 'status', hide: 'hide', show: 'show', label: 'label', hull: 'hull',
   part: 'part', done: 'done', reopen: 'reopen', access: 'access', package: 'package',
+  import: 'import',
 };
 
 /**
@@ -81,4 +82,68 @@ export function whenShort(iso) {
   if (Number.isNaN(d.getTime())) return '';
   const p = (n) => String(n).padStart(2, '0');
   return `${p(d.getDate())}/${p(d.getMonth() + 1)}/${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// ---- reading the log ------------------------------------------------------
+//
+// One list for everyone, but not every line is everyone's to read: account
+// changes are the masters' business. That is decided here, at render, so the
+// record itself stays one append-only collection.
+
+/** The actions only a master sees. Anything of that kind added later joins this set. */
+export const ACCOUNT_ACTIONS = new Set([ACTION.access]);
+export const isAccountEntry = (entry) => ACCOUNT_ACTIONS.has(entry?.action);
+
+/** The filter row above the log. The one marked `masters` is offered to masters only. */
+export const FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'edits', label: 'Edits' },
+  { key: 'imports', label: 'Imports' },
+  { key: 'accounts', label: 'Accounts', masters: true },
+];
+
+/** Entries per page. A screen and a half; a Firestore read costs per document. */
+export const PAGE = 50;
+
+export function matchesFilter(entry, key) {
+  if (key === 'imports') return entry?.action === ACTION.import;
+  if (key === 'accounts') return isAccountEntry(entry);
+  if (key === 'edits') return entry?.action !== ACTION.import && !isAccountEntry(entry);
+  return true;
+}
+
+/**
+ * The lines a reader may see, under a filter. Account entries are a master's
+ * alone whatever the filter; the Accounts filter means nothing to anyone else
+ * and shows them everything they may see.
+ */
+export function visibleEntries(rows, { master = false, filter = 'all' } = {}) {
+  const key = !master && filter === 'accounts' ? 'all' : filter;
+  return (rows ?? []).filter((r) => (master || !isAccountEntry(r)) && matchesFilter(r, key));
+}
+
+/**
+ * What the line says. The board's own entries carry `text`; one written
+ * elsewhere - an import's line per job, say - carries `what`. Either reads as
+ * the sentence it is, whatever its action, so a kind of entry this file has
+ * never heard of still shows.
+ */
+export const entryText = (entry) => String(entry?.text ?? entry?.what ?? '');
+
+/**
+ * Who last changed a job, and when, for History's column: the touch the last
+ * write stamped on its override; failing that, the completion itself; failing
+ * that, the newest log entry for the production number. Null when nothing is
+ * known.
+ * @returns {{by: string|null, at: string}|null}
+ */
+export function lastChanged({ override = null, job = null, rows = [] } = {}) {
+  if (override?.touchedAt) return { by: override.touchedBy ?? null, at: override.touchedAt };
+  if (job?.completed_at) return { by: job.completed_by ?? null, at: job.completed_at };
+  const prodNo = job?.prod_no;
+  let hit = null;
+  for (const r of rows ?? []) {
+    if (prodNo && r?.prodNo === prodNo && r.at && (!hit || String(r.at) > String(hit.at))) hit = r;
+  }
+  return hit ? { by: hit.by ?? null, at: hit.at } : null;
 }

@@ -12,7 +12,8 @@
 //   vesselCodes/{stellaCode}  { boat, riviera[], hull_prefix[], items[],
 //                               display, _confirmed }
 //   jobOverrides/{prodNo}     { hidden, hiddenReason, labelOverride, updatedAt,
-//                               completed, completedAt, completedBy, progress }
+//                               completed, completedAt, completedBy, progress,
+//                               touchedBy, touchedAt }
 //   itemOverrides/{itemId}    { inventoryId, label, displayCode, updatedAt }
 //   imports/{importId}        { retrievedAt, sourceId, sourceLabel, uploadedBy,
 //                               horizonWeeks, maxStock, jobs[], rowsJson }
@@ -271,12 +272,18 @@ export const Store = {
           snapshot: snapshots[prodNo] ?? null,
         }
         : { completed: false, completedAt: null, completedBy: null, snapshot: null };
-      await this.setOverride(prodNo, patch);
+      await this.setOverride(prodNo, patch, who ?? null);
     }
   },
 
-  async setOverride(prodNo, patch) {
-    const stamped = { ...patch, updatedAt: new Date().toISOString() };
+  /**
+   * `who` is the person making the change. Given, the write also stamps
+   * `touchedBy`/`touchedAt`, which is what History's Last changed column reads;
+   * the stamp alone keeps no record alive (see OVERRIDE_FIELDS).
+   */
+  async setOverride(prodNo, patch, who) {
+    const now = new Date().toISOString();
+    const stamped = { ...patch, updatedAt: now, ...(who !== undefined ? { touchedBy: who ?? null, touchedAt: now } : {}) };
     if (this.mode === 'local') {
       const all = lsGet('jobOverrides', {});
       all[prodNo] = { ...(all[prodNo] ?? {}), ...stamped };
@@ -519,6 +526,27 @@ export const Store = {
     const { collection, getDocs, query, orderBy, limit } = this._fs;
     const snap = await getDocs(query(collection(this._db, 'activity'), orderBy('at', 'desc'), limit(max)));
     return snap.docs.map((d) => ({ _id: d.id, ...d.data() }));
+  },
+
+  /**
+   * A page of the log, newest first, with the cursor for the page after it -
+   * null once nothing older remains. `after` is opaque: hand back what the
+   * previous page returned as `next`.
+   * @returns {Promise<{rows: Object[], next: any}>}
+   */
+  async listActivityPage({ max = 50, after = null } = {}) {
+    if (this.mode === 'local') {
+      const all = lsGet('activity', []);
+      const from = Number(after) || 0;
+      const rows = all.slice(from, from + max);
+      return { rows, next: from + rows.length < all.length ? from + rows.length : null };
+    }
+    const { collection, getDocs, query, orderBy, limit, startAfter } = this._fs;
+    const parts = [collection(this._db, 'activity'), orderBy('at', 'desc')];
+    if (after) parts.push(startAfter(after));
+    const snap = await getDocs(query(...parts, limit(max)));
+    const rows = snap.docs.map((d) => ({ _id: d.id, ...d.data() }));
+    return { rows, next: snap.docs.length === max ? snap.docs[snap.docs.length - 1] : null };
   },
 
   /**
