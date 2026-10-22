@@ -130,8 +130,8 @@ export function extractHull(...fields) {
 //
 // A custom lifter carries no model code, so its name has to come out of free
 // text — and the two columns that could supply it disagree. In the 21/08 export
-// `Description` holds the vessel on two of the three custom rows ("the manufacturer 48",
-// "Alaska 47 square transom") and "5% drawing fee" on the third, where the real
+// `Description` holds the vessel on two of the three custom rows ("Builder 00",
+// "Builder 11 square transom") and "5% drawing fee" on the third, where the real
 // answer is the customer, Northwind. Neither column is reliably the right one.
 //
 // So this returns BOTH readings and what each would print, rather than picking.
@@ -141,7 +141,7 @@ export function extractHull(...fields) {
 // ---------------------------------------------------------------------------
 
 /**
- * The vessel alone does not say a job is a one-off. "the manufacturer 48" next to a row
+ * The vessel alone does not say a job is a one-off. "Builder 00" next to a row
  * of standard lifters reads as just another model, so every custom label is
  * prefixed — that is what tells the floor to expect different drawings.
  */
@@ -729,9 +729,9 @@ export function buildBoard(rows, opts = {}) {
     });
 
     // Which of the three kinds of work this is. Decided BEFORE the category
-    // map, because the map would mislead: every T&M row is booked to
-    // REPAIR-T&M, which starts with ST and would read as a water
-    // product. See rules.js `laneFor`.
+    // map, because the map would mislead: every T&M row is booked to a repair
+    // item whose code starts with ST and would read as a water product. See
+    // rules.js `laneFor`.
     const lane = laneFor(r);
 
     // WHETHER A ROW APPEARS AT ALL is the ERP's call, always. A manual status

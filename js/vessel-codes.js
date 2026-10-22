@@ -50,20 +50,20 @@ export function isVesselCoded(inventoryId) {
 // BOAT GROUPS
 //
 // Two or more Stella codes can name the same boat. The map is keyed on the
-// Stella code, so SLRIVXX01(24) and SHCELECPLINTHRIVXX01 became independent
+// Stella code, so SLRIVXX01(24) and SHCELECPLINTHRIVXX11 became independent
 // entries and nothing ever compared them.
 //
 // Grouping is MANUAL, via the `boat` field. It has to be: the upstream codes
 // are not consistently managed, so no derivable signal gets this right.
 //
-//   - 56 / XX16 / XX05 are one boat. the manufacturer call it XX06 and also XX15;
-//     `56` was a lazy office entry for XX06. Their the manufacturer models do not match
+//   - 06 / XX16 / XX05 are one boat. The manufacturer call it XX06 and also XX15;
+//     `06` was a lazy office entry for XX06. Their manufacturer models do not match
 //     as strings, so a model-matching rule splits them wrongly.
-//   - 56 and XX05 share the hull prefix 5000 — but hull prefixes are a third
-//     code system and a XX06-model part can be fitted to a 5000 hull, so hull
+//   - 06 and XX05 share the hull prefix 0000 — but hull prefixes are a third
+//     code system and a XX06-model part can be fitted to a 0000 hull, so hull
 //     is not evidence of identity either.
 //
-// A shared the manufacturer model is still a good SUGGESTION for a code nobody has
+// A shared manufacturer model is still a good SUGGESTION for a code nobody has
 // assigned yet, so it seeds the group for un-assigned codes only. The moment a
 // human sets `boat`, that wins — in both directions. Two codes sharing a model
 // but carrying different `boat` values stay split, because someone said so.
@@ -115,7 +115,7 @@ export function aliasGroups(codeMap) {
     else byDisplay.set(key, code);
   }
 
-  // 3. A shared the manufacturer model only suggests a group, and only for codes nobody
+  // 3. A shared manufacturer model only suggests a group, and only for codes nobody
   //    has assigned. Never merge across two different explicit assignments.
   const byModel = new Map();
   for (const [code, entry] of Object.entries(codeMap)) {

@@ -11,14 +11,14 @@
 // category: null  ->  excluded from the board, with the reason given.
 //
 // !! ORDERING TRAP — do not sort this list !!
-// AARIVCOMMISSION and ABRIVCOMMISSION both exist as real items.
-// AARIVCOMMISSION begins with SLRIV, so if it drops below the SLRIV rule it is
-// classified as a cylinder lifter and prints as real work. Both spellings stay
-// pinned above SL and STL.
+// Both COMMISSION spellings exist as real items, with and without a T after
+// the S. The one without begins with the cylinder-lifter prefix, so if it drops
+// below that rule it is classified as a cylinder lifter and prints as real
+// work. Both spellings stay pinned above SL and STL.
 //
-// The ERP's own saved filter excludes only AARIVCOMMISSION — a typo, missing
-// the T — so the 21/08 export carried 15 rows of ABRIVCOMMISSION straight
-// through. Never rely on the ERP-side filter; this list is the real one.
+// The ERP's own saved filter excludes only the spelling without the T, so the
+// 21/08 export carried 15 rows of the other straight through. Never rely on
+// the ERP-side filter; this list is the real one.
 // ---------------------------------------------------------------------------
 // Marker category, never displayed. Water products are one prefix family but two
 // different things to a manager, and the difference is not in the prefix — it is
@@ -27,9 +27,9 @@ const WATER = '@water';
 
 // A finished watermaker's item code ends in flow rate over voltage:
 // STXXA/000/000, STXXB/000/000, STXXC/000/000, STXXE/000/000,
-// STXXD/000/000. Everything else in the family — STMEDIAFILTER, STKITXX,
-// STFKITXX, STMU, STPH, ST DUPLEX UPGRADE X3, STXXUPGRADE — is a kit,
-// filter, upgrade or spare that ships against the same order.
+// STXXD/000/000. Everything else in the family — STKITXX, STFKITXX,
+// STXXFILTER, STXXSPARE, STXXUPGRADE — is a kit, filter, upgrade or spare that
+// ships against the same order.
 //
 // STXXAUTO00 ends in a voltage but is a flush accessory, not a unit, which is why
 // this anchors on the LPH/volts PAIR rather than one trailing number.
@@ -177,7 +177,7 @@ export const SETTABLE_STATUSES = ['Planned', 'Released', 'In Process', 'On Hold'
 // `Type` is NOT a filter.
 //
 // It used to be: only `Finished Good` reached the board. That was wrong.
-// SWD4PDRIVXX02 (a watertight door) and SHCELECPLINTHRIVXX01 (a helm seat box)
+// SWD4PDRIVXX02 (a watertight door) and SHCELECPLINTHRIVXX11 (a helm seat box)
 // are both booked as `Component Part` and are both real workshop jobs — the ERP
 // classification reflects how they are sold, not whether the floor builds them.
 //
@@ -274,7 +274,7 @@ export const HULL_RE = /(?:used\s*by|for)\s+([A-Z0-9]{2,10}\s*\/\s*[0-9]{1,4}[A-
 // export — 1216 rows — six say "custom" without a custom code, and all six are
 // genuinely one-offs: a derated 650kg davit with an extended boom, a custom
 // folding davit, a custom seawater filter bracket, custom-length hoses, a
-// custom single-arm lifter, a bespoke Meridian 420 build. No false positives.
+// custom single-arm lifter, a bespoke Builder 22 build. No false positives.
 //
 // Deliberately a keyword and not a similarity test. Comparing the production
 // description against the item description flags nine davit rows and only two
@@ -283,8 +283,8 @@ export const HULL_RE = /(?:used\s*by|for)\s+([A-Z0-9]{2,10}\s*\/\s*[0-9]{1,4}[A-
 // A person writing "custom" means it; a wording difference means nothing.
 export const CUSTOM_TEXT_RE = /\bcustom\b/i;
 
-// A vessel name in the free-text Description field looks like "the manufacturer 48" or
-// "Alaska 47 square transom": a word followed by a number. "5% drawing fee"
+// A vessel name in the free-text Description field looks like "Builder 00" or
+// "Builder 11 square transom": a word followed by a number. "5% drawing fee"
 // starts with a digit so it does not match and correctly falls through to the
 // customer name.
 export const VESSEL_IN_DESC_RE = /^\s*([A-Za-z]{3,}\s*\d+[A-Za-z]{0,3})/;
@@ -301,7 +301,7 @@ export const LABEL_OVERRIDES = {
   // change; harmless while dead.
   SDC0287: 'Davit Rope Kit',
   // SDC550BBBB was here, because its PRODUCTION description was
-  // `550SSHLHSHE Davit (stock)` — a part code where a description belongs. Its
+  // `550BBBB Davit (stock)` — a part code where a description belongs. Its
   // ITEM description is `Stella Davit 550kg - Single Stage (Hydraulic Luff /
   // Hydraulic Slew / Hydraulic Extension)`, which is the fix that entry was
   // waiting for, so the davit rule now handles it like every other davit and
@@ -361,7 +361,8 @@ export const LANE_LABEL = {
 };
 
 // A part number, as against a product code: the prefix, a zero, then digits.
-// SDC0nnn is a davit part; the davit itself is SDC450... with no leading zero.
+// SDC0nnn is a davit part; the davit itself is SDC and its capacity, with no
+// leading zero.
 export const PART_CODE_RE = /^(SDC|SL|ST|SS)0\d/i;
 
 export function laneFor(row) {

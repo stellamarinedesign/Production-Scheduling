@@ -1988,7 +1988,7 @@ function waterStatus(box, w, { second }) {
 // ---------------------------------------------------------------------------
 // new vessel codes
 //
-// Upstream does not manage these consistently — `56` was an office shorthand
+// Upstream does not manage these consistently — `06` was an office shorthand
 // for XX06, and the manufacturer call the same boat both XX06 and XX15. So a code the
 // map has never seen is never auto-accepted: the board would print a guess and
 // nobody would know it was one. Each is queued and answered on import.
