@@ -20,6 +20,8 @@ import { plinthControl } from './plinth-control.js';
 import { isDavit, PLINTHS_KEY } from './plinths.js';
 import { describeOverride, describeItemOverride, activityEntry, ACTION, lastChanged } from './activity.js';
 import { renderActivityLog, touchedCell, loadedEntries, forgetActivityLog } from './activity-log.js';
+import { loadLatestFirst, saveLatestFirst, byLatestChange } from './history-order.js';
+import { undatedSnapshots, renderUndatedNotice } from './snapshot-dates.js';
 import { Store, packRows, unpackRows, isNewerImport } from './store.js';
 import { renderPrint, fitWarehouse, renderWatermakers, measure, fitToPage, fitHorizon, pageRule,
          WAREHOUSE_PAPER, renderLanePrint, fitLaneToPage } from './print.js';
@@ -1608,11 +1610,15 @@ function renderGanttView() {
   // T&M and internal jobs are deliberately absent. The ERP stamps their start
   // and end to the day the order was raised and never revises it, so every bar
   // would be a zero-width mark at an arbitrary date. Their tabs show age.
+  // Everything also means the finished work the export no longer carries:
+  // History's jobs, from their snapshots, where the snapshot kept the dates.
+  const whole = all ? buildBoard(state.rows, {
+    codeMap: state.codeMap, asOf: today(), overrides: state.overrides,
+    itemOverrides: state.itemOverrides, horizonWeeks: null, includeCompleted: true,
+  }) : null;
   const jobs = all
-    ? buildBoard(state.rows, {
-        codeMap: state.codeMap, asOf: today(), overrides: state.overrides,
-        itemOverrides: state.itemOverrides, horizonWeeks: null, includeCompleted: true,
-      }).jobs.filter((j) => !j.hidden)
+    ? [...whole.jobs.filter((j) => !j.hidden),
+      ...whole.completed.filter((j) => j.from_snapshot && (j.lane ?? 'production') === 'production')]
     : state.board.jobs.filter((j) => !j.hidden);
 
   // Collapsed bands persist, in the same localStorage set as the orders view
@@ -1622,7 +1628,7 @@ function renderGanttView() {
     asOf: today(),
     mode: packed ? 'packed' : 'rows',
     pxPerDay: all ? 8 : null,
-    onBarClick: Auth.isManager ? (r) => openCompleteDialog([r]) : null,
+    onBarClick: Auth.isManager ? (r) => { if (!r.completed) openCompleteDialog([r]); } : null,
     isCollapsed: (cat) => collapsed.has(`gantt:${cat}`),
     onToggleCategory: (cat) => {
       const key = `gantt:${cat}`;
@@ -1635,6 +1641,16 @@ function renderGanttView() {
   $('ganttHint').textContent = all
     ? `Completed work included \u2014 ${g.rowCount} bars, scroll sideways.`
     : 'Every open production order. Click a bar to mark it complete.';
+
+  // Finished work whose snapshot has no dates cannot be drawn. The import
+  // records can supply them, once, from a button under the chart.
+  const undated = all ? undatedSnapshots(whole) : [];
+  if (undated.length) {
+    $('gantt').append(renderUndatedNotice(undated, {
+      overrides: state.overrides, toast,
+      onDone: async () => { state.overrides = await Store.loadOverrides(); rebuild(); },
+    }));
+  }
 }
 
 // History is per lane. Completed production work, finished T&M jobs and
@@ -1655,6 +1671,7 @@ const HISTORY_CATS = {
   tm: TM_CATEGORY_ORDER,
 };
 const historyOpen = new Set();
+let historyLatest = loadLatestFirst();
 
 function toggleHistory(lane) {
   if (historyOpen.has(lane)) historyOpen.delete(lane); else historyOpen.add(lane);
@@ -1701,31 +1718,49 @@ function renderHistory(lane = 'production') {
     return;
   }
 
-  // Grouped by board category, same order as everywhere else, so History reads
-  // like the orders view rather than as one long undifferentiated list.
+  // Latest first: one list across the categories, the most recently changed
+  // job at the top, so a job ticked by mistake is the first row and Reopen is
+  // beside it. Off, History is grouped by board category, same order as
+  // everywhere else, so it reads like the orders view rather than as one long
+  // undifferentiated list.
+  const bar = el('div', 'hist-bar');
+  const latest = el('button', `mini${historyLatest ? ' on' : ''}`, 'Latest first');
+  latest.setAttribute('aria-pressed', String(historyLatest));
+  latest.addEventListener('click', () => {
+    historyLatest = !historyLatest;
+    saveLatestFirst(historyLatest);
+    renderHistory(lane);
+  });
+  bar.append(latest);
+  host.append(bar);
+
   const cats = HISTORY_CATS[lane];
   const byCat = new Map(cats.map((c) => [c, []]));
   for (const j of done) byCat.get(j.category)?.push(j);
+  const groups = historyLatest
+    ? [[null, [...done].sort(byLatestChange(state.overrides, loadedEntries()))]]
+    : cats.map((cat) => [cat, byCat.get(cat) ?? []]);
 
-  for (const cat of cats) {
-    const rows = byCat.get(cat) ?? [];
+  for (const [cat, rows] of groups) {
     if (!rows.length) continue;
 
     const key = `hist:${lane}:${cat}`;
-    const shut = collapsed.has(key);
+    const shut = cat !== null && collapsed.has(key);
     const block = el('div', `hist-cat${shut ? ' is-collapsed' : ''}`);
 
-    const head = el('button', 'hist-cat-head');
-    head.setAttribute('aria-expanded', String(!shut));
-    head.append(el('span', 'cat-caret', shut ? '\u25b8' : '\u25be'));
-    head.append(el('h2', null, cat));
-    head.append(el('span', 'n', String(rows.length)));
-    head.addEventListener('click', () => {
-      if (collapsed.has(key)) collapsed.delete(key); else collapsed.add(key);
-      saveCollapsed(collapsed);
-      renderHistory(lane);
-    });
-    block.append(head);
+    if (cat !== null) {
+      const head = el('button', 'hist-cat-head');
+      head.setAttribute('aria-expanded', String(!shut));
+      head.append(el('span', 'cat-caret', shut ? '\u25b8' : '\u25be'));
+      head.append(el('h2', null, cat));
+      head.append(el('span', 'n', String(rows.length)));
+      head.addEventListener('click', () => {
+        if (collapsed.has(key)) collapsed.delete(key); else collapsed.add(key);
+        saveCollapsed(collapsed);
+        renderHistory(lane);
+      });
+      block.append(head);
+    }
 
     if (!shut) {
       const table = el('div', 'hist');
@@ -1736,7 +1771,7 @@ function renderHistory(lane = 'production') {
       table.append(hdr);
 
       // Most recently completed first within a category.
-      rows.sort((a, b) => String(b.completed_at ?? '').localeCompare(String(a.completed_at ?? '')));
+      if (cat !== null) rows.sort((a, b) => String(b.completed_at ?? '').localeCompare(String(a.completed_at ?? '')));
 
       for (const j of rows) {
         const row = el('div', 'hist-row');
@@ -1745,6 +1780,8 @@ function renderHistory(lane = 'production') {
         // A job the ERP closed reads differently from one somebody ticked, and
         // History is the wrong place to blur the two.
         if (j.closed_why) label.append(el('span', 'hist-why', j.closed_why));
+        // One list across the categories names each row's category itself.
+        if (cat === null) label.append(el('span', 'cat', j.category));
         row.append(label);
         row.append(el('span', 'due', lane === 'production' ? j.due_display : (j.opened_display ?? '')));
         const when = j.completed_at ? new Date(j.completed_at) : null;
