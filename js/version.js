@@ -10,6 +10,11 @@
 // version on screen that is indistinguishable from a broken fix, and we spent a
 // round trip on exactly that.
 //
-// The stylesheet links in index.html and vessel-codes.html carry `?v=` with
-// this same string. Bump all three together.
-export const VERSION = '2026-10-22.2';
+// The stylesheet links and the import maps in index.html, parts.html and
+// vessel-codes.html carry `?v=` with this same string, so a bump is one
+// substitution over the four files. The links reach only the entry script
+// and the stylesheet; the import map is what reaches the modules a page
+// imports, so a reload after a deploy never mixes a new page with modules
+// the browser cached from the old one. After adding or removing a module
+// under js/, regenerate the maps with `python tools/importmap.py`.
+export const VERSION = '2026-10-22.3';
