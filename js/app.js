@@ -1470,7 +1470,7 @@ function statusControl(j) {
 async function setStatus(j, value) {
   if (value === j.erp_status) {
     await setOverride(j.prod_no, { status: null, statusFrom: null });
-    toast(`${j.prod_no} follows the ERP again \u2014 ${value}.`);
+    toast(`${j.prod_no}: hand-set status removed \u2014 ${value}.`);
     return;
   }
   // `statusFrom` is what makes this expire: it records the ERP value being
@@ -1688,8 +1688,7 @@ function renderHistory(lane = 'production') {
 
   host.textContent = '';
   if (!done.length) {
-    host.append(el('div', 'state', 'Nothing completed yet. Jobs marked done here '
-      + 'or on the Gantt land in this list.'));
+    host.append(el('div', 'state', 'Nothing completed yet.'));
     return;
   }
 
@@ -1743,7 +1742,7 @@ function renderHistory(lane = 'production') {
         const stamp = el('span', 'when', when
           ? when.toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' })
           : '\u2014');
-        if (j.completed_by) stamp.title = `Marked by ${j.completed_by}`;
+        if (j.completed_by) stamp.title = `Marked by ${j.completed_by === ERP_CLOSER ? 'ERP import' : j.completed_by}`;
         row.append(stamp);
         // Who last touched it: the override's stamp, else the completion, else
         // the log's newest line for it once the log has loaded.
@@ -1854,7 +1853,7 @@ async function confirmComplete() {
     state.overrides = await Store.loadOverrides();
     $('completeOverlay').classList.remove('show');
     rebuild();
-    toast(`${picked.length} marked complete. Reopen from History if that was wrong.`);
+    toast(`${picked.length} marked complete. Stored in History.`);
   } catch (e) {
     toast(`Could not save — ${e.message}`, 6000);
   } finally {
@@ -3053,7 +3052,7 @@ async function saveHull(raw) {
   if (!value || value === job.hull_auto) {
     if (job.hull_manual) {
       await setOverride(job.prod_no, { hullOverride: null });
-      toast(`${job.prod_no}: hull follows the ERP again${job.hull_auto ? ` \u2014 ${job.hull_auto}` : ''}.`);
+      toast(`${job.prod_no}: hand-set hull removed${job.hull_auto ? ` \u2014 ${job.hull_auto}` : ''}.`);
     } else flushDeferredRebuild();
     return;
   }

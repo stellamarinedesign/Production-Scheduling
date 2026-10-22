@@ -64,7 +64,7 @@ export function renderActivityLog(host, { master = false } = {}) {
     const rows = visibleEntries(loaded, { master, filter });
     if (!rows.length) {
       list.append(el('div', 'state', loaded.length ? 'No entries.'
-        : 'Nothing logged yet. A status change, Done, Hide, a label, a hull or a part mark lands here with a name and a time.'));
+        : 'Nothing logged yet.'));
     }
     for (const r of rows) list.append(line(r));
     foot.hidden = !next;

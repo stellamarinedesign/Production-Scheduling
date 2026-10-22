@@ -6,6 +6,8 @@
 // words the log shows, and written as an append-only record. The log is a
 // record, not a mechanism: nothing reads it back to decide anything.
 
+import { ERP_CLOSER } from './rules.js';
+
 /** The verbs in the log, so a reader (or a filter) can rely on them. */
 export const ACTION = {
   status: 'status', hide: 'hide', show: 'show', label: 'label', hull: 'hull',
@@ -22,13 +24,13 @@ export function describeOverride(patch) {
   if (!patch) return null;
   if ('status' in patch) {
     return patch.status === null
-      ? { action: ACTION.status, text: 'status follows the ERP again' }
+      ? { action: ACTION.status, text: 'hand-set status removed' }
       : { action: ACTION.status, text: `status set to ${patch.status}` };
   }
   if ('hidden' in patch) {
     return patch.hidden
       ? { action: ACTION.hide, text: `hidden from the sheet${patch.hiddenReason ? ` — ${patch.hiddenReason}` : ''}` }
-      : { action: ACTION.show, text: 'back on the sheet' };
+      : { action: ACTION.show, text: 'shown on the sheet again' };
   }
   if ('labelOverride' in patch) {
     return patch.labelOverride === null
@@ -37,7 +39,7 @@ export function describeOverride(patch) {
   }
   if ('hullOverride' in patch) {
     return patch.hullOverride === null
-      ? { action: ACTION.hull, text: 'hull follows the ERP again' }
+      ? { action: ACTION.hull, text: 'hand-set hull removed' }
       : { action: ACTION.hull, text: `hull set to ${patch.hullOverride}` };
   }
   return null;
@@ -49,7 +51,7 @@ export function describeItemOverride(patch) {
   if ('partOrder' in patch) {
     return patch.partOrder === true ? { action: ACTION.part, text: 'marked a part order, every job on this code' }
       : patch.partOrder === false ? { action: ACTION.part, text: 'marked a unit, every job on this code' }
-        : { action: ACTION.part, text: 'part mark cleared, back to the code’s shape' };
+        : { action: ACTION.part, text: 'part mark cleared' };
   }
   if ('displayCode' in patch && patch.displayCode) return { action: ACTION.label, text: `item shown as ${patch.displayCode}, every job on this code` };
   if ('label' in patch && patch.label) return { action: ACTION.label, text: `item label set to "${patch.label}", every job on this code` };
@@ -73,8 +75,12 @@ export function activityEntry({ action, text, by, prodNo = null, label = null, i
   };
 }
 
-/** The short name in the log: the part before the @, or the whole if none. */
-export const whoShort = (by) => String(by ?? '').split('@')[0] || 'unknown';
+/**
+ * The short name in the log: the part before the @, or the whole if none.
+ * The ERP closes jobs too (ERP_CLOSER on the completion), and reads as the
+ * import that did it.
+ */
+export const whoShort = (by) => (by === ERP_CLOSER ? 'ERP import' : String(by ?? '').split('@')[0] || 'unknown');
 
 /** dd/mm/yyyy hh:mm, local time. */
 export function whenShort(iso) {
