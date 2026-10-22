@@ -335,6 +335,23 @@ export const HELP = [
         ],
       },
       {
+        q: 'How is a davit\'s plinth recorded?',
+        a: [
+          'Open a davit\'s row: Plinth is at the end of its controls, a height and a '
+          + 'compression post. Both start blank and stay blank until somebody chooses, '
+          + 'so a davit nobody has checked never passes for a standard one. Standard '
+          + 'sets the model\'s standard height with no post in one click, where the item '
+          + 'code and description say which model the davit is.',
+          'The heights are the plinth folder\'s, the davit\'s own model first. Custom '
+          + 'height takes a height in mm that has not been drawn, and the row says '
+          + 'Drawing needed; so does a compression post at a height with no post drawing.',
+          'The plinth folder is set once, in a davit\'s Package dialog under Manage, by '
+          + 'dropping the Plinth Arrangements folder in. It is read again when a davit\'s '
+          + 'package is opened, so new heights and drawings appear by themselves. The '
+          + 'plinth\'s checklist and drawing go into the davit\'s package.',
+        ],
+      },
+      {
         q: 'What does the Part orders toggle do?',
         a: [
           'Current orders, next to Collapse all. A part order is a production order '

@@ -16,6 +16,8 @@ import { itemFacts, mergeItemFacts } from './vessel-codes.js';
 import { closeOnBackdrop } from './dialog.js';
 import { wireSettings } from './settings.js';
 import { openPackageDialog } from './package-dialog.js';
+import { plinthControl } from './plinth-control.js';
+import { isDavit, PLINTHS_KEY } from './plinths.js';
 import { describeOverride, describeItemOverride, activityEntry, ACTION, lastChanged } from './activity.js';
 import { renderActivityLog, touchedCell, loadedEntries, forgetActivityLog } from './activity-log.js';
 import { Store, packRows, unpackRows, isNewerImport } from './store.js';
@@ -243,16 +245,19 @@ async function start(st) {
   // anything could be drawn. On a desk that is a blink; on a phone it is most
   // of the delay before the page stops looking broken.
   booting('Loading settings and vessel codes');
-  const [settings, codeMap, overrides, itemOverrides] = await Promise.all([
+  const [settings, codeMap, overrides, itemOverrides, plinths] = await Promise.all([
     Store.loadSettings(),
     Store.loadCodes(),
     Store.loadOverrides(),
     Store.loadItemOverrides(),
+    // The plinth folder as last read, for the davits' rows; a board without it still opens.
+    Store.loadPackage(PLINTHS_KEY).catch(() => null),
   ]);
   state.settings = settings;
   state.codeMap = codeMap;
   state.overrides = overrides;
   state.itemOverrides = itemOverrides;
+  state.plinths = plinths;
 
   $('horizon').value = state.settings.horizonWeeks;
   $('horizonVal').textContent = `${state.settings.horizonWeeks} weeks`;
@@ -1554,6 +1559,7 @@ function jobRow(j, { full = false } = {}) {
   pkg.addEventListener('click', () => openPackageDialog(j, {
     who: Auth.user?.email ?? null,
     onLog: (d) => logChange(d, j.prod_no, j.inventory_id, jobTitle(j)),
+    onPlinths: (catalogue) => { state.plinths = catalogue; rebuild(); },
     toast,
   }));
   fold.append(pkg);
@@ -1580,6 +1586,9 @@ function jobRow(j, { full = false } = {}) {
   const changes = el('button', 'mini', 'Changes');
   changes.addEventListener('click', () => openItemHistory(j));
   fold.append(changes);
+
+  // A davit's plinth: its height and compression post, blank until chosen.
+  if (isDavit(j)) fold.append(plinthControl(j, state.plinths, (p) => setOverride(j.prod_no, { plinth: p })));
 
   row.append(fold);
   return row;
@@ -3100,6 +3109,7 @@ async function setOverride(prodNo, patch) {
   const next = { ...(state.overrides[prodNo] ?? {}), ...patch };
   if (patch.labelOverride === null) delete next.labelOverride;
   if (patch.hullOverride === null) delete next.hullOverride;
+  if (patch.plinth === null) delete next.plinth;
   if (patch.status === null) { delete next.status; delete next.statusFrom; }
   if (next.hidden === false) { delete next.hidden; delete next.hiddenReason; }
   if (Object.keys(next).length) state.overrides[prodNo] = next;

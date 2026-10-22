@@ -833,6 +833,8 @@ export function buildBoard(rows, opts = {}) {
       hull_auto: extractHull(r['Description'], r['Production Description']),
       hull: ov.hullOverride || extractHull(r['Description'], r['Production Description']),
       hull_manual: Boolean(ov.hullOverride),
+      // A davit's plinth, as a manager chose it (plinths.js); null until then.
+      plinth: ov.plinth ?? null,
       customer_po: textOrNull(r['Customer Order Nbr.']),
       sales_order: textOrNull(r['Order Nbr.']),
       notes: textOrNull(r['Internal Notes']),

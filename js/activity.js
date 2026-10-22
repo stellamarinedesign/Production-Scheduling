@@ -7,12 +7,13 @@
 // record, not a mechanism: nothing reads it back to decide anything.
 
 import { ERP_CLOSER } from './rules.js';
+import { plinthText } from './plinths.js';
 
 /** The verbs in the log, so a reader (or a filter) can rely on them. */
 export const ACTION = {
   status: 'status', hide: 'hide', show: 'show', label: 'label', hull: 'hull',
   part: 'part', done: 'done', reopen: 'reopen', access: 'access', package: 'package',
-  import: 'import',
+  import: 'import', plinth: 'plinth',
 };
 
 /**
@@ -41,6 +42,11 @@ export function describeOverride(patch) {
     return patch.hullOverride === null
       ? { action: ACTION.hull, text: 'hand-set hull removed' }
       : { action: ACTION.hull, text: `hull set to ${patch.hullOverride}` };
+  }
+  if ('plinth' in patch) {
+    return patch.plinth === null
+      ? { action: ACTION.plinth, text: 'plinth cleared' }
+      : { action: ACTION.plinth, text: `plinth set to ${plinthText(patch.plinth)}` };
   }
   return null;
 }

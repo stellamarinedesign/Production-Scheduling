@@ -24,6 +24,9 @@ import {
   standardFor, withChoice, withStandardSources, withItem, withoutItem, withCategoryDefault,
 } from './packages.js';
 import {
+  PLINTHS_KEY, isDavit, readCatalogue, sameCatalogue, plinthSources, plinthText, needsDrawing,
+} from './plinths.js';
+import {
   supported, rootState, allowRoot, chooseRoot, pathWithin, handleAt, listFiles, listFolders,
   droppedHandles,
 } from './stella-folder.js';
@@ -40,17 +43,22 @@ const el = (tag, cls, text) => {
 const $ = (sel) => overlay.querySelector(sel);
 
 let overlay = null;
-// { job, hooks, packages, library, scope, root, state, docs, missing, suggestions, busy,
+// { job, hooks, packages, library, plinths, scope, root, state, docs, missing, suggestions, busy,
 //   manage: library panel open, pending: a dropped item waiting for its name and group }
 let ctx = null;
 
+/** When the plinth folder was last read on this page; a davit's dialog reads it again after this long. */
+let plinthsReadAt = 0;
+const PLINTHS_FRESH_MS = 10 * 60 * 1000;
+
 /**
  * @param {Object} job  a board job
- * @param {{who?: string, onLog?: (desc) => void, toast?: (msg, ms?) => void}} hooks
+ * @param {{who?: string, onLog?: (desc) => void, onPlinths?: (catalogue) => void,
+ *          toast?: (msg, ms?) => void}} hooks
  */
 export async function openPackageDialog(job, hooks = {}) {
   if (!overlay) build();
-  ctx = { job, hooks, packages: {}, library: normaliseLibrary(null), scope: SCOPE.item, root: null,
+  ctx = { job, hooks, packages: {}, library: normaliseLibrary(null), plinths: null, scope: SCOPE.item, root: null,
     state: 'none', docs: [], missing: new Set(), suggestions: [], busy: false, manage: false, pending: null };
   $('.lede').textContent = `${job.prod_no} — ${jobTitle(job)}, due ${job.due_display}`;
   $('.form-err').textContent = '';
@@ -70,9 +78,16 @@ export async function openPackageDialog(job, hooks = {}) {
   if (ctx !== mine) return;                     // closed, or opened for another job, meanwhile
   ctx.packages = packages;
   ctx.library = normaliseLibrary(packages[LIBRARY_KEY]);
+  ctx.plinths = packages[PLINTHS_KEY] ?? null;
   ctx.scope = packageFor(job, packages).scope;
   await refreshRoot();
   await refreshDocs();
+  freshenPlinths();
+}
+
+/** A davit's dialog reads the plinth folder again now and then, for heights and drawings drafting has added. */
+function freshenPlinths() {
+  if (ctx && isDavit(ctx.job) && ready() && Date.now() - plinthsReadAt > PLINTHS_FRESH_MS) readPlinths(ctx.plinths?.path);
 }
 
 function close() {
@@ -137,7 +152,20 @@ function build() {
   libDrop.addEventListener('click', chooseItemFolder);
   const groups = el('datalist');
   groups.id = 'pkgGroups';
-  lib.append(el('div', 'pkg-lib-rows'), libDrop, el('div', 'pkg-lib-new'), el('div', 'pkg-lib-cats'), groups);
+  // The plinth folder, for a davit's: read for the heights its row offers.
+  const plinths = el('div', 'pkg-lib-plinths');
+  const plinthDrop = el('div', 'drop-zone pkg-drop pkg-plinth-drop');
+  plinthDrop.append(el('strong', null, 'Drop the plinth folder here'), el('div', 'hint', 'or click to choose it'));
+  plinthDrop.addEventListener('dragover', (e) => { e.preventDefault(); plinthDrop.classList.add('dragover'); });
+  plinthDrop.addEventListener('dragleave', () => plinthDrop.classList.remove('dragover'));
+  plinthDrop.addEventListener('drop', (e) => {
+    e.preventDefault();
+    plinthDrop.classList.remove('dragover');
+    droppedHandles(e).then(setPlinthFolder).catch((err) => error(err.message));
+  });
+  plinthDrop.addEventListener('click', choosePlinthFolder);
+  plinths.append(el('div', 'settings-label', 'Plinth folder'), el('div', 'pkg-plinth-at'), plinthDrop);
+  lib.append(el('div', 'pkg-lib-rows'), libDrop, el('div', 'pkg-lib-new'), el('div', 'pkg-lib-cats'), plinths, groups);
   std.append(stdHead, el('div', 'pkg-std-rows'), el('div', 'pkg-std-add'), lib);
   box.append(std);
 
@@ -204,9 +232,13 @@ async function refreshDocs() {
   const missing = new Set();
   let suggestions = [];
   if (ready()) {
-    for (const s of withStandardSources(shownSources(), standardRows(), ctx.library)) {
-      // A standard item's documents say which item they are; the rest, where they are.
-      const item = s.standard ? itemById(s.standard)?.name : null;
+    const all = withStandardSources(shownSources(), standardRows(), ctx.library);
+    if (isDavit(ctx.job)) {
+      for (const s of plinthSources(ctx.plinths, ctx.job.plinth)) if (!all.some((o) => o.path === s.path)) all.push(s);
+    }
+    for (const s of all) {
+      // A standard item's documents say which item they are, the plinth's that they are its; the rest, where they are.
+      const item = s.standard ? itemById(s.standard)?.name : s.plinth ? 'Plinth' : null;
       try {
         const h = await handleAt(ctx.root, s.path, s.kind);
         if (s.kind === 'folder') {
@@ -421,6 +453,75 @@ async function addItem() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// the plinth folder
+// ---------------------------------------------------------------------------
+
+/**
+ * Read the plinth folder at `path`, and keep what it holds if that has
+ * changed: a new height or drawing shows in the davits' rows. Quiet when it
+ * runs by itself; `asked` when a manager dropped the folder or pressed Read again.
+ */
+async function readPlinths(path, { asked = false } = {}) {
+  if (!ctx || !path || !ready()) return;
+  const mine = ctx;
+  const root = ctx.root;
+  let found;
+  try {
+    found = await readCatalogue(path, {
+      folders: async (p) => listFolders(await handleAt(root, p, 'folder')),
+      files: async (p) => listFiles(await handleAt(root, p, 'folder'), { maxDepth: 4 }),
+    });
+  } catch (e) {
+    if (asked && ctx === mine) error(`Could not read the plinth folder — ${e.message}`);
+    return;
+  }
+  plinthsReadAt = Date.now();
+  if (ctx !== mine) return;
+  const heights = found.models.reduce((n, m) => n + m.heights.length, 0);
+  if (!heights) {
+    if (asked) error(`No plinth heights found in ${splitPath(path).at(-1)}.`);
+    return;
+  }
+  if (!sameCatalogue(found, ctx.plinths)) {
+    const data = { ...found, readAt: new Date().toISOString(), updatedBy: ctx.hooks.who ?? null };
+    try {
+      await Store.savePackage(PLINTHS_KEY, data);
+    } catch (e) {
+      if (asked) error(`Could not save — ${e.message}`);
+      return;
+    }
+    if (ctx !== mine) return;
+    ctx.plinths = data;
+    ctx.packages[PLINTHS_KEY] = data;
+    ctx.hooks.onPlinths?.(data);
+    if (asked) ctx.hooks.onLog?.({ action: 'package', text: `plinth folder read: ${splitPath(path).at(-1)}` });
+    await refreshDocs();
+  }
+  if (asked) ctx?.hooks.toast?.(`Plinth folder read: ${heights} heights.`, 3200);
+}
+
+async function setPlinthFolder(handles) {
+  error('');
+  if (!ready()) { error(`Connect the ${ROOT_NAME} folder first.`); return; }
+  const h = handles.find(Boolean);
+  const place = h ? await placeOf(h) : null;
+  if (!place) return;
+  if (place.kind !== 'folder') { error('Drop the plinth folder itself, not a file in it.'); return; }
+  await readPlinths(place.path, { asked: true });
+}
+
+async function choosePlinthFolder() {
+  error('');
+  if (!ready()) { await connect(false); if (!ready()) return; }
+  try {
+    const h = await window.showDirectoryPicker({ id: 'stella-plinths', startIn: ctx.root, mode: 'read' });
+    await setPlinthFolder([h]);
+  } catch (e) {
+    if (e.name !== 'AbortError') error(e.message);
+  }
+}
+
 /** A library item's name or group, changed where it is listed. */
 function renameItem(item, field, value) {
   const v = value.trim();
@@ -450,6 +551,7 @@ async function connect(choose) {
   }
   await refreshRoot();
   await refreshDocs();
+  freshenPlinths();
 }
 
 // ---------------------------------------------------------------------------
@@ -720,6 +822,17 @@ function drawStandard() {
   const rows = standardRows();
   const list = $('.pkg-std-rows');
   list.textContent = '';
+  // A davit's plinth, as chosen in its row: shown, not set, here.
+  const davit = isDavit(ctx.job);
+  if (davit) {
+    const p = ctx.job.plinth;
+    const text = plinthText(p);
+    const row = el('div', 'pkg-row pkg-std');
+    row.append(el('span', 'pkg-kind pkg-group', 'Plinth'),
+      el('span', `pkg-plinth${p ? '' : ' is-blank'}`, text[0].toUpperCase() + text.slice(1)));
+    if (needsDrawing(ctx.plinths, p)) row.append(el('span', 'pkg-note', 'Drawing needed'));
+    list.append(row);
+  }
   for (const r of rows) {
     const it = itemById(r.id);
     const gone = it && ctx.missing.has(it.path);
@@ -757,7 +870,7 @@ function drawStandard() {
     });
     add.append(pick);
   }
-  if (!rows.length && !spare.length && !ctx.manage) list.append(el('div', 'pkg-none', '—'));
+  if (!davit && !rows.length && !spare.length && !ctx.manage) list.append(el('div', 'pkg-none', '—'));
 }
 
 /** The library, under Manage: its items, adding one, and the job's category's defaults. */
@@ -841,4 +954,26 @@ function drawLibrary() {
   const list = overlay.querySelector('#pkgGroups');
   list.textContent = '';
   for (const g of groups) option(list, g, g);
+
+  // The plinth folder, in a davit's dialog: where it is, and reading it again.
+  const plinths = $('.pkg-lib-plinths');
+  plinths.hidden = !isDavit(job);
+  const at = $('.pkg-plinth-at');
+  at.textContent = '';
+  const path = ctx.plinths?.path;
+  if (path) {
+    const row = el('div', 'pkg-row');
+    row.append(el('span', 'pkg-kind', 'Folder'));
+    const p = el('span', 'pkg-path', shortPath(path, 3));
+    p.title = path;
+    const btns = el('span', 'pkg-btns');
+    const again = el('button', 'mini', 'Read again');
+    again.addEventListener('click', () => readPlinths(path, { asked: true }));
+    const change = el('button', 'mini', 'Change');
+    change.addEventListener('click', choosePlinthFolder);
+    btns.append(again, change);
+    row.append(p, btns);
+    at.append(row);
+  }
+  $('.pkg-plinth-drop').hidden = Boolean(path);
 }

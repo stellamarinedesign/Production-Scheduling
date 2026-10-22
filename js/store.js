@@ -67,7 +67,7 @@ export const unpackRows = (json) => (json ? JSON.parse(json) : null);
 //
 // One list, named, used by both backends. Add a field here when you add a
 // field, and nothing silently disappears.
-export const OVERRIDE_FIELDS = ['hidden', 'labelOverride', 'completed', 'status', 'progress'];
+export const OVERRIDE_FIELDS = ['hidden', 'labelOverride', 'completed', 'status', 'progress', 'hullOverride', 'plinth'];
 
 export const isEmptyOverride = (o) => !OVERRIDE_FIELDS.some((f) => {
   const v = o?.[f];

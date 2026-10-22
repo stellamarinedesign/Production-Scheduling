@@ -736,6 +736,21 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 .st-select:hover { border-color: var(--red-bright); color: var(--white); }
 .st.is-manual .st-select { color: var(--red-bright); border-color: var(--red-deep); }
 
+/* A davit's plinth, in its row's fold. A select nobody has set yet is drawn
+   blank - dashed, dim, italic - so a choice never passes for a default. */
+.plinth { display: inline-flex; align-items: center; gap: 6px; }
+.pl-label { font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text-dim); }
+.pl-select {
+  background: var(--black-night); color: var(--white);
+  border: 1px solid var(--line); border-radius: 6px;
+  font-family: inherit; font-size: 10.5px; padding: 3px 2px; cursor: pointer; max-width: 160px;
+}
+.pl-select:hover { border-color: var(--red-bright); }
+.pl-select.is-blank { color: var(--text-dim); font-style: italic; border-style: dashed; }
+.pl-select option, .pl-select optgroup { color: var(--white); font-style: normal; }
+.plinth input.pl-mm { width: 64px; font-size: 10.5px; padding: 3px 6px; border-width: 1px; border-radius: 6px; }
+.pl-flag { color: var(--red-bright); font-size: 11px; font-weight: 700; }
+
 /* ---------- import review ---------- */
 .import-current { color: var(--text-dim); font-size: 13px; margin-top: 16px; }
 .import-review { margin-top: 18px; }
@@ -979,6 +994,8 @@ header .cog:hover { border-color: var(--red-bright); color: var(--white); }
 .pkg-lib { margin-top: 10px; padding: 4px 12px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--black-night); }
 .pkg-lib-new:not(:empty) { margin-top: 8px; }
 .pkg-lib-cats:not(:empty) { margin-top: 14px; }
+.pkg-lib-plinths { margin-top: 14px; }
+.pkg-plinth.is-blank { color: var(--text-dim); font-style: italic; }
 .pkg-btns { display: flex; gap: 6px; }
 /* Where a package's PDF is printed from: in the page, never seen. */
 .print-frame { position: absolute; width: 0; height: 0; border: 0; visibility: hidden; }
