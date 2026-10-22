@@ -25,10 +25,10 @@ one thing it does, not what it is for, so the paper settings stay behind that
 one tab and nothing else is trimmed to fit a page.
 
 The vessel codes page prints its own **landscape A4 cheat sheet** — display
-code, Riviera model, hull and products — for pinning up next to the board. The
-ERP codes are deliberately not on it: the sheet is for the floor, and the floor
-reads the display code. What the ERP calls a boat is a manager's problem and
-stays on the vessel codes page.
+code, manufacturer's model, hull and products — for pinning up next to the
+board. The ERP codes are deliberately not on it: the sheet is for the floor,
+and the floor reads the display code. What the ERP calls a boat is a manager's
+problem and stays on the vessel codes page.
 
 Everything is parsed in the browser. The spreadsheet is never uploaded anywhere.
 
@@ -71,9 +71,9 @@ Normalising happens in the transform, once, downstream.
 - **Category comes from the `Inventory ID` prefix**, never `Lot/Serial Class` —
   48 of 92 rows are `NOTTRACKED` and that bucket mixes unrelated products.
 - **`CATEGORY_RULES` is ordered and first-match-wins. Do not sort it.**
-  `SLRIVCOMMISSION` starts with `SLRIV`; if it drops below that rule, on-site
-  commissioning prints as real cylinder-lifter work. Both `COMMISSION`
-  spellings stay pinned at the top.
+  One of the two commissioning codes starts with the cylinder-lifter prefix; if
+  it drops below that rule, on-site commissioning prints as real cylinder-lifter
+  work. Both `COMMISSION` spellings stay pinned at the top.
 - **A sheet's own cell references cannot be trusted either.** One export
   arrived with every address in lower case — `a1` rather than `A1`. The spec
   says uppercase and Excel tolerates the other, so a writer can emit it for
@@ -81,14 +81,14 @@ Normalising happens in the transform, once, downstream.
   `invalid column -1` with nothing to say about which file or why. The adapter
   uppercases the keys and rebuilds the range from the cells that exist, rather
   than trusting a range record that has already proved wrong.
-- **The ERP's own saved filter cannot be trusted** — it excludes
-  `SLRIVCOMMISSION` but the data contains `STL`RIVCOMMISSION (with a T), so 15
-  rows come through. Filtering happens here, so a raw or filtered export gives
-  the same board.
-- **Vessel codes anchor on `RIV`**, not on the first digit: `SWD4PDRIV62SY` is
-  `62SY`, not `4PDRIV`.
-- **The display code is a human decision.** `SY23` prints as `56SY` but `SY20`
-  prints as `SY20`. Both are correct and confirmed individually. It lives in
+- **The ERP's own saved filter cannot be trusted** — it excludes one spelling
+  of the commissioning code, but the data also carries the other (with a T), so
+  15 rows come through. Filtering happens here, so a raw or filtered export
+  gives the same board.
+- **Vessel codes anchor on `RIV`**, not on the first digit: `SWD4PDRIVXX02` is
+  `XX02`, not `4PDRIV`.
+- **The display code is a human decision.** `XX16` prints as `XX06` but `XX01`
+  prints as `XX01`. Both are correct and confirmed individually. It lives in
   Firestore, and is maintained by hand. It moves on a FILE: **Save file** and
   **Load file…** on the vessel codes page write it out and read it back, which
   is both the backup and how a map reaches a fresh environment. It used to ship
@@ -103,12 +103,13 @@ Normalising happens in the transform, once, downstream.
 - **The display code IS the boat.** It is what the floor reads and what the
   board prints, so it is the key on the vessel codes page, the first column, and
   the thing you edit — `boat` and `display` are kept equal. Keying on the Stella
-  code instead is what put `SY20` and `43SY` on separate lines despite printing
+  code instead is what put `XX01` and `XX11` on separate lines despite printing
   the same thing.
 - **Which codes are the same boat is assigned by hand,** via the `boat` field.
-  It has to be — nothing upstream records it. `56` is office shorthand for the
-  56SY and groups with `SY23`; `SY26` is the **5000, a different boat**. A
-  shared Riviera model only *suggests* a group for a code nobody has assigned.
+  It has to be — nothing upstream records it. `06` is office shorthand for the
+  XX06 and groups with `XX16`; `XX05` is the **XX15, a different boat**. A
+  shared manufacturer model only *suggests* a group for a code nobody has
+  assigned.
 - **Labels resolve in three scopes, narrowest first: job → item → boat.**
   A boat decision covers every product on that vessel. An *item* decision
   latches to the `Inventory ID` and covers every future order for one product —
@@ -117,8 +118,8 @@ Normalising happens in the transform, once, downstream.
 - **A custom one-off's name is asked for, not guessed.** Custom work carries no
   model code, so the name comes out of free text — and the two columns that
   could supply it disagree. `Description` holds the boat on two of the three
-  custom rows in the 21/08 export ("Riviera 48", "Alaska 47 square transom") and
-  "5% drawing fee" on the third, where the answer is the customer. Where the
+  custom rows in the 21/08 export ("Builder 00", "Builder 11 square transom")
+  and "5% drawing fee" on the third, where the answer is the customer. Where the
   vessel rule cannot read the Description the import asks, showing the
   production number and both columns with the label each would print, plus a
   free-text option. The answer is an ordinary job label override keyed on the
@@ -153,7 +154,7 @@ Normalising happens in the transform, once, downstream.
   stock build of a sellable product (davits, chocks) — production work that
   happens to have no buyer yet.
 - **The lane rule describes how an order was raised, not what it is for**, so it
-  cannot fix a miskeyed row. `SDC0287`, the davit rope kit, is booked
+  cannot fix a miskeyed row. The davit rope kit, an `SDC0` part, is booked
   `Finished Good` and therefore reads as production even though it is really
   internal work. The import review flags it; the rule does not bend around it.
 - **T&M and internal jobs are not on the Gantt, on purpose.** Every T&M row in
@@ -170,12 +171,12 @@ Normalising happens in the transform, once, downstream.
   `test`); the rest are genuine internal part builds the office's sheet omitted.
   `Data` is still accepted — that is the older export.
 - **A finished watermaker's item code ends in flow rate over voltage.**
-  `STAQSAB/240/230`, `STG4LA/160/230`. Everything else in the family is a kit,
+  `STXXA/000/000`, `STXXD/000/000`. Everything else in the family is a kit,
   filter, upgrade or spare, so water treatment reaches the board as two
   categories rather than being excluded outright. The rule anchors on the PAIR
-  of numbers because `STAUTO24` ends in a voltage and is a flush accessory. The
-  same ordering trap applies as everywhere else in that list: `STL`, `STC` and
-  both `COMMISSION` spellings begin with `ST` and are matched above it.
+  of numbers because `STXXAUTO00` ends in a voltage and is a flush accessory.
+  The same ordering trap applies as everywhere else in that list: `STL`, `STC`
+  and both `COMMISSION` spellings begin with `ST` and are matched above it.
   Softeners are the exception that proves the shape of the rule: `SS` is a whole
   product line with no flow-rate/voltage pair in the code, so the prefix alone
   makes it a finished unit.
@@ -309,21 +310,21 @@ Normalising happens in the transform, once, downstream.
   `Item Description` is the product's own name: across the whole 01/09 export —
   1216 rows, 203 item codes, completed and closed included — not one code
   carries two different Item Descriptions. `Production Description` is free text
-  typed per order, and 104 of those 203 codes have more than one; SDC250SSMLMSME
-  alone has seven, down to "250kg SS Davit", and one SDC550SSHLHSHE row has a
-  customer's name in it. For a davit the configuration IS the product —
-  hydraulic against manual on the luff, slew and extension — and the item
-  description carries all three where a production order often gives one word
-  for the lot. (Manual and pneumatic assist are the same thing on these davits,
-  so "full manual" for a pneumatic luff assist is loose wording, not a different
-  product.)
+  typed per order, and 104 of those 203 codes have more than one; one 250kg
+  davit's code alone has seven, down to "250kg SS Davit", and one row for a
+  550kg davit has a customer's name in it. For a davit the configuration IS the
+  product — hydraulic against manual on the luff, slew and extension — and the
+  item description carries all three where a production order often gives one
+  word for the lot. (Manual and pneumatic assist are the same thing on these
+  davits, so "full manual" for a pneumatic luff assist is loose wording, not a
+  different product.)
 - **A one-off on a standard code is marked, and named by the order.** A custom
   *lifter* has its own item code. The other kind is a standard product modified
   for one order, where the code says nothing and only the free text knows. Six
   rows in the 1216-row 01/09 export say "custom" without a custom code, and all
   six are genuine — a derated 650kg davit, a custom folding davit, a custom
   filter bracket, custom-length hoses, a custom single-arm lifter, a bespoke
-  Meridian 420. No false positives, so `CUSTOM_TEXT_RE` is a keyword and not a
+  Builder 22. No false positives, so `CUSTOM_TEXT_RE` is a keyword and not a
   cleverer comparison: comparing the production description against the item
   description flags nine davit rows of which only two are real, the rest being
   customer names and shipping notes. For a davit the production order is the one
@@ -356,9 +357,9 @@ static site hands its files to anyone who asks — no sign-in involved. Comments
 and test data use invented customers and hull numbers for the same reason.
 
 **The fixtures are not in this repo and never will be.** They carry customer
-names, Riviera PO numbers, sales orders, hull numbers and ERP internal notes —
-Stella's and Riviera's order book — and this repo is public. They are
-gitignored, and the test page says so and skips if they are absent.
+names, customers' PO numbers, sales orders, hull numbers and ERP internal
+notes — Stella's order book and its customers' — and this repo is public. They
+are gitignored, and the test page says so and skips if they are absent.
 
 To run the tests, copy from the private handoff folder into `tests/fixtures/`:
 
@@ -384,11 +385,11 @@ reference implementation's own output row by row.
 Four deliberate differences from that output, each asserted explicitly rather
 than quietly tolerated:
 
-- **50 jobs, not 48** — `SWD4PDRIV62SY` and `SHCELECPLINTHRIV43SY` are booked as
+- **50 jobs, not 48** — `SWD4PDRIVXX02` and `SHCELECPLINTHRIVXX11` are booked as
   `Component Part` but are real workshop jobs, so the `Type` filter is gone.
   42 exclusions rather than 44 follows from the same change.
-- **`43SY` displays `SY20`** — same boat as the SY20 lifter.
-- **Custom jobs read `Custom Lifter - Riviera 48`** — the vessel alone made a
+- **`XX11` displays `XX01`** — same boat as the XX01 lifter.
+- **Custom jobs read `Custom Lifter - Builder 00`** — the vessel alone made a
   one-off look like a standard model. The reference printed `Custom Lifter -
   NORTHWIND` for the drawing-fee row; the board still does until somebody answers
   the import prompt, and then prints whatever they chose.

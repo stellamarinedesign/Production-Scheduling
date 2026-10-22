@@ -84,8 +84,8 @@ export function renderCodesSheet(host, rows, { mode = 'boats', asOf = todayDate(
 
     const tr = el('tr');
     tr.append(el('td', 'cs-disp', r.display));
-    // the manufacturer's own model sits next to what we print, because that is the pair
-    // read together when a the manufacturer document and a Stella one disagree.
+    // The manufacturer's own model sits next to what we print, because that is the pair
+    // read together when a manufacturer document and a Stella one disagree.
     // `model` not `riviera`: a boat can carry several manufacturer codes and the
     // sheet shows the one somebody chose. See `modelFor`.
     tr.append(el('td', 'cs-riv', r.model || '—'));

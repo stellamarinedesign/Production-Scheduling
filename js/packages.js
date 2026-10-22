@@ -484,7 +484,7 @@ function rebuildLine(doc, p, label, value, styleTabs) {
   run(valueRpr, '\t');
 }
 
-/** "P01480 - SL-...-LaserChecklist.docx": the job's number in front. */
+/** "P00000 - SL-...-LaserChecklist.docx": the job's number in front. */
 export const filledName = (prodNo, name) => `${prodNo} - ${name}`;
 
 /**
