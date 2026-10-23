@@ -52,7 +52,7 @@ Normalising happens in the transform, once, downstream.
 
 | File | Role |
 |---|---|
-| `js/rules.js` | Category prefix map, lane rules, filters, label overrides. The business rules. |
+| `js/rules.js` | Category prefix map, lane rules, filters. The business rules. |
 | `js/vessel-codes.js` | Stella code derivation, boat groups, new-code detection, labels. |
 | `js/transform.js` | `RawRow[] → Job[]`. The only place that knows ERP column names. |
 | `js/adapters/xlsx.js` | Reads the export, validates its columns, stamps provenance. |
@@ -70,10 +70,11 @@ Normalising happens in the transform, once, downstream.
 
 - **Category comes from the `Inventory ID` prefix**, never `Lot/Serial Class` —
   48 of 92 rows are `NOTTRACKED` and that bucket mixes unrelated products.
-- **`CATEGORY_RULES` is ordered and first-match-wins. Do not sort it.**
-  One of the two commissioning codes starts with the cylinder-lifter prefix; if
-  it drops below that rule, on-site commissioning prints as real cylinder-lifter
-  work. Both `COMMISSION` spellings stay pinned at the top.
+- **`CATEGORY_RULES` is ordered and first-match-wins. Do not sort it.** A
+  prefix that begins another sits below it: `SRLCUSTOM` above `SRL`, `STLB`
+  above `STL`. On-site commissioning is not in the list at all: its codes begin
+  with product-line prefixes, so anything with `COMMISSION` in its code is
+  dropped before the prefixes are read, where no ordering can undo it.
 - **A sheet's own cell references cannot be trusted either.** One export
   arrived with every address in lower case — `a1` rather than `A1`. The spec
   says uppercase and Excel tolerates the other, so a writer can emit it for
@@ -85,8 +86,13 @@ Normalising happens in the transform, once, downstream.
   of the commissioning code, but the data also carries the other (with a T), so
   15 rows come through. Filtering happens here, so a raw or filtered export
   gives the same board.
-- **Vessel codes anchor on `RIV`**, not on the first digit: `SWD4PDRIVXX02` is
-  `XX02`, not `4PDRIV`.
+- **Vessel codes anchor on the boat builder's marker**, not on the first digit:
+  with `ZZZ` standing for the marker, `SWD4PDZZZXX02` is `XX02`, not `4PDZZZ`.
+  The marker, and the builder's name that the ERP descriptions put in front of
+  its model, are settings rather than source (`builders` on `settings/board`):
+  they belong to a customer and this repo is public. Without them no vessel
+  code can be read, so the board refuses to import or publish. A local board
+  reads them from a gitignored `data/builders.json`.
 - **The display code is a human decision.** `XX16` prints as `XX06` but `XX01`
   prints as `XX01`. Both are correct and confirmed individually. It lives in
   Firestore, and is maintained by hand. It moves on a FILE: **Save file** and
@@ -175,8 +181,8 @@ Normalising happens in the transform, once, downstream.
   filter, upgrade or spare, so water treatment reaches the board as two
   categories rather than being excluded outright. The rule anchors on the PAIR
   of numbers because `STXXAUTO00` ends in a voltage and is a flush accessory.
-  The same ordering trap applies as everywhere else in that list: `STL`, `STC`
-  and both `COMMISSION` spellings begin with `ST` and are matched above it.
+  The same ordering trap applies as everywhere else in that list: `STL` and
+  `STC` begin with `ST` and are matched above it.
   Softeners are the exception that proves the shape of the rule: `SS` is a whole
   product line with no flow-rate/voltage pair in the code, so the prefix alone
   makes it a finished unit.
@@ -385,7 +391,7 @@ reference implementation's own output row by row.
 Four deliberate differences from that output, each asserted explicitly rather
 than quietly tolerated:
 
-- **50 jobs, not 48** — `SWD4PDRIVXX02` and `SHCELECPLINTHRIVXX11` are booked as
+- **50 jobs, not 48** — `SWD4PDZZZXX02` and `SHCELECPLINTHZZZXX11` are booked as
   `Component Part` but are real workshop jobs, so the `Type` filter is gone.
   42 exclusions rather than 44 follows from the same change.
 - **`XX11` displays `XX01`** — same boat as the XX01 lifter.

@@ -7,7 +7,8 @@ import { buildBoard, byCategory, today, toAU, toDateOnly, jobTitle, CUSTOM_PREFI
 import { CATEGORY_ORDER, PRINT_LAYOUT, EXCLUSION_ORDER, EXCLUSION_GROUP_LABEL,
          TM_CATEGORY_ORDER, INTERNAL_CATEGORY_ORDER, LANE_LABEL, WATERMAKER_CATEGORIES,
          SETTABLE_STATUSES, ERP_CLOSER, isPartOrder } from './rules.js';
-import { stellaCode, labelFor, existingBoats, acceptNewCode, applyTemplate } from './vessel-codes.js';
+import { stellaCode, labelFor, existingBoats, acceptNewCode, applyTemplate,
+  setBuilders, buildersConfigured } from './vessel-codes.js';
 import { Auth, ROLE, friendlyAuthError, setManagers, setEngineers, setMasters, managerCount, tidyEmail } from './auth.js';
 import { VERSION } from './version.js';
 import { wireHelp } from './help.js';
@@ -254,6 +255,8 @@ async function start(st) {
     Store.loadPackage(PLINTHS_KEY).catch(() => null),
   ]);
   state.settings = settings;
+  // Before anything is built: no builders, no vessel codes. See vessel-codes.js.
+  if (!setBuilders(settings.builders)) console.error('[codes] no boat builder in the board settings');
   state.codeMap = codeMap;
   state.overrides = overrides;
   state.itemOverrides = itemOverrides;
@@ -354,6 +357,7 @@ function startLiveSync() {
     const before = JSON.stringify(state.settings);
     state.settings = { ...state.settings, ...v };
     if (JSON.stringify(state.settings) === before) return;
+    setBuilders(state.settings.builders);
     $('horizon').value = state.settings.horizonWeeks;
     $('horizonVal').textContent = `${state.settings.horizonWeeks} weeks`;
     $('maxStock').value = state.settings.maxStock ?? '';
@@ -568,6 +572,10 @@ function wireUpload() {
 }
 
 async function load(file) {
+  // Without the builders every vessel code reads as none, and the review would
+  // describe a board with every boat missing. Refused here and in `publish`.
+  if (!buildersConfigured()) { toast(`${NO_BUILDERS} The export was not loaded.`, 10000); return; }
+
   let src;
   try {
     toast(`Reading ${file.name}…`);
@@ -707,7 +715,12 @@ const FIRESTORE_DOC_LIMIT = 1048576;
 
 const utf8Bytes = (str) => new TextEncoder().encode(String(str ?? '')).length;
 
+const NO_BUILDERS = 'Vessel codes cannot be read: no boat builder is set in the board settings.';
+
 async function publish(rows, what) {
+  // The floor renders the published jobs as they are, so a board built without
+  // vessel codes must not reach it.
+  if (!buildersConfigured()) { toast(`${NO_BUILDERS} The board was not shared.`, 10000); return false; }
   try {
     const packed = packRows(rows);
     // Check before writing rather than letting the server refuse: a size error
@@ -2068,25 +2081,25 @@ function showNewCode() {
   };
   row('Item codes', item.items.join('  ·  '));
   row('Stella code', item.code);
-  row('Model', item.riviera.join(', '));
+  row('Model', item.models.join(', '));
   row('Hull prefix', item.hull_prefix.join(', '));
   row('Description', item.descriptions[0] ?? '');
 
   // What each choice would actually print, using the real template for the
   // first item — a preview beats a description of a preview.
   const preview = (display) => {
-    const fake = { [item.code]: { display, _confirmed: true, riviera: item.riviera } };
+    const fake = { [item.code]: { display, _confirmed: true, models: item.models } };
     return labelFor(item.items[0], null, fake) ?? display;
   };
 
   $('ncStella').textContent = item.code;
   $('ncStellaPreview').textContent = preview(item.code);
 
-  const riv = item.suggestion.riviera;
-  $('ncRivOpt').hidden = !riv;
-  if (riv) {
-    $('ncRiv').textContent = riv;
-    $('ncRivPreview').textContent = preview(riv);
+  const model = item.suggestion.model;
+  $('ncModelOpt').hidden = !model;
+  if (model) {
+    $('ncModel').textContent = model;
+    $('ncModelPreview').textContent = preview(model);
   }
 
   const sel = $('ncExisting');

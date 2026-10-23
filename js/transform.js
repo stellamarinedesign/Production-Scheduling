@@ -12,7 +12,7 @@ import {
   CATEGORY_ORDER, BOARD_STATUSES, CLOSED_LABEL, ERP_CLOSER, INTERNAL_CUSTOMER, HULL_RE,
   LANE, laneFor, tmCategory, internalCategory, WATERMAKER_CATEGORIES,
   TM_CATEGORY_ORDER, INTERNAL_CATEGORY_ORDER, PRINT_CATEGORIES,
-  VESSEL_IN_DESC_RE, CUSTOMER_SUFFIX_RE, CUSTOM_TEXT_RE, LABEL_OVERRIDES, COMPONENT_TYPE,
+  VESSEL_IN_DESC_RE, CUSTOMER_SUFFIX_RE, CUSTOM_TEXT_RE, COMPONENT_TYPE,
   EXCLUSION_ORDER, classify, isPartOrder,
 } from './rules.js';
 import { resolveDisplays, labelFor, detectNewCodes, applyTemplate } from './vessel-codes.js';
@@ -239,8 +239,6 @@ export function shortLabel({
   // Just the vessel code, pinned to this product — the product wording still
   // comes from the template, so 'Boarding Ladder' stays 'Boarding Ladder'.
   if (itemOverride?.displayCode) return applyTemplate(inv, itemOverride.displayCode);
-
-  if (LABEL_OVERRIDES[inv]) return LABEL_OVERRIDES[inv];
 
   // Custom / one-off work has no model code, so the name comes out of free
   // text — see `customNameOptions`, which is where that decision lives.
@@ -782,9 +780,9 @@ export function buildBoard(rows, opts = {}) {
     // Both readings of a custom job's name, so the import dialog can offer them
     // and so the board can say when it is guessing. Skipped where something
     // more specific has already claimed the label — `shortLabel` returns on an
-    // item override or LABEL_OVERRIDES before it ever reaches the custom
-    // branch, and a job override replaces its answer a few lines below.
-    const nameOptions = (itemOverride?.label || itemOverride?.displayCode || LABEL_OVERRIDES[text(inv)])
+    // item override before it ever reaches the custom branch, and a job
+    // override replaces its answer a few lines below.
+    const nameOptions = (itemOverride?.label || itemOverride?.displayCode)
       ? null
       : customNameOptions({
         inventoryId: inv,

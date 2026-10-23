@@ -55,7 +55,7 @@
 /* The display code is the answer the sheet exists to give, so it carries the
    weight — the same reasoning as the first column on the codes page. */
 #codesSheet .cs-disp { font-weight: 700; font-size: 1.08em; }
-#codesSheet .cs-riv, #codesSheet .cs-hull, #codesSheet .cs-prod { color: #4A4A4A; }
+#codesSheet .cs-model, #codesSheet .cs-hull, #codesSheet .cs-prod { color: #4A4A4A; }
 
 /* Four columns since the ERP codes came off: the sheet is for the floor, and
    the floor reads the display code, not what the ERP calls it. The 22% that
@@ -69,7 +69,7 @@
    they held a sentence. Products holds several item codes, or a davit
    description running to a line and a half, so it takes what they give up. */
 #codesSheet col.c-disp { width: 11%; }
-#codesSheet col.c-riv  { width: 11%; }
+#codesSheet col.c-model  { width: 11%; }
 #codesSheet col.c-hull { width: 10%; }
 #codesSheet col.c-prod { width: 68%; }
 

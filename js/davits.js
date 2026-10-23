@@ -22,7 +22,7 @@ const DAVIT_RE = /^SDC(?!0\d)/i;
 /**
  * Boat -> the davits fitted to it, from the export.
  *
- * Keyed on the code after RIV, which is the manufacturer's model. One code can
+ * Keyed on the code after the builder's marker (see `stellaCode`). One code can
  * name more than one hull, and a boat can take more than one davit — neither is
  * a problem here, because this is a reference list rather than a mapping that
  * has to be one to one.

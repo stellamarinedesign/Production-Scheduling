@@ -120,7 +120,7 @@ main { padding: 16px 22px 60px; max-width: 1720px; margin: 0 auto; }
 }
 
 /* A model code chosen by hand, as against every one the data carries. */
-.c-riv.is-set { color: var(--white); }
+.c-model.is-set { color: var(--white); }
 /* Kept off the printed sheet. Still here, still editable — dimmed, not gone. */
 .code-row.is-offsheet { opacity: .45; }
 /* Davits carry a description where every other line carries codes, so the
@@ -1410,7 +1410,7 @@ button.linkish:disabled { opacity: .5; cursor: default; }
 }
 /* An ERP code identical to the display needs no explaining. */
 .c-tag.is-same { border-style: dashed; opacity: .55; }
-.c-riv, .c-hull { color: var(--text-dim); font-size: 12.5px; }
+.c-model, .c-hull { color: var(--text-dim); font-size: 12.5px; }
 .c-items { display: flex; gap: 5px; flex-wrap: wrap; }
 .c-item {
   font-size: 11px; color: var(--text-dim);
