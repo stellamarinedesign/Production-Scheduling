@@ -346,9 +346,9 @@ function boatRow(r) {
   // 3. What the manufacturer calls it, and the hulls it has been fitted to.
   // What the cheat sheet prints, not every code the data carries — a boat with
   // three manufacturer codes should not put all three on a sheet of paper.
-  const model = el('div', `c-model${r.modelSet ? ' is-set' : ''}`, r.model || '—');
-  if (r.modelSet) model.title = `Set by hand. Found in the data: ${r.models.join(', ') || 'none'}`;
-  row.append(model);
+  const modelCell = el('div', `c-model${r.modelSet ? ' is-set' : ''}`, r.model || '—');
+  if (r.modelSet) modelCell.title = `Set by hand. Found in the data: ${r.models.join(', ') || 'none'}`;
+  row.append(modelCell);
   row.append(el('div', 'c-hull', r.hulls.join(', ') || '—'));
 
   // 4. Products. In boats mode a boat with several product lines shows them as
