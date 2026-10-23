@@ -17,4 +17,4 @@
 // imports, so a reload after a deploy never mixes a new page with modules
 // the browser cached from the old one. After adding or removing a module
 // under js/, regenerate the maps with `python tools/importmap.py`.
-export const VERSION = '2026-10-23.6';
+export const VERSION = '2026-10-23.7';
