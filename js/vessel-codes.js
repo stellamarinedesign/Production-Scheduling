@@ -1,14 +1,102 @@
 // vessel-codes.js — Stella code derivation, boat grouping, board labels.
 //
-// the manufacturer issue concept hull codes to conceal unreleased vessel models, so a
-// Stella item code (XX16) and the model actually used in practice (XX06) can
-// differ. Which one the floor uses is a HUMAN decision — it cannot be derived.
-// This module derives what can be derived and resolves the rest through the
-// hand-maintained `display` field.
+// The manufacturer issues concept hull codes to conceal unreleased vessel
+// models, so a Stella item code (XX16) and the model actually used in practice
+// (XX06) can differ. Which one the floor uses is a HUMAN decision — it cannot be
+// derived. This module derives what can be derived and resolves the rest
+// through the hand-maintained `display` field.
 
-// Everything after "RIV" is the model. Anchoring on RIV rather than on the
-// first digit is what makes SWD4PDRIVXX02 resolve to XX02 and not 4PDRIV.
-export const CODE_RE = /RIV([A-Z0-9/]+?)(?:\(\d+\)|\/\d+)?$/i;
+// ---------------------------------------------------------------------------
+// THE BUILDER IS CONFIGURATION, NOT SOURCE.
+//
+// A vessel-coded item code carries the boat builder's marker and then the
+// model: SWD4PD + ZZZ + XX02, where ZZZ stands for the marker in every example
+// in this codebase. The ERP's production descriptions name the builder in
+// front of its model the same way. Both belong to the builder, and the repo is
+// public, so neither is written here: they come from the board settings
+// (`settings/board`, `builders: [{ name, marker }]`) through `setBuilders`,
+// before anything is derived. See the private SETUP document.
+//
+// Until then no item carries a vessel code, and the board refuses to import or
+// publish (`buildersConfigured`) rather than print a sheet with every boat
+// missing from it.
+// ---------------------------------------------------------------------------
+
+let codeRe = null;    // the marker, then the code: what `stellaCode` reads
+let modelRe = null;   // the builder's name, then its model, in a description
+
+/** A builder's name as a pattern: words as written, any run of spaces between. */
+const namePattern = (name) => name.split(/\s+/)
+  .map((w) => w.replace(/[^A-Za-z0-9]/g, (c) => `[${c}]`))
+  .join(String.raw`\s+`);
+
+/**
+ * Set the builders whose vessel codes the board reads.
+ *
+ * A marker is letters and digits only; a name is letters, digits, spaces and
+ * `&'.-`. Anything else is ignored rather than turned into a pattern.
+ *
+ * @param {Array<{name?: string, marker?: string}>} builders
+ * @returns {boolean} whether any marker is now set
+ */
+export function setBuilders(builders) {
+  const list = Array.isArray(builders) ? builders : [];
+  const pick = (key, ok) => [...new Set(list.map((b) => String(b?.[key] ?? '').trim())
+    .filter((v) => v && ok.test(v)))]
+    // Longest first, so a marker that begins another cannot cut it short.
+    .sort((a, b) => b.length - a.length);
+  const markers = pick('marker', /^[A-Za-z0-9]+$/);
+  const names = pick('name', /^[A-Za-z0-9 &'.-]+$/);
+
+  // Everything after the marker is the code. Anchoring on the marker rather
+  // than on the first digit is what makes SWD4PDZZZXX02 resolve to XX02 and not
+  // 4PDZZZ.
+  codeRe = markers.length
+    ? new RegExp(String.raw`(?:${markers.join('|')})([A-Z0-9/]+?)(?:\(\d+\)|\/\d+)?$`, 'i')
+    : null;
+  modelRe = names.length
+    ? new RegExp(String.raw`(?:${names.map(namePattern).join('|')})\s+([0-9][0-9A-Z/\s]*?)\s*(?:-|$)`, 'i')
+    : null;
+  return Boolean(codeRe);
+}
+
+/** Can vessel codes be read at all? False until the builders are set. */
+export const buildersConfigured = () => Boolean(codeRe);
+
+// ---------------------------------------------------------------------------
+// THE MODEL LIST USED TO BE STORED UNDER THE BUILDER'S NAME.
+//
+// `models` is the field now. A record written before the rename carries its
+// list under the old key: it is read as `models` here, and the store rewrites it
+// the first time a manager loads the codes (see `Store.loadCodes`). Old backup
+// files load through the same door.
+//
+// TRANSITIONAL. Once every record and every kept backup has been rewritten,
+// this block and its one mention of the old key go. See the private SETUP
+// document.
+// ---------------------------------------------------------------------------
+
+export const LEGACY_MODELS_KEY = 'riviera';
+
+/**
+ * Read a code map written before the rename.
+ * @returns {{map: Object, upgraded: string[]}} the map with `models` in place of
+ *   the old key, and the codes that needed it
+ */
+export function upgradeCodeMap(map) {
+  const out = {};
+  const upgraded = [];
+  for (const [code, entry] of Object.entries(map ?? {})) {
+    if (!entry || typeof entry !== 'object' || !Object.hasOwn(entry, LEGACY_MODELS_KEY)) {
+      out[code] = entry;
+      continue;
+    }
+    const { [LEGACY_MODELS_KEY]: legacy, ...rest } = entry;
+    out[code] = { ...rest, models: rest.models ?? legacy ?? [] };
+    upgraded.push(code);
+  }
+  return { map: out, upgraded };
+}
 
 // Product wording per item-code prefix. {code} is the resolved display code.
 // Ordered: the first matching prefix wins.
@@ -33,9 +121,9 @@ export const PRODUCT_TEMPLATE = [
 // decision, not a detail.
 const VESSEL_CODED_PREFIXES = ['SL', 'SRL', 'SBL', 'SGD', 'STL', 'SWD', 'SHC'];
 
-/** The Stella code — the token after RIV. Null when the item carries none. */
+/** The Stella code — the token after the marker. Null when the item carries none. */
 export function stellaCode(inventoryId) {
-  const m = CODE_RE.exec(String(inventoryId ?? ''));
+  const m = codeRe?.exec(String(inventoryId ?? ''));
   return m ? m[1].toUpperCase() : null;
 }
 
@@ -50,7 +138,7 @@ export function isVesselCoded(inventoryId) {
 // BOAT GROUPS
 //
 // Two or more Stella codes can name the same boat. The map is keyed on the
-// Stella code, so SLRIVXX01(24) and SHCELECPLINTHRIVXX11 became independent
+// Stella code, so SLZZZXX01(24) and SHCELECPLINTHZZZXX11 became independent
 // entries and nothing ever compared them.
 //
 // Grouping is MANUAL, via the `boat` field. It has to be: the upstream codes
@@ -119,7 +207,7 @@ export function aliasGroups(codeMap) {
   //    has assigned. Never merge across two different explicit assignments.
   const byModel = new Map();
   for (const [code, entry] of Object.entries(codeMap)) {
-    for (const model of entry?.riviera ?? []) {
+    for (const model of entry?.models ?? []) {
       const key = String(model).toUpperCase();
       const seen = byModel.get(key);
       if (!seen) { byModel.set(key, code); continue; }
@@ -143,7 +231,7 @@ export function aliasGroups(codeMap) {
       let boat = null;
       let display = null;
       for (const c of codes) {
-        for (const m of codeMap[c]?.riviera ?? []) models.add(String(m).toUpperCase());
+        for (const m of codeMap[c]?.models ?? []) models.add(String(m).toUpperCase());
         boat ??= boatOf(codeMap, c);
         // A confirmed display speaks for the group; fall back to any display.
         if (codeMap[c]?._confirmed && codeMap[c]?.display) display ??= codeMap[c].display;
@@ -218,7 +306,7 @@ export function displayFor(code, resolved, codeMap = {}) {
 
 /**
  * Wrap a display code in this item's product wording.
- * 'XX03' + SGDRIVXX03 -> 'XX03 Garage Door'.
+ * 'XX03' + SGDZZZXX03 -> 'XX03 Garage Door'.
  */
 export function applyTemplate(inventoryId, displayCode) {
   const inv = String(inventoryId ?? '').toUpperCase();
@@ -241,7 +329,7 @@ export function labelFor(inventoryId, resolved, codeMap = {}) {
 /**
  * Derive the code cross-reference from an export — the columns that CAN be
  * derived. Merged into the stored map without ever overwriting a `display`.
- * @returns {Object} code -> { riviera[], hull_prefix[], items[], descriptions[], count }
+ * @returns {Object} code -> { models[], hull_prefix[], items[], descriptions[], count }
  */
 export function deriveFromRows(rows) {
   const out = {};
@@ -252,7 +340,7 @@ export function deriveFromRows(rows) {
     if (!code) continue;
 
     const e = (out[code] ??= {
-      riviera: new Set(), hull_prefix: new Set(), items: new Set(),
+      models: new Set(), hull_prefix: new Set(), items: new Set(),
       descriptions: new Set(), count: 0,
     });
     e.items.add(inv);
@@ -265,12 +353,13 @@ export function deriveFromRows(rows) {
     const h = /Used by\s*([A-Z0-9]+)\s*\//i.exec(blob);
     if (h) e.hull_prefix.add(h[1].toUpperCase());
 
-    const dm = /Riviera\s+([0-9][0-9A-Z/\s]*?)\s*(?:-|$)/i.exec(prodDesc);
-    if (dm) e.riviera.add(dm[1].trim().replace(/\s*\/\s*/g, '/').toUpperCase());
+    // The builder's own name for the boat, where the description gives one.
+    const dm = modelRe?.exec(prodDesc);
+    if (dm) e.models.add(dm[1].trim().replace(/\s*\/\s*/g, '/').toUpperCase());
   }
   return Object.fromEntries(
     Object.entries(out).map(([k, v]) => [k, {
-      riviera: [...v.riviera].sort(),
+      models: [...v.models].sort(),
       hull_prefix: [...v.hull_prefix].sort(),
       items: [...v.items].sort(),
       descriptions: [...v.descriptions],
@@ -286,8 +375,8 @@ export function deriveFromRows(rows) {
  * auto-accepted — the board would print a guess. Each one is handed to the
  * manager with what can be derived and the choices available.
  *
- * @returns {Array<{code, riviera[], hull_prefix[], items[], descriptions[],
- *                  count, suggestion: {stella, riviera: string|null}}>}
+ * @returns {Array<{code, models[], hull_prefix[], items[], descriptions[],
+ *                  count, suggestion: {stella, model: string|null}}>}
  */
 export function detectNewCodes(rows, codeMap) {
   const derived = deriveFromRows(rows);
@@ -299,8 +388,8 @@ export function detectNewCodes(rows, codeMap) {
       suggestion: {
         // What the item code itself says — always available.
         stella: code,
-        // What the ERP description says the manufacturer call it — often absent.
-        riviera: v.riviera[0] ?? null,
+        // What the ERP description says the manufacturer calls it — often absent.
+        model: v.models[0] ?? null,
       },
     }))
     .sort((a, b) => a.code.localeCompare(b.code));
@@ -513,11 +602,11 @@ export function boatRows(codeMap, classify, { mode = 'boats', facts = null } = {
 
     // Item codes bucketed by the board category their prefix resolves to.
     const byCategory = new Map();
-    const riviera = new Set();
+    const models = new Set();
     const hulls = new Set();
     for (const code of g.codes) {
       const e = codeMap[code] ?? {};
-      for (const m of e.riviera ?? []) riviera.add(m);
+      for (const m of e.models ?? []) models.add(m);
       for (const h of e.hull_prefix ?? []) hulls.add(h);
       for (const item of e.items ?? []) {
         const { category } = classify(item);
@@ -533,7 +622,7 @@ export function boatRows(codeMap, classify, { mode = 'boats', facts = null } = {
       boat: g.boat ?? display,
       codes: g.codes,
       confirmed: g.codes.some((c) => codeMap[c]?._confirmed),
-      riviera: [...riviera].sort(),
+      models: [...models].sort(),
       // What the cheat sheet's Model column prints: the override where one is
       // set, every derived code otherwise.
       model: modelFor(g, codeMap),
@@ -577,7 +666,7 @@ export function boatRows(codeMap, classify, { mode = 'boats', facts = null } = {
           codes,
           hulls: hullsFor(category ? b.byCategory.get(category).map((x) => x.item) : [],
             codes, codeMap, facts),
-          riviera: [...new Set(codes.flatMap((c) => codeMap[c]?.riviera ?? []))].sort(),
+          models: [...new Set(codes.flatMap((c) => codeMap[c]?.models ?? []))].sort(),
           model: modelFor(group, codeMap),
           modelSet: codes.some((c) => String(codeMap[c]?.sheetModel ?? '').trim()),
           orders: ordersFor((category ? b.byCategory.get(category) : []).map((x) => x.item), facts),
@@ -621,12 +710,12 @@ export function modelFor(group, codeMap) {
     const set = String(codeMap[c]?.sheetModel ?? '').trim();
     if (set) return set;
   }
-  return [...new Set(group.codes.flatMap((c) => codeMap[c]?.riviera ?? []))].join('  ·  ');
+  return [...new Set(group.codes.flatMap((c) => codeMap[c]?.models ?? []))].join('  ·  ');
 }
 
 /** Every derived model code on a boat, as the options to choose between. */
 export function modelOptions(group, codeMap) {
-  return [...new Set(group.codes.flatMap((c) => codeMap[c]?.riviera ?? []))];
+  return [...new Set(group.codes.flatMap((c) => codeMap[c]?.models ?? []))];
 }
 
 export function existingBoats(codeMap) {
@@ -657,7 +746,7 @@ export function syncCodeMap(codeMap, derived) {
   const refreshed = [];
   for (const [code, v] of Object.entries(derived)) {
     if (!map[code]) continue;
-    map[code].riviera = v.riviera;
+    map[code].models = v.models;
     map[code].hull_prefix = v.hull_prefix;
     map[code].items = v.items;
     refreshed.push(code);
@@ -668,12 +757,12 @@ export function syncCodeMap(codeMap, derived) {
 /**
  * Accept a new code, as decided by the manager.
  * @param {string} code
- * @param {{mode: 'stella'|'riviera'|'existing'|'custom', value?: string, boat?: string}} choice
+ * @param {{mode: 'stella'|'model'|'existing'|'custom', value?: string, boat?: string}} choice
  * @param {Object} derived  the derived entry for this code
  */
 export function acceptNewCode(code, choice, derived) {
   const entry = {
-    riviera: derived.riviera ?? [],
+    models: derived.models ?? [],
     hull_prefix: derived.hull_prefix ?? [],
     items: derived.items ?? [],
     _confirmed: true,
@@ -681,11 +770,11 @@ export function acceptNewCode(code, choice, derived) {
   switch (choice.mode) {
     case 'stella':
       entry.display = code;
-      entry.boat = derived.riviera?.[0] ?? code;
+      entry.boat = derived.models?.[0] ?? code;
       break;
-    case 'riviera':
-      entry.display = derived.riviera?.[0] ?? code;
-      entry.boat = derived.riviera?.[0] ?? code;
+    case 'model':
+      entry.display = derived.models?.[0] ?? code;
+      entry.boat = derived.models?.[0] ?? code;
       break;
     case 'existing':
       // Joins an existing boat; the group's confirmed display carries over, so

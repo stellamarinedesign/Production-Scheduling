@@ -11,14 +11,18 @@
 // category: null  ->  excluded from the board, with the reason given.
 //
 // !! ORDERING TRAP — do not sort this list !!
-// Both COMMISSION spellings exist as real items, with and without a T after
-// the S. The one without begins with the cylinder-lifter prefix, so if it drops
-// below that rule it is classified as a cylinder lifter and prints as real
-// work. Both spellings stay pinned above SL and STL.
+// A prefix that begins another must sit below it: SRLCUSTOM above SRL, STLB
+// above STL, STL and STC above ST. Sorted, the general rule would win.
 //
-// The ERP's own saved filter excludes only the spelling without the T, so the
-// 21/08 export carried 15 rows of the other straight through. Never rely on
-// the ERP-side filter; this list is the real one.
+// ON-SITE COMMISSIONING IS NOT IN THE LIST. It is booked against item codes
+// that otherwise look like product lines — one begins with the cylinder-lifter
+// prefix, another with the launcher prefix — and placed below either rule it
+// printed as real workshop work. So `classify` drops anything with COMMISSION
+// in its code before the prefixes are read, which no ordering can undo.
+//
+// The ERP's own saved filter excludes only one of those codes, so the 21/08
+// export carried 15 rows of another straight through. Never rely on the
+// ERP-side filter; this is the real one.
 // ---------------------------------------------------------------------------
 // Marker category, never displayed. Water products are one prefix family but two
 // different things to a manager, and the difference is not in the prefix — it is
@@ -66,15 +70,16 @@ export const isWaterUnit = (inventoryId) => {
 export const PART_ORDER_RE = /^S[A-Z]{1,3}\d{4}$/;
 export const isPartOrder = (inventoryId) => PART_ORDER_RE.test(String(inventoryId ?? '').trim().toUpperCase());
 
+/** On-site commissioning, wherever the word sits in the code. See above. */
+export const COMMISSIONING_RE = /COMMISSION/i;
+export const COMMISSIONING_REASON = 'on-site commissioning, not workshop fab';
+
 export const CATEGORY_RULES = [
   // prefix,             category,                     excludeReason
-  ['SLRIVCOMMISSION',    null,                         'on-site commissioning, not workshop fab'],
-  ['STLRIVCOMMISSION',   null,                         'on-site commissioning, not workshop fab'],
   ['SRLCUSTOM',          'Rotary Lifters',             null],
   ['SRL',                'Rotary Lifters',             null],
   ['SLPOWER',            null,                         'component: powerpack'],
   ['SLCUSTOM',           'Cylinder lifters',           null],
-  ['SLRIV',              'Cylinder lifters',           null],
   ['SL',                 'Cylinder lifters',           null],
   ['SDC0',               null,                         'spares/kit'],
   ['SDC',                'Davits',                     null],
@@ -95,12 +100,10 @@ export const CATEGORY_RULES = [
   // accessories. They are still kept off the printed sheet by PRINT_LAYOUT,
   // which lists what prints rather than what exists.
   //
-  // Ordering matters as much here as anywhere: STL (launchers), STC (chocks)
-  // and both COMMISSION spellings all begin with ST and are all matched above.
-  // Anything reaching these rules is genuinely a water product.
-  ['STKIT',              WATER,                        null],
-  ['STF',                WATER,                        null],
-  ['STMEDIAFILTER',      WATER,                        null],
+  // Ordering matters as much here as anywhere: STL (launchers) and STC (chocks)
+  // begin with ST and are matched above, and commissioning never reaches the
+  // list. Anything reaching this rule is genuinely a water product: kits,
+  // filters and spares included, which `classify` tells apart from units.
   ['ST',                 WATER,                        null],
   ['SS',                 WATER,                        null],   // softeners - always a unit
 ];
@@ -177,7 +180,7 @@ export const SETTABLE_STATUSES = ['Planned', 'Released', 'In Process', 'On Hold'
 // `Type` is NOT a filter.
 //
 // It used to be: only `Finished Good` reached the board. That was wrong.
-// SWD4PDRIVXX02 (a watertight door) and SHCELECPLINTHRIVXX11 (a helm seat box)
+// SWD4PDZZZXX02 (a watertight door) and SHCELECPLINTHZZZXX11 (a helm seat box)
 // are both booked as `Component Part` and are both real workshop jobs — the ERP
 // classification reflects how they are sold, not whether the floor builds them.
 //
@@ -292,21 +295,10 @@ export const VESSEL_IN_DESC_RE = /^\s*([A-Za-z]{3,}\s*\d+[A-Za-z]{0,3})/;
 // Trailing company words stripped off a customer name used as a label.
 export const CUSTOMER_SUFFIX_RE = /\s+(Pty Ltd|Charters|Yachts|Marine|Group)\b.*$/i;
 
-// The handful of labels the regex cannot resolve. This is the only
-// hand-maintained table in the system besides the vessel codes. Keep it small.
-export const LABEL_OVERRIDES = {
-  STCFXCHOCK: 'Fixed Tender Chocks',
-  // Currently unreachable: the SDC0 rule above excludes rope kits before any
-  // label is built. Kept because BOARD_SPEC lists it and the SDC0 rule could
-  // change; harmless while dead.
-  SDC0287: 'Davit Rope Kit',
-  // SDC550BBBB was here, because its PRODUCTION description was
-  // `550BBBB Davit (stock)` — a part code where a description belongs. Its
-  // ITEM description is `Stella Davit 550kg - Single Stage (Hydraulic Luff /
-  // Hydraulic Slew / Hydraulic Extension)`, which is the fix that entry was
-  // waiting for, so the davit rule now handles it like every other davit and
-  // says more than the hand-written label did.
-};
+// A product whose label these rules cannot resolve is named by an ITEM
+// OVERRIDE in the store (the label dialog's item scope), not by a table here.
+// There used to be one, keyed on real item codes, in a repository anybody can
+// read.
 
 /**
  * Category for an Inventory ID. Exactly one of the two fields is non-null.
@@ -315,6 +307,7 @@ export const LABEL_OVERRIDES = {
  */
 export function classify(inventoryId) {
   const inv = String(inventoryId ?? '').trim().toUpperCase();
+  if (COMMISSIONING_RE.test(inv)) return { category: null, excludeReason: COMMISSIONING_REASON };
   for (const [prefix, category, reason] of CATEGORY_RULES) {
     if (!inv.startsWith(prefix)) continue;
     // The prefix says "water product"; the suffix says which kind.

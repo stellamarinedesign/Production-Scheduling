@@ -20,6 +20,12 @@ tests/fixtures/
 # repository should not carry it. The file lives in the private handoff folder.
 data/vessel-codes.seed.json
 
+# The boat builders whose vessel codes the board reads — a customer's name and
+# the marker in its item codes. They live in the board settings in Firestore;
+# this file is only for a local board, where every scratch copy starts with
+# empty storage. It lives in the private handoff folder.
+data/builders.json
+
 # The test suite lives with the data it tests.
 #
 # Every assertion is written against the real export — real vessel codes, real

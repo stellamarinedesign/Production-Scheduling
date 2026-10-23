@@ -12,7 +12,7 @@
 
 import { Store, unpackRows } from './store.js';
 import { resolveDisplays, boatRows, itemFacts, factsFromStore,
-         factsAreStale } from './vessel-codes.js';
+         factsAreStale, setBuilders, upgradeCodeMap } from './vessel-codes.js';
 import { classify } from './rules.js';
 import { Auth, ROLE, setManagers, setEngineers, setMasters } from './auth.js';
 import { VERSION } from './version.js';
@@ -89,6 +89,8 @@ let davits = [];    // boat -> davits, straight from the export
   if (Store.mode !== 'firestore') $('storeMode').style.color = 'var(--red-bright)';
   codeMap = await Store.loadCodes();
   facts = await loadFacts();
+  // The davit fall-back reads vessel codes off the rows, which needs the builders.
+  setBuilders((await Store.loadSettings().catch(() => ({}))).builders);
   davits = await loadDavits();
 
   // The seed file is no longer deployed — Firestore is the source of truth. An
@@ -250,7 +252,7 @@ function renderDavitRows() {
   for (const d of withDavitHulls(davits)) {
     const row = el('div', `code-row${d.sheetHidden ? ' is-offsheet' : ''}`);
     row.append(el('div', 'c-display', d.display || d.boat));
-    row.append(el('div', 'c-riv', d.boat));
+    row.append(el('div', 'c-model', d.boat));
     row.append(el('div', 'c-hull', (d.hulls ?? []).join(', ') || '\u2014'));
 
     const items = el('div', 'c-items');
@@ -341,12 +343,12 @@ function boatRow(r) {
   }
   row.append(codes);
 
-  // 3. What the manufacturer call it, and the hulls it has been fitted to.
+  // 3. What the manufacturer calls it, and the hulls it has been fitted to.
   // What the cheat sheet prints, not every code the data carries — a boat with
   // three manufacturer codes should not put all three on a sheet of paper.
-  const riv = el('div', `c-riv${r.modelSet ? ' is-set' : ''}`, r.model || '—');
-  if (r.modelSet) riv.title = `Set by hand. Found in the data: ${r.riviera.join(', ') || 'none'}`;
-  row.append(riv);
+  const modelCell = el('div', `c-model${r.modelSet ? ' is-set' : ''}`, r.model || '—');
+  if (r.modelSet) modelCell.title = `Set by hand. Found in the data: ${r.models.join(', ') || 'none'}`;
+  row.append(modelCell);
   row.append(el('div', 'c-hull', r.hulls.join(', ') || '—'));
 
   // 4. Products. In boats mode a boat with several product lines shows them as
@@ -437,7 +439,7 @@ async function rename(r) {
   const next = prompt(
     'What should the floor read for this boat?\n\n'
     + `ERP codes on this line: ${r.codes.join(', ')}\n`
-    + `Model: ${r.riviera.join(', ') || 'not recorded'}\n\n`
+    + `Model: ${r.models.join(', ') || 'not recorded'}\n\n`
     + 'Code only — the product wording comes from the template.',
     r.display,
   );
@@ -593,6 +595,8 @@ async function reviewCodesFile(file) {
   }
   const problem = validCodeMap(data);
   if (problem) { toast(problem, 6000); return; }
+  // A backup saved before the model list was renamed loads like a new one.
+  data = upgradeCodeMap(data).map;
 
   // NOTHING IS WRITTEN UNTIL IT IS CONFIRMED, and what changes is spelled out
   // first: this overwrites hand-made decisions, which is the whole point and
@@ -692,7 +696,7 @@ async function toggleSheetHidden(r) {
 }
 
 async function setModel(r) {
-  const found = r.riviera;
+  const found = r.models;
   const current = r.modelSet ? r.model : '';
   const next = prompt(
     `Model column on the cheat sheet for ${r.display}.\n\n`

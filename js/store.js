@@ -9,7 +9,7 @@
 // it is local-only.
 //
 // Collections (STELLA_PRODUCTION_BOARD_CONTEXT.md §6, as amended):
-//   vesselCodes/{stellaCode}  { boat, riviera[], hull_prefix[], items[],
+//   vesselCodes/{stellaCode}  { boat, models[], hull_prefix[], items[],
 //                               display, _confirmed }
 //   jobOverrides/{prodNo}     { hidden, hiddenReason, labelOverride, updatedAt,
 //                               completed, completedAt, completedBy, progress,
@@ -17,17 +17,19 @@
 //   itemOverrides/{itemId}    { inventoryId, label, displayCode, updatedAt }
 //   imports/{importId}        { retrievedAt, sourceId, sourceLabel, uploadedBy,
 //                               horizonWeeks, maxStock, jobs[], rowsJson }
-//   settings/board            { horizonWeeks, maxStock, autoFit }
+//   settings/board            { horizonWeeks, maxStock, autoFit,
+//                               builders[{ name, marker }] }
 
 import { getFirebase, failureReason, isConfigured } from './firebase.js';
 import { toDateOnly, toISO } from './transform.js';
+import { upgradeCodeMap, LEGACY_MODELS_KEY } from './vessel-codes.js';
 
 const LS_PREFIX = 'stella.board.';
 const lsGet = (k, fallback) => {
   try { const v = localStorage.getItem(LS_PREFIX + k); return v ? JSON.parse(v) : fallback; }
   catch { return fallback; }
 };
-/** Firestore doc ids cannot contain '/'; item codes like SRLRIVXX04/24 can. */
+/** Firestore doc ids cannot contain '/'; item codes like SRLZZZXX04/24 can. */
 const encodeItemId = (id) => String(id).replace(/\//g, '__');
 
 const lsSet = (k, v) => { try { localStorage.setItem(LS_PREFIX + k, JSON.stringify(v)); } catch {} };
@@ -155,7 +157,7 @@ export const Store = {
     //
     // Seeding a FRESH environment means copying the file from the private
     // handoff folder into data/ for one load. See the private SETUP document.
-    const seed = await Store._seed();
+    const seed = upgradeCodeMap(await Store._seed()).map;
     const merge = (stored) => {
       const out = { ...seed };
       for (const [code, entry] of Object.entries(stored ?? {})) {
@@ -165,8 +167,10 @@ export const Store = {
     };
 
     if (this.mode === 'local') {
-      const stored = lsGet('vesselCodes', null);
-      if (!stored) { lsSet('vesselCodes', seed); return seed; }
+      const raw = lsGet('vesselCodes', null);
+      if (!raw) { lsSet('vesselCodes', seed); return seed; }
+      const { map: stored, upgraded } = upgradeCodeMap(raw);
+      if (upgraded.length) lsSet('vesselCodes', stored);
       return merge(stored);
     }
 
@@ -178,9 +182,31 @@ export const Store = {
         setDoc(doc(this._db, 'vesselCodes', code), entry)));
       return seed;
     }
-    const stored = {};
-    snap.forEach((d) => { stored[d.id] = d.data(); });
+    const raw = {};
+    snap.forEach((d) => { raw[d.id] = d.data(); });
+    const { map: stored, upgraded } = upgradeCodeMap(raw);
+    if (upgraded.length) await this._rewriteLegacyCodes(stored, upgraded);
     return merge(stored);
+  },
+
+  /**
+   * Rewrite records that still carry the model list under its old key: `models`
+   * in, the old field deleted. Only those two fields are touched, so an edit made
+   * meanwhile on another device survives.
+   *
+   * Best effort. Only a manager may write, and anybody else simply reads the
+   * upgraded copy in memory; the first manager to load the codes does it for
+   * everyone. See `upgradeCodeMap`.
+   */
+  async _rewriteLegacyCodes(stored, codes) {
+    const { doc, setDoc, deleteField } = this._fs;
+    try {
+      await Promise.all(codes.map((code) => setDoc(doc(this._db, 'vesselCodes', code),
+        { models: stored[code].models ?? [], [LEGACY_MODELS_KEY]: deleteField() }, { merge: true })));
+      console.info(`[codes] ${codes.length} records rewritten with \`models\``);
+    } catch (e) {
+      console.warn('[codes] could not rewrite the old model field', e.message);
+    }
   },
 
   /** The bootstrap map, or {} when it is not deployed. Never throws. */
@@ -332,7 +358,7 @@ export const Store = {
   },
 
   async setItemOverride(inventoryId, patch) {
-    // Firestore doc ids cannot contain '/', and item codes do (SRLRIVXX04/24).
+    // Firestore doc ids cannot contain '/', and item codes do (SRLZZZXX04/24).
     const id = encodeItemId(inventoryId);
     const stamped = { ...patch, inventoryId, updatedAt: new Date().toISOString() };
     if (this.mode === 'local') {
@@ -394,11 +420,34 @@ export const Store = {
   // ---- settings -----------------------------------------------------------
 
   async loadSettings() {
-    const defaults = { horizonWeeks: 12, maxStock: null, autoFit: true };
-    if (this.mode === 'local') return { ...defaults, ...lsGet('settings', {}) };
-    const { doc, getDoc } = this._fs;
-    const snap = await getDoc(doc(this._db, 'settings', 'board'));
-    return { ...defaults, ...(snap.exists() ? snap.data() : {}) };
+    const defaults = { horizonWeeks: 12, maxStock: null, autoFit: true, builders: [] };
+    let out;
+    if (this.mode === 'local') {
+      out = { ...defaults, ...lsGet('settings', {}) };
+    } else {
+      const { doc, getDoc } = this._fs;
+      const snap = await getDoc(doc(this._db, 'settings', 'board'));
+      out = { ...defaults, ...(snap.exists() ? snap.data() : {}) };
+    }
+    if (!Array.isArray(out.builders) || !out.builders.length) out.builders = await this._buildersFile();
+    return out;
+  },
+
+  /**
+   * The builders from a private file, for a board whose settings have none.
+   *
+   * The settings document is where they live. This is for a LOCAL board — a
+   * scratch copy served for testing, where every fresh port starts with empty
+   * storage — and, like the code seed, the file is gitignored and never
+   * deployed. [] when absent. Never throws.
+   */
+  async _buildersFile() {
+    try {
+      const r = await fetch(new URL('../data/builders.json', import.meta.url), { cache: 'no-store' });
+      if (!r.ok) return [];
+      const j = await r.json();
+      return Array.isArray(j) ? j : (Array.isArray(j?.builders) ? j.builders : []);
+    } catch { return []; }
   },
 
   /**
@@ -763,7 +812,7 @@ export const Store = {
         await start;
         const stored = {};
         snap.forEach((d) => { stored[d.id] = d.data(); });
-        cb(merge(stored), meta);
+        cb(merge(upgradeCodeMap(stored).map), meta);
       });
   },
 
