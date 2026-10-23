@@ -803,8 +803,11 @@ export const Store = {
       }
       return out;
     };
-    const start = fetch(new URL('../data/vessel-codes.seed.json', import.meta.url))
-      .then((r) => r.json()).then((j) => { seed = j; });
+    // The seed is not deployed, so a bare fetch of it rejects on the live site
+    // and every snapshot below would wait on that rejection for ever: live
+    // code updates never arrived. _seed() never throws, and reads {} when the
+    // file is absent, which is the whole of what a deployed board has.
+    const start = this._seed().then((j) => { seed = upgradeCodeMap(j).map; });
 
     return this._watch(
       (fs, db) => fs.collection(db, 'vesselCodes'),
