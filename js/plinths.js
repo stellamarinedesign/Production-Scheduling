@@ -109,15 +109,24 @@ export const sameCatalogue = (a, b) => a?.path === b?.path && JSON.stringify(a?.
 // which model a davit is
 // ---------------------------------------------------------------------------
 
-/** A davit's lift and drive, from its item code and descriptions. */
+/**
+ * A davit's lift, and the drive its plinth follows: the slew's, since a
+ * manual-slew davit sits on a manual-slew post and a hydraulic-slew davit on
+ * a hydraulic one, whatever its luff. The item description names all three
+ * drives (luff, slew, extension); a one-off's own order text says how it
+ * differs, so it is read first for one. The item code's slew token (HS, MS,
+ * in the pairs after the lift) is the last resort.
+ */
 export function davitOf(job) {
   const code = String(job?.inventory_id ?? '');
-  const text = `${code} ${job?.item_description ?? ''} ${job?.description ?? ''}`;
-  const kg = /^SDC(\d{3})/i.exec(code)?.[1] ?? /(\d{3})\s*kg/i.exec(text)?.[1] ?? null;
-  const drive = /fold/i.test(text) ? 'folding'
-    : /hydraulic\s+luff/i.test(text) || /^SDC\d{3}\w*HL/i.test(code) ? 'hydraulic'
-      : /manual\s+luff|luff\s+assist/i.test(text) || /^SDC\d{3}\w*ML/i.test(code) ? 'manual'
-        : null;
+  const texts = [job?.item_description, job?.description].map((t) => String(t ?? ''));
+  if (job?.is_custom) texts.reverse();
+  const kg = /^SDC(\d{3})/i.exec(code)?.[1] ?? /(\d{3})\s*kg/i.exec(texts.join(' '))?.[1] ?? null;
+  const slew = (t) => (/hydraulic\s+slew/i.test(t) ? 'hydraulic' : /manual\s+slew|slew\s+assist/i.test(t) ? 'manual' : null);
+  const pairs = /^SDC\d{3}([A-Z]+)/i.exec(code)?.[1].toUpperCase().match(/../g) ?? [];
+  const drive = /fold/i.test(`${code} ${texts.join(' ')}`) ? 'folding'
+    : texts.map(slew).find(Boolean)
+      ?? (pairs.includes('HS') ? 'hydraulic' : pairs.includes('MS') ? 'manual' : null);
   return { kg: kg === null ? null : Number(kg), drive };
 }
 
