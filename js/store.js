@@ -31,6 +31,15 @@ const lsGet = (k, fallback) => {
 };
 /** Firestore doc ids cannot contain '/'; item codes like SRLZZZXX04/24 can. */
 const encodeItemId = (id) => String(id).replace(/\//g, '__');
+/**
+ * A vessel code as a document id, and back. A code can carry '/' too: a
+ * lifter for two models reads as one code, XX01/XX02. Written as '__', as item
+ * ids are, and read back as the code, so nothing above the store ever sees
+ * the document id. (The first such code hit the live board on 2026-10-30 and
+ * its save threw, which left the new-code dialog stuck.)
+ */
+const codeDocId = encodeItemId;
+const codeFromDocId = (id) => String(id).replace(/__/g, '/');
 
 const lsSet = (k, v) => { try { localStorage.setItem(LS_PREFIX + k, JSON.stringify(v)); } catch {} };
 
@@ -179,11 +188,11 @@ export const Store = {
     if (snap.empty && !Object.keys(seed).length) return {};
     if (snap.empty) {
       await Promise.all(Object.entries(seed).map(([code, entry]) =>
-        setDoc(doc(this._db, 'vesselCodes', code), entry)));
+        setDoc(doc(this._db, 'vesselCodes', codeDocId(code)), entry)));
       return seed;
     }
     const raw = {};
-    snap.forEach((d) => { raw[d.id] = d.data(); });
+    snap.forEach((d) => { raw[codeFromDocId(d.id)] = d.data(); });
     const { map: stored, upgraded } = upgradeCodeMap(raw);
     if (upgraded.length) await this._rewriteLegacyCodes(stored, upgraded);
     return merge(stored);
@@ -201,7 +210,7 @@ export const Store = {
   async _rewriteLegacyCodes(stored, codes) {
     const { doc, setDoc, deleteField } = this._fs;
     try {
-      await Promise.all(codes.map((code) => setDoc(doc(this._db, 'vesselCodes', code),
+      await Promise.all(codes.map((code) => setDoc(doc(this._db, 'vesselCodes', codeDocId(code)),
         { models: stored[code].models ?? [], [LEGACY_MODELS_KEY]: deleteField() }, { merge: true })));
       console.info(`[codes] ${codes.length} records rewritten with \`models\``);
     } catch (e) {
@@ -228,7 +237,7 @@ export const Store = {
       return;
     }
     const { doc, setDoc } = this._fs;
-    await setDoc(doc(this._db, 'vesselCodes', code), patch, { merge: true });
+    await setDoc(doc(this._db, 'vesselCodes', codeDocId(code)), patch, { merge: true });
   },
 
   /**
@@ -246,7 +255,7 @@ export const Store = {
       return;
     }
     const { doc, deleteDoc } = this._fs;
-    await deleteDoc(doc(this._db, 'vesselCodes', code));
+    await deleteDoc(doc(this._db, 'vesselCodes', codeDocId(code)));
   },
 
   /**
@@ -265,7 +274,7 @@ export const Store = {
     }
     const { doc, setDoc } = this._fs;
     for (const [code, entry] of entries) {
-      await setDoc(doc(this._db, 'vesselCodes', code), entry, { merge: true });
+      await setDoc(doc(this._db, 'vesselCodes', codeDocId(code)), entry, { merge: true });
     }
     return entries.length;
   },
@@ -275,7 +284,7 @@ export const Store = {
     if (!addedCodes.length) return;
     if (this.mode === 'local') { lsSet('vesselCodes', map); return; }
     const { doc, setDoc } = this._fs;
-    await Promise.all(addedCodes.map((c) => setDoc(doc(this._db, 'vesselCodes', c), map[c], { merge: true })));
+    await Promise.all(addedCodes.map((c) => setDoc(doc(this._db, 'vesselCodes', codeDocId(c)), map[c], { merge: true })));
   },
 
   // ---- per-job overrides --------------------------------------------------
@@ -814,7 +823,7 @@ export const Store = {
       async (snap, meta) => {
         await start;
         const stored = {};
-        snap.forEach((d) => { stored[d.id] = d.data(); });
+        snap.forEach((d) => { stored[codeFromDocId(d.id)] = d.data(); });
         cb(merge(upgradeCodeMap(stored).map), meta);
       });
   },
