@@ -11,12 +11,13 @@
 // also on the masters list; masters hand that on from here, never to
 // themselves, and with no list the first manager is the master.
 
-import { Auth, ROLE, setManagers, setEngineers, setMasters, tidyEmail, isEmail, friendlyAuthError } from './auth.js';
+import { Auth, ROLE, setManagers, setEngineers, setMasters, setTesters, tidyEmail, isEmail, friendlyAuthError } from './auth.js';
 import { Store } from './store.js';
 import { closeOnBackdrop } from './dialog.js';
 import { openPasswordDialog } from './password.js';
 import { activityEntry, ACTION } from './activity.js';
 import { ROLES, ROLE_LABEL, ROLE_WORDS, normaliseAccess, accountRows, withRole, withoutAccount, withMaster, roleOf, tempPassword } from './access.js';
+import { isTestMode, isNotAvailable, NOT_AVAILABLE, openTestMode } from './test-mode.js';
 
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
@@ -103,9 +104,11 @@ function renderAccount() {
   const name = el('div', 'settings-row-label', local ? 'Local mode' : (Auth.user?.email ?? ''));
   if (!local && Auth.isMaster) name.append(el('span', 'master-chip', 'MASTER'));
   words.append(name);
-  words.append(el('div', 'settings-row-sub', local
+  // A tester has no sentence here; the role line is in the Accounts section.
+  const sub = local
     ? 'No accounts on this copy: everything is saved on this device only.'
-    : ROLE_SENTENCE[Auth.role] ?? ''));
+    : ROLE_SENTENCE[Auth.role] ?? '';
+  if (sub) words.append(el('div', 'settings-row-sub', sub));
   row.append(words);
   if (!local) {
     const acts = el('div', 'settings-acts');
@@ -115,6 +118,13 @@ function renderAccount() {
     const out = el('button', 'mini', 'Sign out');
     out.addEventListener('click', async () => { close(); await Auth.signOut(); opts.onSignOut?.(); });
     acts.append(pw, out);
+    // The way in: this page again with the flag, in this tab. A tester is in
+    // already, and so is a page that carries the flag.
+    if (!Auth.isTester && !isTestMode()) {
+      const test = el('button', 'mini', 'Test mode');
+      test.addEventListener('click', () => { close(); openTestMode(); });
+      acts.append(test);
+    }
     row.append(acts);
   }
   card.append(row);
@@ -129,7 +139,7 @@ function renderAccounts() {
   card.append(el('div', 'settings-row-sub',
     'Who gets which view, live for them on their next page load. '
     + 'Manager: ' + ROLE_WORDS.manager + '. Engineer: ' + ROLE_WORDS.engineer + '. '
-    + 'Floor: ' + ROLE_WORDS.floor + '. An account on no list can sign in and see nothing. '
+    + 'Floor: ' + ROLE_WORDS.floor + '. Testers: ' + ROLE_WORDS.tester + '. An account on no list can sign in and see nothing. '
     + 'Master: may change this list; not a role.'));
 
   const table = el('div', 'acct-table');
@@ -229,7 +239,10 @@ async function addAccount(email, role, btn) {
       renderAccounts();
     } catch (e) {
       const code = e?.code ?? '';
-      if (code.includes('email-already-in-use')) {
+      if (isNotAvailable(e)) {
+        fresh = null;
+        notify(NOT_AVAILABLE);
+      } else if (code.includes('email-already-in-use')) {
         fresh = { email, exists: true };
       } else {
         fresh = { email, failed: friendlyAuthError(e) };
@@ -252,7 +265,8 @@ async function makeUser(email, btn) {
     log(`${email}: Firebase user made.`);
   } catch (e) {
     const code = e?.code ?? '';
-    fresh = code.includes('email-already-in-use') ? { email, exists: true } : { email, failed: friendlyAuthError(e) };
+    if (isNotAvailable(e)) { fresh = null; notify(NOT_AVAILABLE); }
+    else fresh = code.includes('email-already-in-use') ? { email, exists: true } : { email, failed: friendlyAuthError(e) };
   } finally {
     btn.disabled = false;
     renderAccounts();
@@ -327,6 +341,7 @@ async function save(next, note) {
     setManagers(next.managers);
     setEngineers(next.engineers);
     setMasters(next.masters);
+    setTesters(next.testers);
     renderAccounts();
     notify(note);
     return true;

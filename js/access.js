@@ -1,31 +1,33 @@
 // access.js - the accounts and their roles, as data.
 //
-// One document, settings/access, holds four lists of addresses: managers,
-// engineers, floor, and masters. The first three are the roles, one address
-// in at most one of them (an address in none is floor by default, the floor
-// list only makes such an account visible in the Accounts panel). The
-// Firestore rules read managers and engineers directly, so the lists must
-// stay flat arrays. MASTERS is not a role: a master is whichever role they
+// One document, settings/access, holds five lists of addresses: managers,
+// engineers, floor, testers, and masters. The first four are the roles, one
+// address in at most one of them (an address in none is floor by default,
+// the floor list only makes such an account visible in the Accounts panel;
+// a tester has the manager view and is always in test mode). The Firestore
+// rules read the lists directly, so they must stay flat arrays. MASTERS is
+// not a role: a master is whichever role they
 // are, and additionally the only one who may change the lists. Masters are
 // set in the console, not here, so nobody can promote themselves to it.
 
 import { tidyEmail } from './auth.js';
 
-export const ROLES = ['manager', 'engineer', 'floor'];
-export const ROLE_LABEL = { manager: 'Manager', engineer: 'Engineer', floor: 'Floor' };
+export const ROLES = ['manager', 'engineer', 'floor', 'tester'];
+export const ROLE_LABEL = { manager: 'Manager', engineer: 'Engineer', floor: 'Floor', tester: 'Tester' };
 export const ROLE_WORDS = {
   manager: 'the board, imports and corrections',
   engineer: 'vessel codes and parts, with corrections; never the board',
   floor: 'current orders and the part list, read-only',
+  tester: 'the manager view, always in test mode',
 };
 
-const LISTS = ['managers', 'engineers', 'floor', 'masters'];
-const ROLE_LIST = { manager: 'managers', engineer: 'engineers', floor: 'floor' };
+const LISTS = ['managers', 'engineers', 'floor', 'testers', 'masters'];
+const ROLE_LIST = { manager: 'managers', engineer: 'engineers', floor: 'floor', tester: 'testers' };
 
 const tidyList = (xs) => [...new Set((Array.isArray(xs) ? xs : []).map(tidyEmail).filter(Boolean))];
 
 /**
- * The document as the app holds it: four tidy, de-duplicated lists. With no
+ * The document as the app holds it: five tidy, de-duplicated lists. With no
  * masters, the first manager listed is the master - the same default the
  * rules apply - so the document can be claimed and then handed on from the
  * app without anyone touching the console.
@@ -37,9 +39,10 @@ export function normaliseAccess(d) {
   return out;
 }
 
-/** The role an address has: manager, engineer, or floor. */
+/** The role an address has: tester, manager, engineer, or floor. Testers first, as auth.js reads it. */
 export function roleOf(access, email) {
   const e = tidyEmail(email);
+  if (access?.testers?.includes(e)) return 'tester';
   if (access?.managers?.includes(e)) return 'manager';
   if (access?.engineers?.includes(e)) return 'engineer';
   return 'floor';
@@ -54,8 +57,8 @@ export const isMaster = (access, email) => Boolean(access?.masters?.includes(tid
  */
 export function accountRows(access) {
   const a = normaliseAccess(access);
-  const all = [...new Set([...a.managers, ...a.engineers, ...a.floor, ...a.masters])];
-  const rank = { manager: 0, engineer: 1, floor: 2 };
+  const all = [...new Set([...a.managers, ...a.engineers, ...a.floor, ...a.testers, ...a.masters])];
+  const rank = { manager: 0, engineer: 1, floor: 2, tester: 3 };
   return all
     .map((email) => ({ email, role: roleOf(a, email), master: a.masters.includes(email) }))
     .sort((x, y) => Number(y.master) - Number(x.master) || rank[x.role] - rank[y.role] || x.email.localeCompare(y.email));

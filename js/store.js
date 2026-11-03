@@ -23,10 +23,13 @@
 import { getFirebase, failureReason, isConfigured } from './firebase.js';
 import { toDateOnly, toISO } from './transform.js';
 import { upgradeCodeMap, LEGACY_MODELS_KEY } from './vessel-codes.js';
+import { isTestMode, storage, wrapFirestore } from './test-mode.js';
 
 const LS_PREFIX = 'stella.board.';
+// Through `storage()` (test-mode.js): localStorage, or in test mode a map in
+// its place, so nothing written during a test reaches the machine.
 const lsGet = (k, fallback) => {
-  try { const v = localStorage.getItem(LS_PREFIX + k); return v ? JSON.parse(v) : fallback; }
+  try { const v = storage().getItem(LS_PREFIX + k); return v ? JSON.parse(v) : fallback; }
   catch { return fallback; }
 };
 /** Firestore doc ids cannot contain '/'; item codes like SRLZZZXX04/24 can. */
@@ -41,7 +44,7 @@ const encodeItemId = (id) => String(id).replace(/\//g, '__');
 const codeDocId = encodeItemId;
 const codeFromDocId = (id) => String(id).replace(/__/g, '/');
 
-const lsSet = (k, v) => { try { localStorage.setItem(LS_PREFIX + k, JSON.stringify(v)); } catch {} };
+const lsSet = (k, v) => { try { storage().setItem(LS_PREFIX + k, JSON.stringify(v)); } catch {} };
 
 /**
  * Pack raw ERP rows for storage on the import record.
@@ -129,6 +132,7 @@ export const Store = {
   reason: '',             // why local, when local
   _db: null,
   _fs: null,              // firestore function namespace
+  _testing: false,        // the namespace is the test-mode wrapper
 
   async init() {
     const fb = await getFirebase();
@@ -143,7 +147,22 @@ export const Store = {
     this._fs = fb.fs;
     this.mode = 'firestore';
     this.reason = '';
+    if (isTestMode()) this.enterTestMode();
     return this.mode;
+  },
+
+  /**
+   * Test mode: from here on every Firestore write stays in this browser. The
+   * function namespace is wrapped once (see test-mode.js), and the first page
+   * of the activity log is read now, so the log still has it after the first
+   * change, when reads come from the cache. Called by init when the URL
+   * carries the flag, and by the pages once a tester's role is known.
+   */
+  enterTestMode() {
+    if (this.mode !== 'firestore' || this._testing) return;
+    this._testing = true;
+    this._fs = wrapFirestore(this._fs, this._db);
+    this.listActivityPage().catch(() => {});
   },
 
   // ---- vessel codes -------------------------------------------------------
@@ -473,7 +492,7 @@ export const Store = {
    * a project that has never named one simply has none.
    */
   async loadAccess() {
-    if (this.mode === 'local') return { managers: ['*'], engineers: [], floor: [], masters: [] };
+    if (this.mode === 'local') return { managers: ['*'], engineers: [], floor: [], masters: [], testers: [] };
     try {
       const { doc, getDoc } = this._fs;
       const snap = await getDoc(doc(this._db, 'settings', 'access'));
@@ -482,13 +501,13 @@ export const Store = {
       // `floor` is the floor accounts (the rules read it too: unlisted reads
       // nothing); `masters` are who may change the lists. With no masters the
       // first manager is one - the same default the rules apply.
-      const out = { managers: list('managers'), engineers: list('engineers'), floor: list('floor'), masters: list('masters') };
+      const out = { managers: list('managers'), engineers: list('engineers'), floor: list('floor'), masters: list('masters'), testers: list('testers') };
       if (!out.masters.length && out.managers.length) out.masters = [out.managers[0]];
       return out;
     } catch (e) {
       // Fail closed and loudly: an unreadable list must not promote anybody.
       console.error('[access]', e.message);
-      return { managers: [], engineers: [], floor: [], masters: [] };
+      return { managers: [], engineers: [], floor: [], masters: [], testers: [] };
     }
   },
 
@@ -705,12 +724,12 @@ export const Store = {
       { managers: emails, updatedAt: new Date().toISOString() }, { merge: true });
   },
 
-  /** All four lists, from the Settings cog. The rules let only a master write this. */
-  async saveAccess({ managers, engineers, floor, masters }) {
+  /** All five lists, from the Settings cog. The rules let only a master write this. */
+  async saveAccess({ managers, engineers, floor, masters, testers }) {
     if (this.mode === 'local') return;
     const { doc, setDoc } = this._fs;
     await setDoc(doc(this._db, 'settings', 'access'),
-      { managers, engineers, floor: floor ?? [], masters: masters ?? [], updatedAt: new Date().toISOString() }, { merge: true });
+      { managers, engineers, floor: floor ?? [], masters: masters ?? [], testers: testers ?? [], updatedAt: new Date().toISOString() }, { merge: true });
   },
 
   /**

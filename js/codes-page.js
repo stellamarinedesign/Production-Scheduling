@@ -14,7 +14,8 @@ import { Store, unpackRows } from './store.js';
 import { resolveDisplays, boatRows, itemFacts, factsFromStore,
          factsAreStale, setBuilders, upgradeCodeMap } from './vessel-codes.js';
 import { classify } from './rules.js';
-import { Auth, ROLE, setManagers, setEngineers, setMasters } from './auth.js';
+import { Auth, ROLE, setManagers, setEngineers, setMasters, setTesters } from './auth.js';
+import { showTestMode, carryFlag } from './test-mode.js';
 import { VERSION } from './version.js';
 import { fitCodesSheet, TYPE_STEPS } from './codes-print.js';
 import { davitsByBoat } from './davits.js';
@@ -57,7 +58,11 @@ let davits = [];    // boat -> davits, straight from the export
   setManagers(access.managers);
   setEngineers(access.engineers);
   setMasters(access.masters);
+  setTesters(access.testers);
   const role = Auth.refreshRole();
+  // A tester is in test mode from here, flag or no flag; see test-mode.js.
+  if (Auth.isTester) Store.enterTestMode();
+  showTestMode();
   document.body.classList.toggle('role-engineer', role === ROLE.ENGINEER);
 
   // SAY WHY, DO NOT BOUNCE.
@@ -67,7 +72,7 @@ let davits = [];    // boat -> davits, straight from the export
   // no way to tell a broken role check from a cached copy of this file, and no
   // way to tell either of those from "you are not a manager". Whatever the
   // answer is, it is more useful on the page than in the address bar.
-  if (role !== ROLE.MANAGER && role !== ROLE.ENGINEER) {
+  if (!Auth.isStaff) {
     const why = role === ROLE.NONE
       ? 'You are not signed in.'
       : `You are signed in as ${first.email ?? 'an account'}, which is not on the manager or engineer list.`;
@@ -77,7 +82,7 @@ let davits = [];    // boat -> davits, straight from the export
     host.append(el('strong', null, 'Vessel codes are for managers and engineers'));
     host.append(el('div', null, `${why} The board itself is read-only for everyone else.`));
     const back = el('a', 'backlink', 'Go to the board');
-    back.href = './';
+    back.href = carryFlag('./');
     host.append(back);
     for (const n of document.querySelectorAll('main .view-bar, main #rows, main #warnings, main .provenance')) {
       n.hidden = true;

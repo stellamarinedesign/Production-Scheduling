@@ -8,13 +8,14 @@
 // Everything that decides is in parts.js; this draws and wires.
 
 import { Store } from './store.js';
-import { Auth, ROLE, setManagers, setEngineers, setMasters } from './auth.js';
+import { Auth, ROLE, setManagers, setEngineers, setMasters, setTesters } from './auth.js';
 import { VERSION } from './version.js';
 import { wireHelp } from './help.js';
 import { readStockExport } from './adapters/stock.js';
 import { downloadWorkbook } from './adapters/drafting-xlsx.js';
 import { closeOnBackdrop } from './dialog.js';
 import { wireSettings } from './settings.js';
+import { showTestMode, carryFlag } from './test-mode.js';
 import {
   transformParts, validateStockExport, diffParts, unknownFamilies,
   buildIndex, search, browse, familyCounts, familyOf, hasBin, effective,
@@ -75,12 +76,16 @@ function booting(what) {
   setManagers(access.managers);
   setEngineers(access.engineers);
   setMasters(access.masters);
+  setTesters(access.testers);
   role = Auth.refreshRole();
   who = first.email ?? null;
+  // A tester is in test mode from here, flag or no flag; see test-mode.js.
+  if (Auth.isTester) Store.enterTestMode();
+  showTestMode();
 
   document.body.classList.toggle('role-floor', role === ROLE.FLOOR);
   document.body.classList.toggle('role-engineer', role === ROLE.ENGINEER);
-  document.body.classList.toggle('role-manager', role === ROLE.MANAGER);
+  document.body.classList.toggle('role-manager', Auth.isManager);
   const whoami = $('whoami');
   whoami.textContent = Auth.mode === 'local' ? 'Local mode' : (who ?? '');
   wireSettings($('settingsBtn'), { onSignOut: () => location.reload() });
@@ -92,7 +97,7 @@ function booting(what) {
     host.append(el('strong', null, 'Sign in to look up parts'));
     host.append(el('div', null, 'The part list is for signed-in accounts. Sign in on the board, then come back.'));
     const back = el('a', 'backlink', 'Go to the board');
-    back.href = './';
+    back.href = carryFlag('./');
     host.append(back);
     return;
   }
