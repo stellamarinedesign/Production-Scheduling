@@ -9,7 +9,8 @@ import { CATEGORY_ORDER, PRINT_LAYOUT, EXCLUSION_ORDER, EXCLUSION_GROUP_LABEL,
          SETTABLE_STATUSES, ERP_CLOSER, isPartOrder } from './rules.js';
 import { stellaCode, labelFor, existingBoats, acceptNewCode, applyTemplate,
   setBuilders, buildersConfigured } from './vessel-codes.js';
-import { Auth, ROLE, friendlyAuthError, setManagers, setEngineers, setMasters, managerCount, tidyEmail } from './auth.js';
+import { Auth, ROLE, friendlyAuthError, setManagers, setEngineers, setMasters, setTesters, managerCount, tidyEmail } from './auth.js';
+import { prefs, showTestMode, isNotAvailable, NOT_AVAILABLE } from './test-mode.js';
 import { VERSION } from './version.js';
 import { wireHelp } from './help.js';
 import { davitsByBoat, mergeDavits } from './davits.js';
@@ -39,40 +40,40 @@ const el = (tag, cls, text) => {
 // The export we last put in front of the other managers. Keyed on the
 // adapter's retrievedAt, so a reload does not keep appending records to an
 // append-only collection.
+// Every per-device preference goes through `prefs` (test-mode.js): the real
+// values at start, and while the board is in test mode changes kept in memory.
 const GANTT_KEY = 'stella.board.ganttView';
 function loadGanttPrefs() {
-  try { return { packed: false, all: false, ...JSON.parse(localStorage.getItem(GANTT_KEY) ?? '{}') }; }
+  try { return { packed: false, all: false, ...JSON.parse(prefs.get(GANTT_KEY) ?? '{}') }; }
   catch { return { packed: false, all: false }; }
 }
-const saveGanttPrefs = (v) => { try { localStorage.setItem(GANTT_KEY, JSON.stringify(v)); } catch {} };
+const saveGanttPrefs = (v) => prefs.set(GANTT_KEY, JSON.stringify(v));
 
 // Whether part orders - numbered parts on customer orders - are on the board.
 // A view of the moment, so per device, like the paper; see rules.js isPartOrder.
 const PART_ORDERS_KEY = 'stella.board.partOrders';
-const loadShowPartOrders = () => { try { return localStorage.getItem(PART_ORDERS_KEY) !== 'hidden'; } catch { return true; } };
-const saveShowPartOrders = (on) => { try { localStorage.setItem(PART_ORDERS_KEY, on ? 'shown' : 'hidden'); } catch {} };
+const loadShowPartOrders = () => prefs.get(PART_ORDERS_KEY) !== 'hidden';
+const saveShowPartOrders = (on) => prefs.set(PART_ORDERS_KEY, on ? 'shown' : 'hidden');
 
 // The paper the warehouse copy prints on, and whether the board takes its
 // watermaker page: properties of the printer at hand and of the moment, so
 // remembered per device rather than shared with the other managers.
 const WAREHOUSE_PAPER_KEY = 'stella.board.warehousePaper';
 const loadWarehousePaper = () => {
-  try {
-    // The paper used to apply to every sheet, under its own key. A value from
-    // then says nothing about the warehouse copy, so it is dropped, not read.
-    localStorage.removeItem('stella.board.paper');
-    const p = localStorage.getItem(WAREHOUSE_PAPER_KEY);
-    return WAREHOUSE_PAPER[p] ? p : 'a4';
-  } catch { return 'a4'; }
+  // The paper used to apply to every sheet, under its own key. A value from
+  // then says nothing about the warehouse copy, so it is dropped, not read.
+  prefs.remove('stella.board.paper');
+  const p = prefs.get(WAREHOUSE_PAPER_KEY);
+  return WAREHOUSE_PAPER[p] ? p : 'a4';
 };
-const saveWarehousePaper = (p) => { try { localStorage.setItem(WAREHOUSE_PAPER_KEY, p); } catch {} };
+const saveWarehousePaper = (p) => prefs.set(WAREHOUSE_PAPER_KEY, p);
 const WATER_PAGE_KEY = 'stella.board.watermakerPage';
-const loadWaterPage = () => { try { return localStorage.getItem(WATER_PAGE_KEY) === 'on'; } catch { return false; } };
-const saveWaterPage = (on) => { try { localStorage.setItem(WATER_PAGE_KEY, on ? 'on' : 'off'); } catch {} };
+const loadWaterPage = () => prefs.get(WATER_PAGE_KEY) === 'on';
+const saveWaterPage = (on) => prefs.set(WATER_PAGE_KEY, on ? 'on' : 'off');
 
 const PUBLISHED_KEY = 'stella.board.publishedAt';
-const publishedAt = () => { try { return localStorage.getItem(PUBLISHED_KEY) ?? ''; } catch { return ''; } };
-const markPublished = (at) => { try { localStorage.setItem(PUBLISHED_KEY, at ?? ''); } catch {} };
+const publishedAt = () => prefs.get(PUBLISHED_KEY) ?? '';
+const markPublished = (at) => prefs.set(PUBLISHED_KEY, at ?? '');
 
 const state = {
   rows: null,
@@ -118,6 +119,7 @@ function booting(what) {
 
 (async function boot() {
   wireAuth();
+  showTestMode();
 
   await Auth.init(async (st) => {
     if (st.role === ROLE.NONE) { showAuth(); return; }
@@ -208,20 +210,24 @@ async function start(st) {
     setManagers(access.managers);
     setEngineers(access.engineers);
     setMasters(access.masters);
+    setTesters(access.testers);
     state.access = access;
   }
   st = { ...st, role: Auth.refreshRole() };
+  // A tester is in test mode from here, flag or no flag; see test-mode.js.
+  if (Auth.isTester) Store.enterTestMode();
+  showTestMode();
 
   // Role decides what is drawn. The Firestore rules decide what is allowed —
   // hiding a button is not security, it is tidiness.
   document.body.classList.toggle('role-floor', st.role === ROLE.FLOOR);
   document.body.classList.toggle('role-engineer', st.role === ROLE.ENGINEER);
-  document.body.classList.toggle('role-manager', st.role === ROLE.MANAGER);
+  document.body.classList.toggle('role-manager', Auth.isManager);
 
   const who = $('whoami');
   who.textContent = st.mode === 'local' ? 'Local mode' : (st.email ?? '');
-  const chip = el('span', `role ${st.role === ROLE.MANAGER ? 'manager' : ''}`,
-    st.role === ROLE.MANAGER ? 'MANAGER' : st.role === ROLE.ENGINEER ? 'ENGINEER' : 'FLOOR');
+  const chip = el('span', `role ${Auth.isManager ? 'manager' : ''}`,
+    Auth.isManager ? 'MANAGER' : st.role === ROLE.ENGINEER ? 'ENGINEER' : 'FLOOR');
   who.append(chip);
 
   if (started) { rebuild(); return; }
@@ -537,6 +543,7 @@ function wireAuth() {
       err.textContent = `If ${email} has an account, a link to set a password is on its `
         + `way. It can take a minute, and it may land in junk mail.`;
     } catch (e) {
+      if (isNotAvailable(e)) { toast(NOT_AVAILABLE); return; }
       err.style.color = '';
       err.textContent = friendlyAuthError(e);
     } finally {
@@ -3161,12 +3168,10 @@ function logChange(desc, prodNo = null, inventoryId = null, label = null) {
 // write per toggle would be needlessly chatty.
 const COLLAPSE_KEY = 'stella.board.collapsed';
 const loadCollapsed = () => {
-  try { return new Set(JSON.parse(localStorage.getItem(COLLAPSE_KEY) ?? '[]')); }
+  try { return new Set(JSON.parse(prefs.get(COLLAPSE_KEY) ?? '[]')); }
   catch { return new Set(); }
 };
-const saveCollapsed = (set) => {
-  try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...set])); } catch {}
-};
+const saveCollapsed = (set) => prefs.set(COLLAPSE_KEY, JSON.stringify([...set]));
 let collapsed = loadCollapsed();
 
 let toastTimer;

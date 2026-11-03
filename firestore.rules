@@ -6,7 +6,7 @@ rules_version = '2';
 // settings/access document, which these rules read.
 //
 // THE MODEL. An account counts only if a master listed it. Every read needs a
-// LISTED account - a manager, an engineer or a floor address in
+// LISTED account - a manager, an engineer, a floor or a tester address in
 // settings/access - so a Firebase user that nobody listed reads nothing,
 // which is what makes it safe for the app to create users (sign-up on in the
 // console). Writes need a manager, or an engineer for part corrections. The
@@ -32,7 +32,10 @@ service cloud.firestore {
 
     function manager()  { return signedIn() && onList('managers'); }
     function engineer() { return signedIn() && onList('engineers'); }
-    function listed()   { return signedIn() && (onList('managers') || onList('engineers') || onList('floor')); }
+    // A tester reads like anyone listed and writes nothing: the app keeps a
+    // tester's changes in the browser, and no write rule below names them.
+    function tester()   { return signedIn() && onList('testers'); }
+    function listed()   { return signedIn() && (onList('managers') || onList('engineers') || onList('floor') || onList('testers')); }
 
     // MASTERS are not a role: a master is whatever role they are, and the
     // only one who may change the lists. With no masters list, or an empty

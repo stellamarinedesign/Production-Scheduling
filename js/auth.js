@@ -17,9 +17,12 @@
 // Empty until then, and empty means nobody is a manager: an unknown account
 // gets the floor view rather than the run of the board. That is the same
 // fail-closed default as before, now covering the not-yet-loaded case too.
+import { isTestMode, enterTestMode, notAvailable, NOT_AVAILABLE } from './test-mode.js';
+
 let managerEmails = [];
 let engineerEmails = [];
 let masterEmails = [];
+let testerEmails = [];
 
 export const tidyEmail = (e) => String(e ?? '').trim().toLowerCase();
 export const isEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(e ?? ''));
@@ -52,16 +55,24 @@ export function setMasters(emails) { masterEmails = tidy(emails); }
 export const isMasterEmail = (email) => masterEmails.includes(tidyEmail(email));
 
 /**
+ * TESTERS get the manager view and are always in test mode: every change they
+ * make stays in their browser, and the rules refuse their writes besides. The
+ * list is read first, so an address on it is a tester whatever else it is on.
+ */
+export function setTesters(emails) { testerEmails = tidy(emails); }
+
+/**
  * Anyone signed in who is not on that list gets the floor view: the board,
  * read-only, no manager chrome. Defaulting unknown-but-authenticated accounts
  * DOWN to floor rather than up to manager means a new account added in the
  * console can never accidentally arrive with edit rights.
  */
-export const ROLE = { MANAGER: 'manager', ENGINEER: 'engineer', FLOOR: 'floor', NONE: 'none' };
+export const ROLE = { MANAGER: 'manager', ENGINEER: 'engineer', FLOOR: 'floor', TESTER: 'tester', NONE: 'none' };
 
 export function roleFor(email) {
   if (!email) return ROLE.NONE;
   const e = email.trim().toLowerCase();
+  if (testerEmails.includes(e)) return ROLE.TESTER;
   if (managerEmails.includes(e)) return ROLE.MANAGER;
   if (engineerEmails.includes(e)) return ROLE.ENGINEER;
   return ROLE.FLOOR;
@@ -95,7 +106,7 @@ export const Auth = {
     this._fb = fb;
     fb.fa.onAuthStateChanged(fb.auth, (user) => {
       this.user = user;
-      this.role = user ? roleFor(user.email) : ROLE.NONE;
+      this._setRole(user ? roleFor(user.email) : ROLE.NONE);
       onChange({ role: this.role, email: user?.email ?? null, mode: 'firebase' });
     });
     return 'firebase';
@@ -113,8 +124,14 @@ export const Auth = {
    */
   refreshRole() {
     if (this.mode === 'local') return this.role;
-    this.role = this.user ? roleFor(this.user.email) : ROLE.NONE;
-    return this.role;
+    return this._setRole(this.user ? roleFor(this.user.email) : ROLE.NONE);
+  },
+
+  /** The role, and with it the mode: a tester is in test mode from the moment the role is known. */
+  _setRole(role) {
+    this.role = role;
+    if (role === ROLE.TESTER) enterTestMode({ forced: true });
+    return role;
   },
 
   async signIn(email, password) {
@@ -143,6 +160,7 @@ export const Auth = {
    * also means a typo looks exactly like success — hence the wording in the UI.
    */
   async sendPasswordReset(email) {
+    if (isTestMode()) throw notAvailable();
     if (this.mode === 'local') throw new Error('Local mode — there are no accounts.');
     const { fa, auth } = this._fb;
     await fa.sendPasswordResetEmail(auth, email.trim());
@@ -157,6 +175,7 @@ export const Auth = {
    * cannot do - that is a console job, in the private SETUP notes.
    */
   async changePassword(current, next) {
+    if (isTestMode()) throw notAvailable();
     if (this.mode === 'local') throw new Error('Local mode \u2014 there are no accounts.');
     const { fa, auth } = this._fb;
     const user = auth.currentUser;
@@ -173,6 +192,7 @@ export const Auth = {
    * since a user nobody listed reads nothing.
    */
   async createAccount(email, password) {
+    if (isTestMode()) throw notAvailable();
     if (this.mode === 'local') throw new Error('Local mode \u2014 there are no accounts.');
     const { secondaryAuth } = await import('./firebase.js');
     const auth2 = await secondaryAuth();
@@ -181,22 +201,26 @@ export const Auth = {
     await fa.signOut(auth2);
   },
 
-  get isManager() { return this.role === ROLE.MANAGER; },
-  /** May change the accounts and their roles. Not a role; see setMasters. */
-  get isMaster() { return this.mode === 'firebase' && Boolean(this.user?.email) && isMasterEmail(this.user.email); },
+  /** The manager view: a manager, or a tester, whose board keeps nothing. */
+  get isManager() { return this.role === ROLE.MANAGER || this.role === ROLE.TESTER; },
+  /** May change the accounts and their roles. Not a role; see setMasters. Never a tester. */
+  get isMaster() { return this.mode === 'firebase' && this.role !== ROLE.TESTER && Boolean(this.user?.email) && isMasterEmail(this.user.email); },
+  /** The manager view, always in test mode. The few places that differ ask this. */
+  get isTester() { return this.role === ROLE.TESTER; },
   get isEngineer() { return this.role === ROLE.ENGINEER; },
   get isFloor() { return this.role === ROLE.FLOOR; },
-  /** The reference pages: vessel codes, parts. Managers and engineers. */
-  get isStaff() { return this.role === ROLE.MANAGER || this.role === ROLE.ENGINEER; },
+  /** The reference pages: vessel codes, parts. Managers, testers and engineers. */
+  get isStaff() { return this.isManager || this.role === ROLE.ENGINEER; },
   /** Who may make a part correction. Same set: drafting is who notices them. */
   get canEditParts() { return this.isStaff; },
   /** Who may import a stock export. The person who can also fix the ERP. */
-  get canImportParts() { return this.role === ROLE.MANAGER; },
+  get canImportParts() { return this.isManager; },
 };
 
 /** Firebase's error codes are not sentences. Make them ones. */
 export function friendlyAuthError(e) {
   const code = e?.code ?? '';
+  if (code === 'test-mode') return NOT_AVAILABLE;
   if (code.includes('invalid-credential') || code.includes('wrong-password')
       || code.includes('user-not-found')) return 'Wrong email or password.';
   if (code.includes('weak-password')) return 'Firebase wants a stronger password \u2014 at least six characters.';

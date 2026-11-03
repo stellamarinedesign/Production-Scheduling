@@ -9,6 +9,7 @@
 
 import { Auth, friendlyAuthError } from './auth.js';
 import { closeOnBackdrop } from './dialog.js';
+import { isNotAvailable, NOT_AVAILABLE } from './test-mode.js';
 
 const MIN_LENGTH = 8;
 
@@ -95,7 +96,8 @@ async function submit() {
     close();
     notify('Password changed. Use the new one from now on.');
   } catch (e) {
-    err.textContent = friendlyAuthError(e);
+    if (isNotAvailable(e)) { close(); notify(NOT_AVAILABLE); }
+    else err.textContent = friendlyAuthError(e);
   } finally {
     save.disabled = false;
   }
