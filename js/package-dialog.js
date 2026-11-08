@@ -610,7 +610,7 @@ async function printPackage() {
 let printFrame = null;
 
 /**
- * Print a PDF from a hidden frame in this page, so the print dialog opens
+ * Print a PDF from an unseen frame in this page, so the print dialog opens
  * over the board. A new tab for it put the board in the background, where
  * the browser slows it down, and showed a blank page meanwhile.
  */
@@ -618,6 +618,9 @@ function printPdf(bytes) {
   if (printFrame) { URL.revokeObjectURL(printFrame.src); printFrame.remove(); }
   const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
   const frame = el('iframe', 'print-frame');
+  // Drawn but never seen, so out of reach of the keyboard and screen readers.
+  frame.tabIndex = -1;
+  frame.setAttribute('aria-hidden', 'true');
   printFrame = frame;
   return new Promise((resolve, reject) => {
     const late = setTimeout(() => reject(new Error('The PDF did not load to print.')), 20000);

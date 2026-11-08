@@ -1000,8 +1000,11 @@ header .cog:hover { border-color: var(--red-bright); color: var(--white); }
 .pkg-lib-plinths { margin-top: 14px; }
 .pkg-plinth.is-blank { color: var(--text-dim); font-style: italic; }
 .pkg-btns { display: flex; gap: 6px; }
-/* Where a package's PDF is printed from: in the page, never seen. */
-.print-frame { position: absolute; width: 0; height: 0; border: 0; visibility: hidden; }
+/* Where a package's PDF is printed from: in the page, never seen. Clear
+   rather than hidden: a frame the browser counts as hidden (visibility,
+   no size, off the screen) can be slowed so far that the print dialog
+   takes most of a minute to open. */
+.print-frame { position: fixed; right: 0; bottom: 0; width: 320px; height: 240px; border: 0; opacity: 0; pointer-events: none; }
 @media screen and (max-width: 760px) {
   .pkg-doc { grid-template-columns: 20px minmax(0, 1fr) 84px; }
   .pkg-doc .pkg-kind, .pkg-doc .pkg-where { display: none; }
