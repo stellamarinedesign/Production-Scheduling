@@ -50,9 +50,11 @@ export function setBuilders(builders) {
 
   // Everything after the marker is the code. Anchoring on the marker rather
   // than on the first digit is what makes SWD4PDZZZXX02 resolve to XX02 and not
-  // 4PDZZZ.
+  // 4PDZZZ. A code may join two models with '/' or '-' (XX01/XX02, XX68-72);
+  // without the '-' such an item read as carrying no code at all, so it was
+  // never asked about and never reached the codes page.
   codeRe = markers.length
-    ? new RegExp(String.raw`(?:${markers.join('|')})([A-Z0-9/]+?)(?:\(\d+\)|\/\d+)?$`, 'i')
+    ? new RegExp(String.raw`(?:${markers.join('|')})([A-Z0-9/-]+?)(?:\(\d+\)|\/\d+)?$`, 'i')
     : null;
   modelRe = names.length
     ? new RegExp(String.raw`(?:${names.map(namePattern).join('|')})\s+([0-9][0-9A-Z/\s]*?)\s*(?:-|$)`, 'i')
