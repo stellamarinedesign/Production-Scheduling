@@ -1,12 +1,14 @@
 // plinth-control.js — a davit's plinth, chosen in its row on the board.
 //
-// Two selects that start blank: the height - one the plinth folder has, the
-// davit's own model first, or one typed in - and the compression post.
-// Standard sets the model's standard height without a post in one click. A
-// blank stays a blank until somebody chooses, so nothing is assumed.
+// Three selects that start blank: the height - one the plinth folder has, the
+// davit's own model first, or one typed in - the compression post, and the
+// gusset, enclosed or open. Standard sets the model's standard height, no
+// post and enclosed, in one click. A blank stays a blank until somebody
+// chooses, so nothing is assumed.
 
 import {
-  modelsFor, modelOf, standardPlinth, tidyPlinth, blankPlinth, heightOf, needsDrawing, plinthText,
+  modelsFor, modelOf, standardPlinth, tidyPlinth, blankPlinth, wholePlinth, heightOf, needsDrawing, needsChecklist,
+  plinthText,
 } from './plinths.js';
 
 const el = (tag, cls, text) => {
@@ -31,7 +33,7 @@ const heightKey = (model, height) => `h|${encodeURIComponent(model ?? '')}|${enc
  * @param {(plinth: Object|null) => void} onSet  the plinth to keep, whole, or null to clear it
  */
 export function plinthControl(job, catalogue, onSet) {
-  const cur = { ...blankPlinth(), ...(job.plinth ?? {}) };
+  const cur = wholePlinth(job.plinth) ?? blankPlinth();
   const wrap = el('span', 'plinth');
   wrap.append(el('span', 'pl-label', 'Plinth'));
 
@@ -96,15 +98,25 @@ export function plinthControl(job, catalogue, onSet) {
   post.value = cur.post == null ? '' : cur.post ? 'yes' : 'no';
   post.addEventListener('change', () => onSet(tidyPlinth({ ...cur, post: post.value === '' ? null : post.value === 'yes' })));
 
-  wrap.append(height, typed, post);
+  // The gusset: enclosed, the standard, or open.
+  const gusset = el('select', `pl-select${cur.gusset == null ? ' is-blank' : ''}`);
+  gusset.setAttribute('aria-label', 'Gusset');
+  option(gusset, '', 'Gusset');
+  option(gusset, 'enclosed', 'Enclosed');
+  option(gusset, 'open', 'Open gusset');
+  gusset.value = cur.gusset ?? '';
+  gusset.addEventListener('change', () => onSet(tidyPlinth({ ...cur, gusset: gusset.value || null })));
+
+  wrap.append(height, typed, post, gusset);
 
   const std = standardPlinth(modelOf(job, catalogue));
-  if (std && (cur.mm == null || cur.post == null)) {
+  if (std && (cur.mm == null || cur.post == null || cur.gusset == null)) {
     const b = el('button', 'mini', 'Standard');
     b.title = plinthText(std);
     b.addEventListener('click', () => onSet(std));
     wrap.append(b);
   }
   if (needsDrawing(catalogue, cur)) wrap.append(el('span', 'pl-flag', 'Drawing needed'));
+  if (needsChecklist(catalogue, cur)) wrap.append(el('span', 'pl-flag', 'Checklist needed'));
   return wrap;
 }

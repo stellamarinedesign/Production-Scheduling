@@ -24,7 +24,7 @@ import {
   standardFor, withChoice, withStandardSources, withItem, withoutItem, withCategoryDefault,
 } from './packages.js';
 import {
-  PLINTHS_KEY, isDavit, readCatalogue, sameCatalogue, plinthSources, plinthText, needsDrawing,
+  PLINTHS_KEY, isDavit, readCatalogue, sameCatalogue, plinthSources, plinthText, needsDrawing, needsChecklist,
 } from './plinths.js';
 import {
   supported, rootState, allowRoot, chooseRoot, pathWithin, handleAt, listFiles, listFolders,
@@ -834,6 +834,7 @@ function drawStandard() {
     row.append(el('span', 'pkg-kind pkg-group', 'Plinth'),
       el('span', `pkg-plinth${p ? '' : ' is-blank'}`, text[0].toUpperCase() + text.slice(1)));
     if (needsDrawing(ctx.plinths, p)) row.append(el('span', 'pkg-note', 'Drawing needed'));
+    if (needsChecklist(ctx.plinths, p)) row.append(el('span', 'pkg-note', 'Checklist needed'));
     list.append(row);
   }
   for (const r of rows) {
