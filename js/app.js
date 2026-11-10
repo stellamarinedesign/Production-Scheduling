@@ -252,13 +252,14 @@ async function start(st) {
   // anything could be drawn. On a desk that is a blink; on a phone it is most
   // of the delay before the page stops looking broken.
   booting('Loading settings and vessel codes');
-  const [settings, codeMap, overrides, itemOverrides, plinths] = await Promise.all([
+  const [settings, codeMap, overrides, itemOverrides, packages] = await Promise.all([
     Store.loadSettings(),
     Store.loadCodes(),
     Store.loadOverrides(),
     Store.loadItemOverrides(),
-    // The plinth folder as last read, for the davits' rows; a board without it still opens.
-    Store.loadPackage(PLINTHS_KEY).catch(() => null),
+    // The packages, for the davits' rows: the plinth folder as last read, and
+    // any plinth model a package names. A board without them still opens.
+    Store.loadPackages().catch(() => ({})),
   ]);
   state.settings = settings;
   // Before anything is built: no builders, no vessel codes. See vessel-codes.js.
@@ -266,7 +267,8 @@ async function start(st) {
   state.codeMap = codeMap;
   state.overrides = overrides;
   state.itemOverrides = itemOverrides;
-  state.plinths = plinths;
+  state.packages = packages;
+  state.plinths = packages[PLINTHS_KEY] ?? null;
 
   $('horizon').value = state.settings.horizonWeeks;
   $('horizonVal').textContent = `${state.settings.horizonWeeks} weeks`;
@@ -1580,6 +1582,7 @@ function jobRow(j, { full = false } = {}) {
     who: Auth.user?.email ?? null,
     onLog: (d) => logChange(d, j.prod_no, j.inventory_id, jobTitle(j)),
     onPlinths: (catalogue) => { state.plinths = catalogue; rebuild(); },
+    onPackages: (packages) => { state.packages = packages; rebuild(); },
     toast,
   }));
   fold.append(pkg);
@@ -1608,7 +1611,7 @@ function jobRow(j, { full = false } = {}) {
   fold.append(changes);
 
   // A davit's plinth: its height and compression post, blank until chosen.
-  if (isDavit(j)) fold.append(plinthControl(j, state.plinths, (p) => setOverride(j.prod_no, { plinth: p })));
+  if (isDavit(j)) fold.append(plinthControl(j, state.plinths, (p) => setOverride(j.prod_no, { plinth: p }), state.packages));
 
   row.append(fold);
   return row;

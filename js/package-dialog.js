@@ -25,6 +25,7 @@ import {
 } from './packages.js';
 import {
   PLINTHS_KEY, isDavit, readCatalogue, sameCatalogue, plinthSources, plinthText, needsDrawing, needsChecklist,
+  chosenModel, inheritedModel,
 } from './plinths.js';
 import {
   supported, rootState, allowRoot, chooseRoot, pathWithin, handleAt, listFiles, listFolders,
@@ -335,6 +336,8 @@ async function save(next, note, extra = {}) {
   }
   if (empty) delete ctx.packages[key]; else ctx.packages[key] = data;
   ctx.hooks.onLog?.({ action: 'package', text: note });
+  // The board's davit rows read a plinth model from the packages.
+  ctx.hooks.onPackages?.({ ...ctx.packages });
   await refreshDocs();
 }
 
@@ -378,6 +381,13 @@ async function chooseFolder() {
 
 async function removeSource(path) {
   await save(sources().filter((s) => s.path !== path), `package: removed ${splitPath(path).at(-1)}`);
+}
+
+/** This package's plinth model: a model folder's name, or '' for the default. */
+async function setPlinthModel(value) {
+  if (!ctx || ctx.busy) return;
+  error('');
+  await save(sources(), `package: plinth model ${value ? `set to ${value}` : 'back to the default'}`, { plinthModel: value || null });
 }
 
 /** This package's choice for a group: an item id, NONE to leave it out, '' for the default. */
@@ -825,16 +835,27 @@ function drawStandard() {
   const rows = standardRows();
   const list = $('.pkg-std-rows');
   list.textContent = '';
-  // A davit's plinth, as chosen in its row: shown, not set, here.
+  // A davit's plinth: the model its heights come from, set here; the plinth
+  // itself as chosen in its row, shown.
   const davit = isDavit(ctx.job);
   if (davit) {
     const p = ctx.job.plinth;
     const text = plinthText(p);
     const row = el('div', 'pkg-row pkg-std');
-    row.append(el('span', 'pkg-kind pkg-group', 'Plinth'),
-      el('span', `pkg-plinth${p ? '' : ' is-blank'}`, text[0].toUpperCase() + text.slice(1)));
-    if (needsDrawing(ctx.plinths, p)) row.append(el('span', 'pkg-note', 'Drawing needed'));
-    if (needsChecklist(ctx.plinths, p)) row.append(el('span', 'pkg-note', 'Checklist needed'));
+    const pick = el('select', 'pkg-pick');
+    pick.dataset.key = 'plinth:model';
+    pick.setAttribute('aria-label', 'Plinth model');
+    option(pick, '', `Default (${inheritedModel(ctx.job, ctx.plinths, ctx.packages, ctx.scope)?.name ?? 'none'})`);
+    const own = chosenModel(ctx.job, ctx.packages, ctx.scope);
+    const models = (ctx.plinths?.models ?? []).map((m) => m.name);
+    for (const name of own && !models.includes(own) ? [...models, own] : models) option(pick, name, name);
+    pick.value = own ?? '';
+    pick.addEventListener('change', () => setPlinthModel(pick.value));
+    const shown = el('span', 'pkg-plinth-now');
+    shown.append(el('span', `pkg-plinth${p ? '' : ' is-blank'}`, text[0].toUpperCase() + text.slice(1)));
+    if (needsDrawing(ctx.plinths, p)) shown.append(el('span', 'pkg-note', 'Drawing needed'));
+    if (needsChecklist(ctx.plinths, p)) shown.append(el('span', 'pkg-note', 'Checklist needed'));
+    row.append(el('span', 'pkg-kind pkg-group', 'Plinth'), pick, shown);
     list.append(row);
   }
   for (const r of rows) {

@@ -19,7 +19,7 @@
 //
 // Nothing here touches the disk: package-dialog.js reads the folder.
 
-import { joinPath, isArchiveName, docKind } from './packages.js';
+import { joinPath, isArchiveName, docKind, packageKey, SCOPE } from './packages.js';
 
 export const PLINTHS_KEY = 'plinths';
 
@@ -161,6 +161,38 @@ export function modelsFor(job, catalogue) {
 export function modelOf(job, catalogue) {
   const found = modelsFor(job, catalogue);
   return found.length === 1 && davitOf(job).drive ? found[0] : null;
+}
+
+/**
+ * The plinth model a davit's package names, where the code and description
+ * read wrong or leave it open: at a job's scope its own, else its code's; at
+ * the code's, the code's. Null when neither names one.
+ */
+export function chosenModel(job, packages, scope = SCOPE.job) {
+  const own = packages?.[packageKey(scope, job)]?.plinthModel ?? null;
+  if (own || scope === SCOPE.item) return own;
+  return packages?.[packageKey(SCOPE.item, job)]?.plinthModel ?? null;
+}
+
+/** The catalogue's model of that name, while the folder has it. */
+const named = (catalogue, name) => (name ? catalogue?.models?.find((m) => m.name === name) ?? null : null);
+
+/** The model a davit's plinth is chosen from: the one its package names, else the one it surely is. */
+export function davitModel(job, catalogue, packages) {
+  return named(catalogue, chosenModel(job, packages)) ?? modelOf(job, catalogue);
+}
+
+/** What a package at `scope` has without a choice of its own: a job's, its code's choice; then the model the davit surely is. */
+export function inheritedModel(job, catalogue, packages, scope) {
+  const above = scope === SCOPE.job ? chosenModel(job, packages, SCOPE.item) : null;
+  return named(catalogue, above) ?? modelOf(job, catalogue);
+}
+
+/** The models whose heights a davit's row offers: its own; while that is open, those it could be; with none, every one. */
+export function offeredModels(job, catalogue, packages) {
+  const own = davitModel(job, catalogue, packages);
+  const could = modelsFor(job, catalogue);
+  return (own ? [own] : could.length ? could : catalogue?.models ?? []).filter((m) => m.heights?.length);
 }
 
 // ---------------------------------------------------------------------------
