@@ -341,11 +341,12 @@ export const HELP = [
           + 'compression post and a gusset, enclosed or open. All three start blank and '
           + 'stay blank until somebody chooses, so a davit nobody has checked never passes '
           + 'for a standard one. Standard sets the model\'s standard height, with no post '
-          + 'and enclosed, in one click, where the item code and description say which '
-          + 'model the davit is.',
-          'The heights are the plinth folder\'s, the davit\'s own model first. Custom '
-          + 'height takes a height in mm that has not been drawn, and the row says '
-          + 'Drawing needed; so does a post and gusset with no drawing at their height. '
+          + 'and enclosed, in one click.',
+          'The heights are the plinth folder\'s for the davit\'s own model, as its item '
+          + 'code and description say. Where they say wrong, or leave it open, the model '
+          + 'is set beside Plinth in the davit\'s Package dialog, for every job on the code '
+          + 'or for one job. Custom height takes a height in mm that has not been drawn, '
+          + 'and the row says Drawing needed; so does a post and gusset with no drawing at their height. '
           + 'An open gusset has its own laser checklist: a height without one for the '
           + 'gusset chosen says Checklist needed.',
           'The plinth folder is set once, in a davit\'s Package dialog under Manage, by '
