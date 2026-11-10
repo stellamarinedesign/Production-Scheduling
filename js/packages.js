@@ -604,6 +604,43 @@ export function printsByDefault(path, lastModified, skip) {
   return !s || (lastModified ?? 0) > (s.modified ?? 0) + SAME_FILE_MS;
 }
 
+// A checklist can come plain and for a batch: "-x5" in its name
+// ("...-x5-LaserChecklist") is the number it is laser cut for, the plain one
+// being for one. A job prints the one its quantity calls for, not all of them.
+const BATCH_RE = /(?:^|[-_\s])x(\d+)(?=[-_\s.]|$)/i;
+
+/** The number a checklist is for: its "-x5", or 1. */
+export const batchOf = (name) => Number(BATCH_RE.exec(String(name ?? ''))?.[1] ?? 1);
+
+/**
+ * Which of a checklist's batches a job starts with ticked: where a checklist
+ * comes in more than one, the one for the largest batch the job's quantity
+ * fills, else the smallest there is; the others start unticked. The quantity
+ * decides over a print default saved for any of them.
+ * @param {Array<{path: string, name: string, key?: string, kind: string}>} docs
+ * @param {number} qty  the job's quantity
+ * @returns {Map<string, boolean>}  path -> starts ticked, for those checklists only
+ */
+export function batchTicks(docs, qty) {
+  const n = Math.max(1, Number(qty) || 1);
+  const families = new Map();
+  for (const d of docs ?? []) {
+    if (d.kind !== 'checklist') continue;
+    const name = d.key ?? d.name;
+    const family = baseOf(String(name).replace(BATCH_RE, ''));
+    families.set(family, [...(families.get(family) ?? []), { path: d.path, size: batchOf(name) }]);
+  }
+  const out = new Map();
+  for (const list of families.values()) {
+    const sizes = [...new Set(list.map((d) => d.size))];
+    if (sizes.length < 2) continue;
+    const fit = sizes.filter((b) => b <= n);
+    const pick = fit.length ? Math.max(...fit) : Math.min(...sizes);
+    for (const d of list) out.set(d.path, d.size === pick);
+  }
+  return out;
+}
+
 /** The documents left unticked, as a package's `skip`. */
 export const skipFrom = (docs) => (docs ?? [])
   .filter((d) => !d.checked)
