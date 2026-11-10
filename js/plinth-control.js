@@ -1,12 +1,16 @@
 // plinth-control.js — a davit's plinth, chosen in its row on the board.
 //
-// Two selects that start blank: the height - one the plinth folder has, the
-// davit's own model first, or one typed in - and the compression post.
-// Standard sets the model's standard height without a post in one click. A
-// blank stays a blank until somebody chooses, so nothing is assumed.
+// Three selects that start blank: the height - one of the davit's own model's
+// in the plinth folder, or one typed in - the compression post, and the
+// gusset, enclosed or open. The model is the one the davit's package names,
+// else the one its code and description make sure of; while that is open,
+// the heights of the models it could be. Standard sets the model's standard
+// height, no post and enclosed, in one click. A blank stays a blank until
+// somebody chooses, so nothing is assumed.
 
 import {
-  modelsFor, modelOf, standardPlinth, tidyPlinth, blankPlinth, heightOf, needsDrawing, plinthText,
+  davitModel, offeredModels, standardPlinth, tidyPlinth, blankPlinth, wholePlinth, heightOf, needsDrawing, needsChecklist,
+  plinthText,
 } from './plinths.js';
 
 const el = (tag, cls, text) => {
@@ -29,26 +33,28 @@ const heightKey = (model, height) => `h|${encodeURIComponent(model ?? '')}|${enc
  * @param {Object} job  a board job; `plinth` is its plinth, or null
  * @param {Object|null} catalogue  the plinth folder as last read (plinths.js)
  * @param {(plinth: Object|null) => void} onSet  the plinth to keep, whole, or null to clear it
+ * @param {Object|null} packages  every package, for a plinth model one names (plinths.js chosenModel)
  */
-export function plinthControl(job, catalogue, onSet) {
-  const cur = { ...blankPlinth(), ...(job.plinth ?? {}) };
+export function plinthControl(job, catalogue, onSet, packages = null) {
+  const cur = wholePlinth(job.plinth) ?? blankPlinth();
   const wrap = el('span', 'plinth');
   wrap.append(el('span', 'pl-label', 'Plinth'));
 
-  // The height: the davit's own model's heights first, then the others'.
+  // The height: the davit's own model's.
   const height = el('select', `pl-select${cur.mm == null ? ' is-blank' : ''}`);
   height.setAttribute('aria-label', 'Plinth height');
   option(height, '', 'Height');
-  const mine = modelsFor(job, catalogue);
-  const models = [...mine, ...(catalogue?.models ?? []).filter((m) => !mine.includes(m))]
-    .filter((m) => m.heights?.length);
+  const own = davitModel(job, catalogue, packages);
+  const models = offeredModels(job, catalogue, packages);
   for (const m of models) {
     const group = el('optgroup');
     group.label = m.name;
     for (const h of m.heights) option(group, heightKey(m.name, h.name), h.name);
     height.append(group);
   }
-  if (cur.height && !heightOf(catalogue, cur)) option(height, heightKey(cur.model, cur.height), cur.height);
+  // A height chosen from another model, or gone from the folder, stays as it was, named with its model.
+  const offered = models.some((m) => m.name === cur.model) && heightOf(catalogue, cur);
+  if (cur.height && !offered) option(height, heightKey(cur.model, cur.height), `${cur.model} › ${cur.height}`);
   if (cur.mm != null && !cur.height) option(height, 'typed', `${cur.mm}mm custom`);
   option(height, 'custom', 'Custom height…');
   const shown = cur.mm == null ? '' : cur.height ? heightKey(cur.model, cur.height) : 'typed';
@@ -67,7 +73,7 @@ export function plinthControl(job, catalogue, onSet) {
   typed.addEventListener('change', () => {
     const mm = Math.round(Number(typed.value));
     if (!(mm > 0)) { putBack(); return; }
-    onSet(tidyPlinth({ ...cur, model: modelOf(job, catalogue)?.name ?? cur.model, height: null, mm }));
+    onSet(tidyPlinth({ ...cur, model: own?.name ?? cur.model, height: null, mm }));
   });
   typed.addEventListener('keydown', (e) => { if (e.key === 'Escape') putBack(); });
   typed.addEventListener('blur', () => { if (typed.value === '') putBack(); });
@@ -96,15 +102,25 @@ export function plinthControl(job, catalogue, onSet) {
   post.value = cur.post == null ? '' : cur.post ? 'yes' : 'no';
   post.addEventListener('change', () => onSet(tidyPlinth({ ...cur, post: post.value === '' ? null : post.value === 'yes' })));
 
-  wrap.append(height, typed, post);
+  // The gusset: enclosed, the standard, or open.
+  const gusset = el('select', `pl-select${cur.gusset == null ? ' is-blank' : ''}`);
+  gusset.setAttribute('aria-label', 'Gusset');
+  option(gusset, '', 'Gusset');
+  option(gusset, 'enclosed', 'Enclosed');
+  option(gusset, 'open', 'Open gusset');
+  gusset.value = cur.gusset ?? '';
+  gusset.addEventListener('change', () => onSet(tidyPlinth({ ...cur, gusset: gusset.value || null })));
 
-  const std = standardPlinth(modelOf(job, catalogue));
-  if (std && (cur.mm == null || cur.post == null)) {
+  wrap.append(height, typed, post, gusset);
+
+  const std = standardPlinth(own);
+  if (std && (cur.mm == null || cur.post == null || cur.gusset == null)) {
     const b = el('button', 'mini', 'Standard');
     b.title = plinthText(std);
     b.addEventListener('click', () => onSet(std));
     wrap.append(b);
   }
   if (needsDrawing(catalogue, cur)) wrap.append(el('span', 'pl-flag', 'Drawing needed'));
+  if (needsChecklist(catalogue, cur)) wrap.append(el('span', 'pl-flag', 'Checklist needed'));
   return wrap;
 }

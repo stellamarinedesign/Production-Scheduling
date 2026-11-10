@@ -999,6 +999,7 @@ header .cog:hover { border-color: var(--red-bright); color: var(--white); }
 .pkg-lib-cats:not(:empty) { margin-top: 14px; }
 .pkg-lib-plinths { margin-top: 14px; }
 .pkg-plinth.is-blank { color: var(--text-dim); font-style: italic; }
+.pkg-plinth-now { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
 .pkg-btns { display: flex; gap: 6px; }
 /* Where a package's PDF is printed from: in the page, never seen. Clear
    rather than hidden: a frame the browser counts as hidden (visibility,
