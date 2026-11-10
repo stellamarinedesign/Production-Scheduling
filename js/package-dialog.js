@@ -19,7 +19,7 @@ import { jobTitle } from './transform.js';
 import {
   ROOT_NAME, SCOPE, splitPath, joinPath, parentPath, shortPath, docKind, KIND_LABEL,
   isPdfKind, pickDocuments, packageKey, packageFor, suggestFolders, suggestionBases, filledName,
-  printsByDefault, skipFrom, checklistDoc, printsAsPdf, downloadsAsWord, WHY_TEXT,
+  printsByDefault, batchTicks, skipFrom, checklistDoc, printsAsPdf, downloadsAsWord, WHY_TEXT,
   ownSources, skipFor, isEmptyPackage, LIBRARY_KEY, NONE, normaliseLibrary, newItemId, groupsOf,
   standardFor, withChoice, withStandardSources, withItem, withoutItem, withCategoryDefault,
 } from './packages.js';
@@ -261,12 +261,14 @@ async function refreshDocs() {
   if (ctx !== mine) return;                     // the dialog moved on while this ran
   const seen = new Set();
   const skip = skipFor(ctx.job, ctx.packages, ctx.scope);
-  ctx.docs = docs.filter((d) => d.kind && !seen.has(d.path) && seen.add(d.path))
-    .sort((a, b) => Number(isPdfKind(a.kind)) - Number(isPdfKind(b.kind)))
-    .map((d) => {
-      const on = printsByDefault(d.path, d.lastModified, skip);
-      return { ...d, checked: on, defaultOn: on };
-    });
+  const found = docs.filter((d) => d.kind && !seen.has(d.path) && seen.add(d.path))
+    .sort((a, b) => Number(isPdfKind(a.kind)) - Number(isPdfKind(b.kind)));
+  // A checklist that comes plain and for a batch: the job's quantity picks.
+  const batch = batchTicks(found, ctx.job.qty);
+  ctx.docs = found.map((d) => {
+    const on = batch.has(d.path) ? batch.get(d.path) : printsByDefault(d.path, d.lastModified, skip);
+    return { ...d, checked: on, defaultOn: on };
+  });
   ctx.missing = missing;
   ctx.suggestions = suggestions;
   render();

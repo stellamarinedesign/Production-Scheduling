@@ -313,7 +313,8 @@ export const HELP = [
           + 'revision is picked up by itself; Archive folders are skipped. A package is '
           + 'kept for every job on the item code, or for one job only, which is where a '
           + 'custom job starts. Once some packages exist, a new job is offered the '
-          + 'folders beside theirs that carry its vessel code or name.',
+          + 'folders beside those of its own product line that carry its vessel code, '
+          + 'name or model.',
           'Standard items are the folders many products share - a lock mechanism, '
           + 'say. Each goes into the library once, under Manage, with a name and a '
           + 'group, such as Lock. A board category takes one item of a group by '
@@ -330,6 +331,9 @@ export const HELP = [
           + '- and Save as default makes those the starting ticks for every job on the '
           + 'package. A document changed since it was unticked starts ticked again, '
           + 'since a laminated copy of an old revision is the one to replace.',
+          'A checklist that also comes for a batch - the same name with -x5 in it - '
+          + 'starts ticked by the job\'s quantity: the batch one for a job of that many '
+          + 'or more, the plain one otherwise. The other stays in the list, unticked.',
           'Each PC connects its own Stella Systems folder once, in Edge or Chrome. The '
           + 'browser may ask again for permission now and then; Allow is one click.',
         ],
