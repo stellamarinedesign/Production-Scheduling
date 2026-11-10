@@ -18,7 +18,7 @@ import { closeOnBackdrop } from './dialog.js';
 import { jobTitle } from './transform.js';
 import {
   ROOT_NAME, SCOPE, splitPath, joinPath, parentPath, shortPath, docKind, KIND_LABEL,
-  isPdfKind, pickDocuments, packageKey, packageFor, suggestFolders, filledName,
+  isPdfKind, pickDocuments, packageKey, packageFor, suggestFolders, suggestionBases, filledName,
   printsByDefault, skipFrom, checklistDoc, printsAsPdf, downloadsAsWord, WHY_TEXT,
   ownSources, skipFor, isEmptyPackage, LIBRARY_KEY, NONE, normaliseLibrary, newItemId, groupsOf,
   standardFor, withChoice, withStandardSources, withItem, withoutItem, withCategoryDefault,
@@ -292,11 +292,9 @@ async function fileDoc(handle, path) {
   return kind === 'checklist' ? checklistDoc(own, other) : checklistDoc(other, own);
 }
 
-/** Folders beside the ones other packages use, that look like this job's. */
+/** Folders beside the ones other packages of this job's product line use, that look like this job's. */
 async function findSuggestions() {
-  const parents = [...new Set(Object.values(ctx.packages)
-    .flatMap((p) => (p.sources ?? []).filter((s) => s.kind === 'folder').map((s) => parentPath(s.path)))
-    .filter(Boolean))].slice(0, 8);
+  const parents = suggestionBases(ctx.job, ctx.packages).slice(0, 12);
   const candidates = [];
   for (const parent of parents) {
     try {
