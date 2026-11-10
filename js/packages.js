@@ -16,6 +16,8 @@
 // Nothing here touches the disk or the network: stella-folder.js reads the
 // folder and adapters/package-files.js does the bytes.
 
+import { CATEGORY_RULES } from './rules.js';
+
 export const ROOT_NAME = 'Stella Systems';
 export const SCOPE = { item: 'item', job: 'job' };
 
@@ -303,6 +305,39 @@ const GENERIC = new Set(('stella lifter lifters custom single double arm stepped
 
 export const nameTokens = (s) => String(s ?? '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
 
+/**
+ * A product's family: the item code prefix the board's categories are read
+ * by (rules.js), a one-off's with its custom marker dropped - SDC for a
+ * davit, SL for a cylinder lifter, SWD for a watertight door. Null for a code
+ * no rule knows. The board's reading, not the parts page's (parts.js
+ * familyOf): a land-based watermaker, STLB, is a water product here.
+ */
+export function productFamily(code) {
+  const c = String(code ?? '').trim().toUpperCase();
+  const rule = CATEGORY_RULES.find(([prefix]) => c.startsWith(prefix));
+  return rule ? rule[0].replace(/CUSTOM$/, '') : null;
+}
+
+/**
+ * Where to look for a job's folders: beside the folders other packages of
+ * its own product line use. The product line is the top folder below
+ * Stella Systems that its family's packages keep their folders in ("Stella
+ * Davits and Cranes"), so a davit is never offered a cylinder lifter's
+ * vessel folder, and a garage door and a watertight door share the doors'.
+ * A family with no package yet has nowhere to look.
+ * @param {Object} packages  key -> package
+ * @returns {string[]}  folder paths, whose folders are the candidates
+ */
+export function suggestionBases(job, packages) {
+  const family = productFamily(job?.inventory_id);
+  if (!family) return [];
+  const folders = Object.values(packages ?? {}).flatMap((p) => (p?.sources ?? [])
+    .filter((s) => s.kind === 'folder' && splitPath(s.path).length > 1)
+    .map((s) => ({ path: s.path, family: productFamily(p.inventoryId) })));
+  const lines = new Set(folders.filter((f) => f.family === family).map((f) => splitPath(f.path)[0]));
+  return [...new Set(folders.filter((f) => lines.has(splitPath(f.path)[0])).map((f) => parentPath(f.path)))];
+}
+
 /** The words of a job that could name its folder: a vessel code, a boat name. */
 export function matchTokens(job) {
   const words = [...nameTokens(job?.label), ...nameTokens(job?.description)];
@@ -315,6 +350,9 @@ export function matchTokens(job) {
  * in packages: a vessel folder is suggested from the folder its neighbours
  * were dropped from. A word common to several folders (a builder's name)
  * says nothing about which one, so only a word found in at most two counts.
+ * Between folders that match as well, the one sharing more of the job's
+ * plain words goes first ("350kg Single Stage" for a single stage davit,
+ * before "350kg Fixed Boom"), then the plainest.
  *
  * @param {Array<{name: string, path: string}>} candidates
  * @returns {Array<{name, path, hits: string[]}>} best first, at most five
@@ -322,6 +360,7 @@ export function matchTokens(job) {
 export function suggestFolders(job, candidates, { exclude = [] } = {}) {
   const tokens = matchTokens(job);
   if (!tokens.length || !candidates?.length) return [];
+  const plain = new Set([...nameTokens(job?.label), ...nameTokens(job?.description)]);
   const sets = candidates.map((c) => new Set(nameTokens(c.name)));
   const spread = new Map(tokens.map((t) => [t, sets.filter((s) => s.has(t)).length]));
   // Equal matches go plainest first: a folder named just "Zulu" before
@@ -329,12 +368,13 @@ export function suggestFolders(job, candidates, { exclude = [] } = {}) {
   return candidates
     .map((c, i) => {
       const hits = tokens.filter((t) => sets[i].has(t) && spread.get(t) <= 2);
-      return { ...c, hits, score: hits.reduce((n, t) => n + 1 / spread.get(t), 0), words: sets[i].size };
+      const shared = [...sets[i]].filter((w) => plain.has(w)).length;
+      return { ...c, hits, score: hits.reduce((n, t) => n + 1 / spread.get(t), 0), shared, words: sets[i].size };
     })
     .filter((c) => c.score > 0 && !exclude.includes(c.path))
-    .sort((a, b) => b.score - a.score || a.words - b.words || a.name.localeCompare(b.name))
+    .sort((a, b) => b.score - a.score || b.shared - a.shared || a.words - b.words || a.name.localeCompare(b.name))
     .slice(0, 5)
-    .map(({ score, words, ...c }) => c);
+    .map(({ score, shared, words, ...c }) => c);
 }
 
 // ---------------------------------------------------------------------------
