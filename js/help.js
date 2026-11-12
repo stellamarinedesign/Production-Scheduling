@@ -47,8 +47,12 @@ export const HELP = [
           + 'millimetres are the same size: 1", 1 inch, 1in and 25.4mm all find each '
           + 'other, and so do 1 1/2", 1.5" and 38.1mm. A fraction like 3/8 is inches '
           + 'whether or not it has the mark.',
-          'Numbers must match exactly \u2014 25 does not find 250, and 25 does not '
-          + 'find 25.4 \u2014 because a size is a size. A number with another unit '
+          'A number finds itself first: 25 lists every 25. Below those come the '
+          + 'numbers that begin with it: 25.4, which is every 1" part as well, then '
+          + '250, then quantities such as 250kg. Only what follows the digits typed '
+          + 'counts, so 114 finds 114.3 and 1140 but never 2114. A single digit '
+          + 'carries on after the point and no further: 6 finds 6.35 but not 60.',
+          'A number with another unit '
           + 'is a quantity, not a size: 5 finds a 5mm plate before a 5kg spool, 6 '
           + 'never finds a 6m length, and 40 does not find Schedule 40. Ask for the '
           + 'quantity and it is found however it was written: 24V, 24VDC and 24 volt; '
@@ -70,6 +74,11 @@ export const HELP = [
           'Open a part and press Copy: it puts the code and the description on '
           + 'one line, "CODE - description", ready for an email or a drawing note. '
           + 'The description is the one on screen, corrected if it has been.',
+          'Copy for sheet copies the two separately, for a spreadsheet: the '
+          + 'description first, then the code. Ctrl+V pastes the code into one cell; '
+          + 'in the next, Win+V opens the clipboard history, where the description is '
+          + 'the entry below the code. It needs clipboard history switched on in '
+          + 'Windows, and the button shows on Windows only.',
           'Anything else, highlight as usual and copy. A drag that ends with text '
           + 'highlighted is treated as a highlight, not a tap, so it neither opens '
           + 'nor closes the card.',
