@@ -20,9 +20,16 @@
 //   3. EVERY TERM MUST MATCH, each on a token of its own. Two fifties in the
 //      query want two in the description.
 //   4. ORDER COUNTS. Terms found side by side in the order typed score most.
-//   5. NUMBERS ARE EXACT. 25 does not find 250, nor 25.4. Words may be typed
-//      short (a prefix), found inside a longer word, or mistyped by a letter or
-//      two; anything with a digit in it is never guessed at.
+//   5. A NUMBER IS FOUND AS TYPED FIRST, THEN CARRIED ON. 25 finds every 25,
+//      and below ALL of those the numbers that begin with it: after the point
+//      (25.4, which is also every 1" written as inches), then longer whole
+//      numbers (250), then quantities (25.5kg, 250kg - never metres). Only what
+//      FOLLOWS the digits typed: 114 finds 1140, never 2114. One digit carries
+//      on after the point and no further: 6 finds 6.35, not 60 and not 6061.
+//      A quantity typed with its unit (24v, 5kg) is exact or nothing. Words
+//      may be typed short (a prefix), found inside a longer word, or mistyped
+//      by a letter or two; a word with a digit in it (m10, sch40) may be typed
+//      short and is otherwise never guessed at.
 //   6. IF NOTHING HAS ALL OF IT, the parts that have most of it are offered,
 //      and the caller is told so (`relaxed`) and can say so.
 //
@@ -135,6 +142,38 @@ function editDistance(a, b, max) {
 
 // What a match is worth.
 const SCORE = { exact: 10, prefix: 6, quantity: 5, inside: 3, typo: 3 };
+// What a bare number is worth against a LONGER number that begins with it.
+// Less than any real match, and counted apart from them as well (`longer`, in
+// scoreEntry), so a part that has the number itself is never listed under one
+// that only carries it on. After the point is the same size to more places
+// (114 and 114.3); more whole digits is another size that starts the same way
+// (114 and 1140); a quantity is not a size at all.
+const LONGER = { point: 3, whole: 2, quantity: 1 };
+
+/**
+ * A bare number against a longer one that begins with it: what it is worth,
+ * or 0. `q` is the number as typed, `t` a token.
+ *
+ * Only what follows the digits typed counts, so 114 finds 114.3 and 1140 and
+ * never 2114. After the point a number carries on however little of it was
+ * typed (6 finds 6.35). Into more whole digits it needs two typed, or a 3
+ * would find every 316 and a 6 every 6061. The number of a quantity is
+ * carried on the same way - but not metres, here as everywhere.
+ */
+function longerScore(q, t) {
+  let n = t;
+  let quantity = false;
+  if (!NUMBER_RE.test(t)) {
+    const m = QUANTITY_RE.exec(t);
+    if (!m || m[2] === 'm') return 0;
+    n = m[1];
+    quantity = true;
+  }
+  if (n.length <= q.length || n.indexOf(q) !== 0) return 0;
+  const afterPoint = q.indexOf('.') >= 0 || n.charAt(q.length) === '.';
+  if (!afterPoint && q.length < 2) return 0;
+  return quantity ? LONGER.quantity : afterPoint ? LONGER.point : LONGER.whole;
+}
 // What the order of a size is worth. A term matched on the token straight
 // after the previous term's is the query read off the description. One matched
 // further along is the same numbers in the same order with something between:
@@ -361,7 +400,8 @@ function createSearch(options) {
   function matchScore(q, t) {
     if (t === q) return SCORE.exact;
     if (NUMBER_RE.test(q)) {
-      // 25 must not find 250. It may find a quantity of 25 - weakly - but not
+      // 25 is not 250 here: a longer number is `longerScore`'s to find, and
+      // is counted apart. It may be a quantity of 25 - weakly - but not
       // metres, where the same digits are a thousand times the size.
       const m = QUANTITY_RE.exec(t);
       return m && m[1] === q && m[2] !== 'm' ? SCORE.quantity : 0;
@@ -389,28 +429,36 @@ function createSearch(options) {
    *
    * Terms are placed in the order typed, each on a token no earlier term has
    * taken, trying the few placements there are and keeping the one that falls
-   * short least and then scores most.
+   * short least, then has fewest numbers found only as the start of a longer
+   * one (`longer`), and then scores most.
    *
    * `typing` is the index of a term that is still being typed as part of a
    * compound - "820-3" on the way to 820-350 - or -1. That one term may match
-   * the START of a token, but only the token straight after the previous
-   * term's. Anywhere else a 3 is still exactly a 3; without this, a part number
-   * with hyphens in it vanishes from the list while it is being typed and
-   * comes back when the last digit lands.
+   * the START of a token as if it were the whole of it, but only the token
+   * straight after the previous term's. Anywhere else a 3 is still exactly a
+   * 3, and a 35 finds 350 only as a longer number; without this, a part number
+   * with hyphens in it vanishes from the list, or drops down it, while it is
+   * being typed and comes back when the last digit lands.
    *
-   * @returns {{score, missed, reused}|null}  null when nothing matched at all
+   * @returns {{score, missed, reused, longer}|null}  null when nothing matched
+   *   at all
    */
   function scoreEntry(words, dupes, typing, e) {
     const cands = [];
     let matchable = 0;
     for (let k = 0; k < words.length; k++) {
       const q = words[k];
+      const bare = NUMBER_RE.test(q);
       const at = [];
       const starts = [];
       for (let i = 0; i < e.seq.length; i++) {
-        const s = matchScore(q, e.seq[i].t) * e.seq[i].w;
-        if (s) at.push({ i, s });
-        else if (k === typing && e.seq[i].t.indexOf(q) === 0) starts.push({ i, s: SCORE.prefix * e.seq[i].w });
+        const t = e.seq[i].t;
+        const w = e.seq[i].w;
+        const s = matchScore(q, t) * w;
+        if (s) { at.push({ i, s, longer: 0 }); continue; }
+        if (k === typing && t.indexOf(q) === 0) starts.push({ i, s: SCORE.prefix * w, longer: 0 });
+        const l = bare ? longerScore(q, t) * w : 0;
+        if (l) at.push({ i, s: l, longer: 1 });
       }
       // No position: a synonym of something in the description, or a piece of
       // the code. A short number is not looked for inside codes - every code
@@ -424,28 +472,29 @@ function createSearch(options) {
     if (!matchable) return null;
 
     const place = (k, used, prev) => {
-      if (k === cands.length) return { score: 0, missed: 0, reused: 0 };
+      if (k === cands.length) return { score: 0, missed: 0, reused: 0, longer: 0 };
       const at = cands[k].at;
       const loose = cands[k].loose;
       let free = at.filter((c) => !used[c.i]);
       if (prev !== null && cands[k].starts.length) {
         free = free.concat(cands[k].starts.filter((c) => !used[c.i] && e.seq[c.i].pos === prev + 1));
       }
-      let options;
-      if (free.length) {
-        options = free
-          .map((c) => ({ i: c.i, s: c.s + adjacency(prev, e.seq[c.i].pos), missed: 0, reused: 0 }))
-          .sort((a, b) => b.s - a.s)
-          .slice(0, BRANCH);
-      } else if (loose && !dupes[k]) {
-        options = [{ i: -1, s: loose, missed: 0, reused: 0 }];
+      let options = free.map((c) => (
+        { i: c.i, s: c.s + adjacency(prev, e.seq[c.i].pos), missed: 0, reused: 0, longer: c.longer }));
+      // A synonym or a piece of the code stands in when no token has the term
+      // itself - and is the better answer than a token that only begins with it.
+      let real = false;
+      for (let c = 0; c < free.length && !real; c++) real = !free[c].longer;
+      if (!real && loose && !dupes[k]) options.push({ i: -1, s: loose, missed: 0, reused: 0, longer: 0 });
+      if (options.length) {
+        options = options.sort((a, b) => a.longer - b.longer || b.s - a.s).slice(0, BRANCH);
       } else if (at.length || loose) {
         // The second fifty, and only one in the description.
         let best = loose;
         for (let c = 0; c < at.length; c++) best = Math.max(best, at[c].s);
-        options = [{ i: -1, s: best * REUSED, missed: 0, reused: 1 }];
+        options = [{ i: -1, s: best * REUSED, missed: 0, reused: 1, longer: 0 }];
       } else {
-        options = [{ i: -1, s: 0, missed: 1, reused: 0 }];
+        options = [{ i: -1, s: 0, missed: 1, reused: 0, longer: 0 }];
       }
       let best = null;
       for (let o = 0; o < options.length; o++) {
@@ -453,10 +502,15 @@ function createSearch(options) {
         let nextUsed = used;
         if (opt.i >= 0) { nextUsed = Object.assign({}, used); nextUsed[opt.i] = true; }
         const rest = place(k + 1, nextUsed, opt.i >= 0 ? e.seq[opt.i].pos : prev);
-        const total = { score: opt.s + rest.score, missed: opt.missed + rest.missed, reused: opt.reused + rest.reused };
+        const total = {
+          score: opt.s + rest.score, missed: opt.missed + rest.missed,
+          reused: opt.reused + rest.reused, longer: opt.longer + rest.longer,
+        };
         const shortBest = best ? best.missed + best.reused : Infinity;
         const shortThis = total.missed + total.reused;
-        if (!best || shortThis < shortBest || (shortThis === shortBest && total.score > best.score)) best = total;
+        if (!best || shortThis < shortBest
+          || (shortThis === shortBest && (total.longer < best.longer
+            || (total.longer === best.longer && total.score > best.score)))) best = total;
       }
       return best;
     };
@@ -476,9 +530,11 @@ function createSearch(options) {
    *   and only if none has it is it searched as text.
    * @param {(a, b) => number} [o.tieBreak]  for equal scores; natural order of
    *   the description by default
-   * @returns {{hits: Array<{entry, score}>, total: number, relaxed: boolean}}
+   * @returns {{hits: Array<{entry, score, longer}>, total: number, relaxed: boolean}}
    *   `relaxed` is true when NO entry had every term on a token of its own and
-   *   the hits are the nearest there are rather than a real answer.
+   *   the hits are the nearest there are rather than a real answer. A hit's
+   *   `longer` is how many of its terms were found only as the start of a
+   *   longer number; hits with fewer come first, whatever they score.
    */
   function search(entries, query, o) {
     const cfg = Object.assign({ limit: 50, isCode: null, tieBreak: null }, o || {});
@@ -492,9 +548,9 @@ function createSearch(options) {
       for (let i = 0; i < entries.length; i++) {
         const c = entries[i].code;
         if (!c) continue;
-        if (c === raw) codes.push({ entry: entries[i], score: 3 });
-        else if (c.indexOf(raw) === 0) codes.push({ entry: entries[i], score: 2 });
-        else if (c.indexOf(raw) > 0) codes.push({ entry: entries[i], score: 1 });
+        if (c === raw) codes.push({ entry: entries[i], score: 3, longer: 0 });
+        else if (c.indexOf(raw) === 0) codes.push({ entry: entries[i], score: 2, longer: 0 });
+        else if (c.indexOf(raw) > 0) codes.push({ entry: entries[i], score: 1, longer: 0 });
       }
       if (codes.length) {
         codes.sort((a, b) => b.score - a.score
@@ -520,15 +576,16 @@ function createSearch(options) {
       if (!r) continue;
       const short = r.missed + r.reused;
       if (short < least) least = short;
-      all.push({ entry: entries[i], score: r.score, short, missed: r.missed });
+      all.push({ entry: entries[i], score: r.score, short, missed: r.missed, longer: r.longer });
     }
     // The real answers if there are any; otherwise whatever came closest, so
     // long as it has at least half of what was asked for.
     const relaxed = least > 0;
     const kept = all.filter((h) => h.short === least && (!relaxed || h.missed <= Math.floor(words.length / 2)));
-    kept.sort((a, b) => b.score - a.score || tie(a.entry, b.entry) || byCode(a.entry, b.entry));
+    // The number itself before a longer one that begins with it, always.
+    kept.sort((a, b) => a.longer - b.longer || b.score - a.score || tie(a.entry, b.entry) || byCode(a.entry, b.entry));
     return {
-      hits: kept.slice(0, cfg.limit).map((h) => ({ entry: h.entry, score: h.score })),
+      hits: kept.slice(0, cfg.limit).map((h) => ({ entry: h.entry, score: h.score, longer: h.longer })),
       total: kept.length,
       relaxed: relaxed && kept.length > 0,
     };

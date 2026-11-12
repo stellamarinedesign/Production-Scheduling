@@ -23,6 +23,7 @@ import {
   fixList, fixListCsv, ageInDays, STALE_DAYS, FAMILIES, META_FIELDS, metaLine,
   draftingSheets, workbookName, withdrawOverride,
   parseMaterialsCsv, buildMaterialsIndex, materialGroups, browseMaterials,
+  copyApart,
 } from './parts.js';
 
 const $ = (id) => document.getElementById(id);
@@ -48,6 +49,8 @@ let tab = 'search';
 const filters = { family: null, bin: 'all', binFirst: false, byDesc: false };
 const mfilters = { category: null, subcategory: null };
 const open = new Set();     // expanded result cards, by id
+// Windows keeps a clipboard history (Win+V); "Copy for sheet" is for that.
+const HAS_CLIPBOARD_HISTORY = /\bWindows\b/.test(navigator.userAgent);
 
 function booting(what) {
   const box = $('booting');
@@ -652,6 +655,28 @@ function partCard(e) {
       }
     });
     acts.append(copy);
+    // The same two apart, for a sheet: the description first and the code
+    // after it, so the code is what pastes and the description is the entry
+    // before it in the clipboard history. Windows is where that history is
+    // (Win+V), and a browser elsewhere may refuse a second write so long
+    // after the click, so the button is only there.
+    if (HAS_CLIPBOARD_HISTORY) {
+      const sheet = el('button', 'mini', 'Copy for sheet');
+      sheet.title = 'Copy the code and description as two clipboard entries';
+      sheet.addEventListener('click', async () => {
+        // Not pressed twice while the first is between its two writes.
+        sheet.disabled = true;
+        try {
+          await copyApart(navigator.clipboard, p.id, eff.desc);
+          flash(sheet, 'Copy for sheet', '✓ Copied', 'ok');
+          toast(clean(eff.desc) ? `Copied: ${p.id}, then ${eff.desc}` : `Copied: ${p.id}`);
+        } catch {
+          flash(sheet, 'Copy for sheet', '✗ Not copied', 'bad');
+          toast('Could not copy — highlight it and copy by hand.', 5000);
+        }
+      });
+      acts.append(sheet);
+    }
     if (Auth.canEditParts) {
       const cd = el('button', 'mini', 'Correct description');
       cd.addEventListener('click', () => openCorrect(p, 'desc'));

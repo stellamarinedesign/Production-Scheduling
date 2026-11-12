@@ -477,6 +477,52 @@ export function browse(index, { family = null, bin = 'all', binFirst = false, by
 }
 
 // ---------------------------------------------------------------------------
+// COPYING A PART INTO TWO CELLS
+// ---------------------------------------------------------------------------
+
+/**
+ * How long the description is left on the clipboard before the code replaces
+ * it. Windows keeps its clipboard history a moment behind the clipboard, and
+ * can miss the first of two writes made back to back. Half a second is meant
+ * to be past that and still short of a person switching windows, which is the
+ * other way to lose the second write: a page may only write to the clipboard
+ * while it has the focus. NOT MEASURED - the history cannot be read from a
+ * page. If descriptions go missing from it, this is the number to raise.
+ */
+export const CLIPBOARD_GAP_MS = 500;
+
+const pause = (ms) => new Promise((done) => { setTimeout(done, ms); });
+
+/**
+ * A part as two clipboard entries: the description first and the code after
+ * it. The code is then what pastes, and the description is the entry before
+ * it in the clipboard history - a sheet's two cells without splitting a line.
+ *
+ * A part with no description is its code alone, one write: a blank entry
+ * would only push something else down the history.
+ *
+ * The clipboard and the wait are handed in, so this has no DOM of its own. A
+ * write that is refused rejects, and nothing after it is attempted.
+ *
+ * @param {{writeText: (text: string) => Promise<void>}} clipboard
+ * @param {string} code
+ * @param {string} [desc]  the description on screen, corrected if it has been
+ * @param {{gap?: number, wait?: (ms: number) => Promise<void>}} [o]
+ * @returns {Promise<string[]>} what was written, in the order it was written
+ */
+export async function copyApart(clipboard, code, desc, { gap = CLIPBOARD_GAP_MS, wait = pause } = {}) {
+  const written = [];
+  if (clean(desc)) {
+    await clipboard.writeText(desc);
+    written.push(desc);
+    await wait(gap);
+  }
+  await clipboard.writeText(code);
+  written.push(code);
+  return written;
+}
+
+// ---------------------------------------------------------------------------
 // MATERIALS
 //
 // The raw stock - bar, plate, tube, sheet - is in the part list like
