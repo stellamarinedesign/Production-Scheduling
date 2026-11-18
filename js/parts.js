@@ -523,6 +523,137 @@ export async function copyApart(clipboard, code, desc, { gap = CLIPBOARD_GAP_MS,
 }
 
 // ---------------------------------------------------------------------------
+// A PART AS A FILE NAME
+// ---------------------------------------------------------------------------
+
+// ¼, ½, ¾ and the other single-character fractions.
+const VULGAR_FRACTION = /[\u00bc-\u00be\u2150-\u215e]/g;
+// What Windows refuses in a file name, and the control characters.
+const REFUSED_IN_NAME = /[\\/:*?"<>|\u0000-\u001f]/g;
+const isDigit = (c) => c >= '0' && c <= '9';
+const isLetter = (c) => /[\p{L}\p{M}]/u.test(c);
+
+/**
+ * A description in PascalCase, for a file name: every word starting with a
+ * capital, the spaces gone. "Hatch hinge 316 S/S" -> "HatchHinge316SS".
+ *
+ * - After its first letter a word stays as written, so CSK and SS stay in
+ *   capitals. A description written all in capitals is recased word by word
+ *   (ROUND BAR SS -> RoundBarSs). A word that starts with a digit is left as
+ *   written either way (25mm, 316L).
+ * - Sizes keep their shape: a decimal point stays (25.4mm); the slash of a
+ *   fraction is a comma, so it still looks like one (1/2 -> 1,2); an inch
+ *   mark after a number is "in", whether written ", '' or ' (the part list
+ *   uses all three); sizes joined by x are joined by a small x with no
+ *   spaces (50 x 50 x 3 -> 50x50x3).
+ * - & is "And", ° is "deg", and a comma grouping thousands goes (1,200 -> 1200).
+ * - Two numbers that would run together keep a hyphen between them, as a
+ *   whole number and its fraction do (4 1/2" -> 4-1,2in).
+ * - Anything else that is not a letter or a digit only ends a word: brackets,
+ *   the characters Windows refuses, a slash between words (S/S -> SS).
+ *
+ * Nothing usable (no description, or only punctuation) is ''.
+ *
+ * @param {string} [desc]
+ * @returns {string}
+ */
+export function pascalCase(desc) {
+  const plain = String(desc ?? '')
+    // A word of its own, so 4½" reads as 4 1/2".
+    .replace(VULGAR_FRACTION, (f) => ` ${f.normalize('NFKC')}`)
+    .replace(/\u00ba/g, '\u00b0')
+    // Superscripts to digits, odd spaces to spaces, ″ to two primes.
+    .normalize('NFKC');
+  const shouting = /\p{Lu}/u.test(plain) && !/\p{Ll}/u.test(plain);
+  const s = plain
+    .replace(/[\u2044\u2215]/g, '/')
+    .replace(/[\u2018\u2019\u2032]/g, "'")
+    .replace(/[\u201c\u201d]/g, '"')
+    .replace(/[\u2010-\u2015\u2212]/g, '-')
+    .replace(/\s*\u00b0/g, 'deg')
+    .replace(/&/g, ' And ')
+    .replace(/(\d),(?=\d{3}(?!\d))/g, '$1')
+    .replace(/(\d)\s*\/\s*(?=\d)/g, '$1,')
+    .replace(/(\d)\s*(?:''|"|')/g, '$1in')
+    .replace(/(\d(?:in)?)\s*[xX\u00d7]\s*(?=\d)/g, '$1x');
+
+  // Into words. A point before a digit is a decimal point unless a letter is
+  // before it (No.5); a comma or a hyphen between two digits stays.
+  const chars = Array.from(s);
+  const words = [];
+  let word = '';
+  chars.forEach((c, i) => {
+    const prev = chars[i - 1] ?? '';
+    const next = chars[i + 1] ?? '';
+    const keep = isLetter(c) || isDigit(c)
+      || (c === '.' && isDigit(next) && !isLetter(prev))
+      || ((c === ',' || c === '-') && isDigit(prev) && isDigit(next));
+    if (keep) { word += c; return; }
+    if (word) words.push(word);
+    word = '';
+  });
+  if (word) words.push(word);
+
+  let out = '';
+  for (const w of words) {
+    const [first, ...rest] = Array.from(w);
+    const cased = isDigit(first) || first === '.'
+      ? w
+      : first.toUpperCase() + (shouting ? rest.join('').toLowerCase() : rest.join(''));
+    if (isDigit(out.slice(-1)) && /^[.0-9]/.test(cased)) out += '-';
+    out += cased;
+  }
+  return out;
+}
+
+/**
+ * A part's file name: the code, a hyphen, and the description in PascalCase
+ * (see pascalCase). "AB0001", "Hatch hinge 316 S/S" -> "AB0001-HatchHinge316SS".
+ * The code is as written, but for a slash, which is a hyphen, and its spaces,
+ * which go: "AB01/24 (XY1)" -> "AB01-24(XY1)". A part with no usable
+ * description is its code alone.
+ *
+ * @param {string} code
+ * @param {string} [desc]  the description on screen, corrected if it has been
+ * @returns {string}
+ */
+export function partFileName(code, desc) {
+  const c = String(code ?? '').replace(/\//g, '-').replace(REFUSED_IN_NAME, '').replace(/\s+/g, '');
+  return [c, pascalCase(desc)].filter(Boolean).join('-').replace(/[. ]+$/, '');
+}
+
+// ---------------------------------------------------------------------------
+// WHEN A COPY FAILS
+// ---------------------------------------------------------------------------
+
+/**
+ * Why a clipboard write failed, as near as a page can tell. A browser gives
+ * the same error for a page that was not in front and for a site whose
+ * clipboard is blocked, so the page's focus and the permission are looked at
+ * after the failure and handed in.
+ *
+ * @param {{clipboard?: boolean, focused?: boolean, permission?: string|null}} o
+ *   clipboard: the browser offers a clipboard to the page at all;
+ *   focused: the page had the focus when the write failed;
+ *   permission: the clipboard-write permission's state, where the browser names it
+ * @returns {'unavailable'|'unfocused'|'blocked'|'unknown'}
+ */
+export function copyFailure({ clipboard = true, focused = true, permission = null } = {}) {
+  if (!clipboard) return 'unavailable';
+  if (!focused) return 'unfocused';
+  if (permission === 'denied') return 'blocked';
+  return 'unknown';
+}
+
+/** The toast for each reason a copy failed. */
+export const COPY_FAILED = {
+  unavailable: 'Could not copy \u2014 this browser does not allow it here. Highlight it and copy by hand.',
+  unfocused: 'Could not copy \u2014 the page was not in front. Click the page and try again.',
+  blocked: 'Could not copy \u2014 copying is blocked for this site in the browser\'s settings. Highlight it and copy by hand.',
+  unknown: 'Could not copy \u2014 highlight it and copy by hand.',
+};
+
+// ---------------------------------------------------------------------------
 // MATERIALS
 //
 // The raw stock - bar, plate, tube, sheet - is in the part list like
