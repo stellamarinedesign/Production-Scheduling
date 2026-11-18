@@ -93,7 +93,7 @@ export function createReview(rerender) {
       || (g.shutByDefault && !shutGroups.has(`open:${g.key}`));
     const head = el('button', `detail-group${shut ? ' is-shut' : ''}`);
     head.setAttribute('aria-expanded', String(!shut));
-    head.append(el('span', 'dg-caret', shut ? '▸' : '▾'));
+    head.append(el('span', 'dg-caret', shut ? '\u25b8' : '\u25be'));
     head.append(el('span', 'dg-name', g.title));
     head.append(el('span', 'dg-n', String(g.rows.length)));
     head.addEventListener('click', () => {
@@ -172,9 +172,9 @@ export function createReview(rerender) {
     const bar = el('div', 'flag-bar');
     const head = el('button', 'flag-head');
     head.setAttribute('aria-expanded', String(open));
-    head.append(el('span', 'flag-caret', open ? '▾' : '▸'));
+    head.append(el('span', 'flag-caret', open ? '\u25be' : '\u25b8'));
     // The count leads: the line's whole point is how many of these there are.
-    head.append(el('span', 'flag-n', `${c.rows.length}×`));
+    head.append(el('span', 'flag-n', `${c.rows.length}\u00d7`));
     head.append(el('b', null, c.title));
     head.addEventListener('click', () => {
       if (openConcerns.has(c.id)) openConcerns.delete(c.id);

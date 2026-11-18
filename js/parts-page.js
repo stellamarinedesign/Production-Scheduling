@@ -17,7 +17,7 @@ import { closeOnBackdrop } from './dialog.js';
 import { wireSettings } from './settings.js';
 import { showTestMode, carryFlag } from './test-mode.js';
 import { createReview } from './import-review.js';
-import { stockReview, settleAnswers } from './parts-review.js';
+import { stockReview, settleAnswers, materialsReview } from './parts-review.js';
 import {
   transformParts, validateStockExport, diffParts, unknownFamilies,
   buildIndex, search, browse, familyCounts, familyOf, hasBin, effective,
@@ -459,6 +459,7 @@ function wireMaterials() {
     e.target.value = '';
     if (f) stageMaterials(f);
   });
+  renderMatReview();
 }
 
 /** The material pills, then the form pills for the chosen material. */
@@ -532,72 +533,92 @@ function renderMaterials() {
   showList('materials', entries);
 }
 
+let matStaged = null;     // { file, items, index, warnings, lede } - read, not loaded
+// Drawn by import-review.js, like the Stock Items review above it.
+const matReview = createReview(() => renderMatReview());
+
+/**
+ * Under the materials drop zone: the sheet being reviewed, or the one loaded
+ * now. The drop zone hides while a sheet is under review.
+ */
+function renderMatReview() {
+  const host = $('matReview');
+  host.textContent = '';
+  $('matDropZone').hidden = Boolean(matStaged);
+  if (!matStaged) {
+    host.hidden = !materials;
+    if (materials) {
+      host.append(el('div', 'import-current',
+        `Currently loaded: ${materials.sourceLabel ?? 'a sheet'} \u2014 ${materials.count ?? manifest.length} materials, `
+        + `loaded ${fmtDate(materials.importedAt)}. Drop a new sheet above to replace it.`));
+    }
+    return;
+  }
+  host.hidden = false;
+  host.append(matReview.render(materialsReview({
+    ...matStaged,
+    prev: manifest,
+    descOf: (code) => partsById.get(code)?.desc ?? '',
+    apply: loadMaterials,
+    cancel: () => { matStaged = null; renderMatReview(); },
+  })));
+}
+
 /** Read a materials sheet and show what loading it would mean. */
 async function stageMaterials(file) {
+  matStaged = null;
   const host = $('matReview');
   host.hidden = false;
   host.textContent = '';
-  host.append(el('div', 'lede', `Reading ${file.name}\u2026`));
+  host.append(reviewLine('lede', `Reading ${file.name}\u2026`));
   let text;
   try {
     text = await file.text();
   } catch (e) {
     host.textContent = '';
-    host.append(el('div', 'import-clean', `Could not read that file \u2014 ${e.message}`));
+    host.append(reviewLine('import-clean', `Could not read that file \u2014 ${e.message}`));
     return;
   }
   const { items, errors, warnings, skipped } = parseMaterialsCsv(text);
-  host.textContent = '';
-  host.append(el('h2', null, 'Review the materials sheet'));
   if (errors.length) {
-    for (const m of errors) host.append(el('div', 'flag flag-bad import-err', m));
-    host.append(el('div', 'import-clean', 'This file was not loaded.'));
+    host.textContent = '';
+    host.append(matReview.render({
+      title: 'Review the materials sheet',
+      notes: errors.map((m) => ({ cls: 'flag flag-bad import-err', text: m })),
+      clean: 'This file was not loaded.',
+    }));
     return;
   }
-  const groups = materialGroups(buildMaterialsIndex(parts, items, overrides));
-  const notInList = items.filter((m) => !partsById.has(m.code));
-  host.append(el('div', 'lede', `${file.name} \u2014 ${items.length} materials in ${groups.length} categor${groups.length === 1 ? 'y' : 'ies'}`
+  const index = buildMaterialsIndex(parts, items, overrides);
+  const groups = materialGroups(index);
+  const lede = `${file.name} \u2014 ${items.length} materials in ${groups.length} categor${groups.length === 1 ? 'y' : 'ies'}`
     + `${skipped ? `, ${skipped} row${skipped === 1 ? '' : 's'} skipped (no code, or retired)` : ''}. `
-    + `${manifest.length ? `Replaces the ${manifest.length} loaded now.` : 'First load.'} Nothing changes until you apply it.`));
-  for (const m of warnings) host.append(el('div', 'flag flag-warn import-warn', m));
-  if (notInList.length) {
-    host.append(el('div', 'flag flag-warn import-warn',
-      `${notInList.length} code${notInList.length === 1 ? ' is' : 's are'} not in the part list `
-      + `(${notInList.slice(0, 6).map((m) => m.code).join(', ')}${notInList.length > 6 ? '...' : ''}). `
-      + 'They will be shown with the sheet\'s description and marked as missing from the ERP list.'));
+    + `${manifest.length ? `Replaces the ${manifest.length} loaded now.` : 'First load.'} Nothing changes until you apply it.`;
+  matStaged = { file, items, index, warnings, lede };
+  renderMatReview();
+}
+
+async function loadMaterials() {
+  if (!matStaged) return;
+  const { file, items } = matStaged;
+  const apply = $('matReview').querySelector('.primary');
+  if (apply) apply.disabled = true;
+  const now = new Date().toISOString();
+  try {
+    await Store.saveMaterials({
+      importedAt: now, importedBy: who, sourceLabel: file.name, count: items.length,
+      itemsJson: JSON.stringify(items),
+    });
+  } catch (e) {
+    if (apply) apply.disabled = false;
+    toast(`Could not save \u2014 ${e.message}`, 8000);
+    return;
   }
-  const grid = el('div', 'import-stats');
-  for (const g of groups.slice(0, 12)) {
-    const c = el('div', 'stat');
-    c.append(el('b', null, String(g.count)), el('span', null, g.category));
-    c.append(el('em', null, g.subs.map((s) => `${s.subcategory} ${s.count}`).join(' \u00b7 ')));
-    grid.append(c);
-  }
-  host.append(grid);
-  const acts = el('div', 'import-actions');
-  const apply = el('button', 'primary', warnings.length || notInList.length ? 'Load anyway' : 'Load this sheet');
-  apply.addEventListener('click', async () => {
-    apply.disabled = true;
-    const now = new Date().toISOString();
-    try {
-      await Store.saveMaterials({
-        importedAt: now, importedBy: who, sourceLabel: file.name, count: items.length,
-        itemsJson: JSON.stringify(items),
-      });
-    } catch (e) {
-      apply.disabled = false;
-      toast(`Could not save \u2014 ${e.message}`, 8000);
-      return;
-    }
-    host.hidden = true;
-    await loadAll();
-    renderAll();
-    toast(`${items.length} materials loaded.`);
-  });
-  const cancel = el('button', 'ghost', 'Cancel');
-  cancel.addEventListener('click', () => { host.hidden = true; });
-  acts.append(apply, cancel);
-  host.append(acts);
+  matStaged = null;
+  await loadAll();
+  renderAll();
+  renderMatReview();
+  toast(`${items.length} materials loaded.`);
 }
 
 function partCard(e) {
@@ -1058,6 +1079,13 @@ let staged = null;
 // groups are open, and every click there draws the review again from `staged`.
 const importReview = createReview(() => renderPartsReview());
 
+/** A line of its own while a file is read, or when it cannot be. */
+function reviewLine(cls, text) {
+  const box = el('div', 'import-review');
+  box.append(el('div', cls, text));
+  return box;
+}
+
 function wireImport() {
   const zone = $('dropZone');
   zone.addEventListener('click', () => $('partsFile').click());
@@ -1112,14 +1140,13 @@ async function stageImport(file) {
   const host = $('partsReview');
   host.hidden = false;
   host.textContent = '';
-  const line = (cls, text) => { const box = el('div', 'import-review'); box.append(el('div', cls, text)); return box; };
-  host.append(line('lede', `Reading ${file.name}…`));
+  host.append(reviewLine('lede', `Reading ${file.name}…`));
   let src;
   try {
     src = await readStockExport(file);
   } catch (e) {
     host.textContent = '';
-    host.append(line('import-clean', `Could not read that file — ${e.message}`));
+    host.append(reviewLine('import-clean', `Could not read that file — ${e.message}`));
     return;
   }
   const { parts: fresh, excluded } = transformParts(src.rows);

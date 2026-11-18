@@ -2327,7 +2327,7 @@ function renderImport() {
   if (!staged) {
     if (state.source) {
       host.append(el('div', 'import-current',
-        `Currently loaded: ${state.source.sourceLabel ?? 'an export'} — `
+        `Currently loaded: ${state.source.sourceLabel ?? 'an export'} \u2014 `
         + `${state.board?.meta?.row_count ?? 0} rows, `
         + `${state.board?.meta?.job_count ?? 0} production orders. `
         + 'Drop a new export above to replace it.'));
@@ -2345,14 +2345,14 @@ function renderImport() {
 
   host.append(review.render({
     title: 'Review this import',
-    lede: `${staged.src.sourceLabel} — ${staged.src.rows.length} rows from the `
+    lede: `${staged.src.sourceLabel} \u2014 ${staged.src.rows.length} rows from the `
       + `"${staged.src.sheetName}" sheet. Nothing changes until you apply it.`,
     // What an import does and does not touch. Worth saying on the page rather
     // than only in the README: the word "import" reads like "replace".
     notes: [{
       cls: 'import-scope',
-      text: 'An import replaces the ERP rows only. Everything decided here — labels, '
-        + 'vessel codes, hidden jobs, hand-set statuses and completed work — is '
+      text: 'An import replaces the ERP rows only. Everything decided here \u2014 labels, '
+        + 'vessel codes, hidden jobs, hand-set statuses and completed work \u2014 is '
         + 'keyed on the production number and survives it. Completed jobs stay in '
         + 'History even once the ERP stops exporting them.',
     }],
@@ -2364,14 +2364,14 @@ function renderImport() {
     ],
     summary: importSummary(diff),
     concerns: importConcerns(b, staged.src),
-    clean: 'Nothing outstanding — every row classified cleanly.',
+    clean: 'Nothing outstanding \u2014 every row classified cleanly.',
     actions: {
       apply: { label: 'Apply this import', run: commitImport },
       cancel: {
         label: 'Cancel',
-        run: () => { staged = null; renderImport(); toast('Import cancelled — nothing changed.'); },
+        run: () => { staged = null; renderImport(); toast('Import cancelled \u2014 nothing changed.'); },
       },
-      hint: 'You can apply with these outstanding — they will still be waiting on the board.',
+      hint: 'You can apply with these outstanding \u2014 they will still be waiting on the board.',
     },
   }));
 }
@@ -2486,7 +2486,7 @@ function importConcerns(b, src) {
       rows: held.map((j) => ({
         key: j.prod_no,
         main: jobTitle(j),
-        detail: j.status_manual ? 'put on hold here' : `ERP says On Hold · due ${j.due_display}`,
+        detail: j.status_manual ? 'put on hold here' : `ERP says On Hold \u00b7 due ${j.due_display}`,
         control: () => statusControl(j),
       })),
     });
@@ -2501,7 +2501,7 @@ function importConcerns(b, src) {
       id: 'oddstock', level: 'warn',
       title: `Stock ${many(oddStock.length, 'build', 'builds')} booked as a component part`,
       note: 'On the production board because the ERP calls them Finished Good. '
-        + 'Check whether they are really internal work — hide one here if it should not be on the board.',
+        + 'Check whether they are really internal work \u2014 hide one here if it should not be on the board.',
       rows: oddStock.map((j) => ({
         key: j.prod_no,
         main: jobTitle(j),
@@ -2584,7 +2584,7 @@ function importDetail(b, key, diff = null) {
         main: jobTitle(j),
         detail: key === 'production'
           ? j.due_display
-          : `${j.customer_display ?? ''}${j.age_display ? ` · open ${j.age_display}` : ''}`,
+          : `${j.customer_display ?? ''}${j.age_display ? ` \u00b7 open ${j.age_display}` : ''}`,
         marks,
         // A changed row opens to each field as it was and as it is.
         wire: st === 'changed'

@@ -1,13 +1,15 @@
-// parts-review.js — the Stock Items import review, as import-review.js draws it.
+// parts-review.js — the parts page's two import reviews, as import-review.js draws them.
 //
-// The parts page stages an export and shows it in the same review the board
-// uses. This turns what the import found (the diff against the loaded list, the
-// corrections it settles or puts in question, the export's warnings) into that
-// review's description, and settles the corrections in question with the
-// answers given in it. The page reads the file, draws and saves; nothing here
-// touches the store.
+// The parts page stages a Stock Items export, or a materials sheet, and shows
+// it in the same review the board uses. This turns what the file holds and what
+// it changes into that review's description: for the export, the diff against
+// the loaded list, the corrections it settles or puts in question and its
+// warnings, and it settles the corrections in question with the answers given
+// in the review; for the materials sheet, its categories, what it changes
+// against the sheet loaded now, and the codes the part list lacks. The page
+// reads the file, draws and saves; nothing here touches the store.
 
-import { FAMILIES, familyOf, clean, resolveReview } from './parts.js';
+import { FAMILIES, familyOf, clean, resolveReview, materialGroups, browseMaterials } from './parts.js';
 
 // A list longer than this opens with its families shut. On a first load every
 // part is new, and two thousand open rows are not something anybody reads.
@@ -121,7 +123,7 @@ function decisionRow(key, o, answers) {
     cls: 'is-decision',
     key: o.partId,
     main: input,
-    detail: `${FIELD[o.field] ?? o.field} · ${gone ? 'gone from the export' : `ERP now says "${o.observed ?? ''}"`}`,
+    detail: `${FIELD[o.field] ?? o.field} \u00b7 ${gone ? 'gone from the export' : `ERP now says "${o.observed ?? ''}"`}`,
     control: () => { const f = document.createDocumentFragment(); f.append(keep, accept); return f; },
   };
 }
@@ -149,7 +151,7 @@ export function stockReview(x) {
     key, n, label, note,
     detail: n ? () => ({ title: `${title} (${n})`, groups: byFamily(key, rows()) }) : undefined,
   });
-  const arrow = (from, to) => `${from || '(blank)'}  →  ${to || '(blank)'}`;
+  const arrow = (from, to) => `${from || '(blank)'}  \u2192  ${to || '(blank)'}`;
   const questioned = inQuestion(x.updated);
 
   const stats = [
@@ -161,7 +163,7 @@ export function stockReview(x) {
     stat('removed', d.removed.length, 'codes gone', 'Codes gone',
       () => d.removed.map((id) => ({ key: id, main: x.descOf(id) }))),
     stat('desc', d.descChanged.length, 'descriptions changed', 'Descriptions changed',
-      () => d.descChanged.map((c) => ({ key: c.id, main: `${c.from}  →  ${c.to}` }))),
+      () => d.descChanged.map((c) => ({ key: c.id, main: `${c.from}  \u2192  ${c.to}` }))),
     stat('bin', d.binChanged.length, 'bins changed', 'Bins changed',
       () => d.binChanged.map((c) => ({ key: c.id, main: arrow(c.from, c.to) }))),
   ];
@@ -200,6 +202,149 @@ export function stockReview(x) {
     clean: 'Nothing outstanding.',
     actions: {
       apply: { label: warnings.length ? 'Apply anyway' : 'Apply this import', run: x.apply },
+      cancel: { label: 'Cancel', run: x.cancel },
+      hint: 'Read the warnings above first.',
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// the materials sheet
+// ---------------------------------------------------------------------------
+
+// What a material can move on the sheet, and the word a row's tag uses for it.
+// The description is not here: it stands in only for a code the part list
+// lacks, and the part list's own description is the one shown.
+const MATERIAL_FIELDS = [['category', 'category'], ['subcategory', 'form'], ['qtyType', 'quantity type']];
+
+/**
+ * What a new materials sheet changes against the one loaded, by code.
+ * @returns {{ first: boolean, added: Set, changed: Map, same: number, removed: Array }}
+ *   `changed` is code -> the words for what moved; `removed` the old rows.
+ */
+export function diffMaterials(prev, next) {
+  const before = new Map((prev ?? []).map((m) => [m.code, m]));
+  const seen = new Set();
+  const added = new Set();
+  const changed = new Map();
+  let same = 0;
+  for (const m of next ?? []) {
+    seen.add(m.code);
+    const was = before.get(m.code);
+    if (!was) { added.add(m.code); continue; }
+    const moved = MATERIAL_FIELDS.filter(([f]) => (was[f] ?? '') !== (m[f] ?? '')).map(([, word]) => word);
+    if (moved.length) changed.set(m.code, moved); else same++;
+  }
+  const removed = (prev ?? []).filter((m) => !seen.has(m.code));
+  return { first: !before.size, added, changed, same, removed };
+}
+
+/**
+ * The materials review's description.
+ *
+ * @param {object} x
+ *   lede      the line under the heading
+ *   items     the sheet's materials
+ *   index     buildMaterialsIndex(part list, items, corrections)
+ *   prev      the sheet's materials loaded now; empty on a first load
+ *   warnings  parseMaterialsCsv's warnings
+ *   descOf    code -> its description in the part list, for a material gone
+ *   apply, cancel the page's own
+ */
+export function materialsReview(x) {
+  const { index, warnings = [] } = x;
+  const diff = diffMaterials(x.prev, x.items);
+  const missing = index.filter((e) => e.missing);
+
+  const row = (e) => {
+    const code = e.material.code;
+    const marks = [];
+    let cls = '';
+    if (!diff.first) {
+      if (diff.added.has(code)) { cls = 'is-new'; marks.push({ cls: 'fr-tag is-new', text: 'new' }); }
+      else if (diff.changed.has(code)) marks.push({ cls: 'fr-tag is-changed', text: diff.changed.get(code).join(', ') });
+      else cls = 'is-same';
+    }
+    if (e.missing) marks.push({ cls: 'fr-note', text: 'not in the part list' });
+    return { cls, key: code, main: e.eff.desc, detail: e.material.qtyType, marks };
+  };
+
+  // In rack order: category, form, then size by description.
+  const rack = browseMaterials(index);
+  const stats = materialGroups(index).map((g) => ({
+    key: `cat:${g.category}`,
+    n: g.count,
+    label: g.category,
+    note: g.subs.map((s) => `${s.subcategory} ${s.count}`).join(' \u00b7 '),
+    detail: () => ({
+      title: `${g.category} (${g.count})`,
+      groups: g.subs.map((s) => ({
+        key: `cat:${g.category}:${s.subcategory}`,
+        title: s.subcategory,
+        rows: rack.filter((e) => e.material.category === g.category && e.material.subcategory === s.subcategory).map(row),
+        shutByDefault: g.count > SHUT_OVER,
+      })),
+    }),
+  }));
+  if (diff.removed.length) {
+    const byCat = new Map();
+    for (const m of diff.removed) {
+      if (!byCat.has(m.category)) byCat.set(m.category, []);
+      byCat.get(m.category).push(m);
+    }
+    stats.push({
+      key: 'gone',
+      n: diff.removed.length,
+      label: 'gone from the sheet',
+      detail: () => ({
+        title: `Gone from the sheet (${diff.removed.length})`,
+        groups: [...byCat].map(([cat, ms]) => ({
+          key: `gone:${cat}`,
+          title: cat,
+          rows: ms.map((m) => ({ cls: 'is-leaving', key: m.code, main: x.descOf(m.code) || m.desc, detail: m.qtyType })),
+          shutByDefault: diff.removed.length > SHUT_OVER,
+        })),
+      }),
+    });
+  }
+
+  const concerns = [];
+  if (missing.length) {
+    concerns.push({
+      id: 'missing', level: 'warn',
+      title: missing.length === 1 ? 'Code not in the part list' : 'Codes not in the part list',
+      rows: missing.map((e) => ({
+        key: e.material.code, main: e.material.desc, detail: `${e.material.category} \u203a ${e.material.subcategory}`,
+      })),
+    });
+  }
+  if (warnings.length) {
+    concerns.push({
+      id: 'sheet', level: 'warn',
+      title: warnings.length === 1 ? 'Sheet warning' : 'Sheet warnings',
+      rows: warnings.map((w, i) => ({ key: `#${i + 1}`, main: w })),
+    });
+  }
+
+  const moved = diff.added.size + diff.changed.size + diff.removed.length;
+  return {
+    title: 'Review the materials sheet',
+    lede: x.lede,
+    stats,
+    summary: diff.first ? null : {
+      lead: 'Against the sheet you have now:',
+      parts: [
+        { n: diff.added.size, label: 'new', cls: 'is-new' },
+        { n: diff.changed.size, label: 'changed', cls: 'is-changed' },
+        { n: diff.same, label: 'unchanged', cls: 'is-same' },
+        { n: diff.removed.length, label: 'gone', cls: 'is-leaving' },
+      ],
+      after: moved ? null : 'nothing has moved since the last sheet',
+    },
+    concerns,
+    clean: 'Nothing outstanding.',
+    actions: {
+      apply: { label: concerns.length ? 'Load anyway' : 'Load this sheet', run: x.apply },
       cancel: { label: 'Cancel', run: x.cancel },
       hint: 'Read the warnings above first.',
     },
