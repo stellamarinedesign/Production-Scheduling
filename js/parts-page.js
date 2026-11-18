@@ -23,7 +23,7 @@ import {
   fixList, fixListCsv, ageInDays, STALE_DAYS, FAMILIES, META_FIELDS, metaLine,
   draftingSheets, workbookName, withdrawOverride,
   parseMaterialsCsv, buildMaterialsIndex, materialGroups, browseMaterials,
-  copyApart,
+  copyApart, partFileName, copyFailure, COPY_FAILED,
 } from './parts.js';
 
 const $ = (id) => document.getElementById(id);
@@ -650,8 +650,7 @@ function partCard(e) {
         flash(copy, 'Copy', '\u2713 Copied', 'ok');
         toast(`Copied: ${line}`);
       } catch {
-        flash(copy, 'Copy', '\u2717 Not copied', 'bad');
-        toast('Could not copy — highlight it and copy by hand.', 5000);
+        copyFailed(copy, 'Copy');
       }
     });
     acts.append(copy);
@@ -671,12 +670,26 @@ function partCard(e) {
           flash(sheet, 'Copy for sheet', '✓ Copied', 'ok');
           toast(clean(eff.desc) ? `Copied: ${p.id}, then ${eff.desc}` : `Copied: ${p.id}`);
         } catch {
-          flash(sheet, 'Copy for sheet', '✗ Not copied', 'bad');
-          toast('Could not copy — highlight it and copy by hand.', 5000);
+          copyFailed(sheet, 'Copy for sheet');
         }
       });
       acts.append(sheet);
     }
+    // The code and description as one name for saving a file under:
+    // AB0001-HatchHinge316SS. One write, so on every system.
+    const named = el('button', 'mini', 'Copy as file name');
+    named.title = 'Copy the code and description as a file name';
+    named.addEventListener('click', async () => {
+      const name = partFileName(p.id, eff.desc);
+      try {
+        await navigator.clipboard.writeText(name);
+        flash(named, 'Copy as file name', '\u2713 Copied', 'ok');
+        toast(`Copied: ${name}`);
+      } catch {
+        copyFailed(named, 'Copy as file name');
+      }
+    });
+    acts.append(named);
     if (Auth.canEditParts) {
       const cd = el('button', 'mini', 'Correct description');
       cd.addEventListener('click', () => openCorrect(p, 'desc'));
@@ -1210,6 +1223,22 @@ async function commitImport() {
 }
 
 // ---------------------------------------------------------------------------
+/**
+ * A copy button whose write was refused: the button says so, and the toast
+ * says why, as near as the page can tell. The focus is read first, before
+ * anything else can move it.
+ */
+async function copyFailed(btn, label) {
+  const focused = document.hasFocus();
+  flash(btn, label, '\u2717 Not copied', 'bad');
+  let permission = null;
+  try {
+    permission = (await navigator.permissions?.query({ name: 'clipboard-write' }))?.state ?? null;
+  } catch { /* a browser that does not name this permission */ }
+  const why = copyFailure({ clipboard: Boolean(navigator.clipboard?.writeText), focused, permission });
+  toast(COPY_FAILED[why], 6000);
+}
+
 /**
  * Say it on the button. A toast at the foot of the page is easy to miss, and
  * a copy that says nothing where the finger is looks like a copy that

@@ -79,6 +79,8 @@ export const HELP = [
           + 'in the next, Win+V opens the clipboard history, where the description is '
           + 'the entry below the code. It needs clipboard history switched on in '
           + 'Windows, and the button shows on Windows only.',
+          'Copy as file name joins the code and description into one word, each '
+          + 'word starting with a capital, for naming a file: AB0001-HatchHinge316SS.',
           'Anything else, highlight as usual and copy. A drag that ends with text '
           + 'highlighted is treated as a highlight, not a tap, so it neither opens '
           + 'nor closes the card.',
