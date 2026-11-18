@@ -781,6 +781,9 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 .import-stats .stat { text-align: left; cursor: pointer; }
 .import-stats .stat:hover { border-color: var(--red-bright); }
 .import-stats .stat.is-open { border-color: var(--red-bright); background: var(--black-night); }
+/* A count with nothing behind it is not a button, and should not look like one. */
+.import-stats div.stat { cursor: default; }
+.import-stats div.stat:hover { border-color: var(--line); }
 .stat-more {
   display: block; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;
   color: var(--red-bright); margin-top: 6px;
@@ -1746,8 +1749,19 @@ body.role-engineer .not-engineer { display: none !important; }
 .fix-row.review .fix-why { color: #e9c27a; margin-bottom: 4px; }
 .fix-row.review .fix-vals { font-size: 12.5px; margin-bottom: 4px; }
 .fix-row.review .fix-acts { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
-.import-group { margin: 10px 0; }
-.import-group summary { cursor: pointer; color: var(--white); font-weight: 700; padding: 6px 0; }
+/* A correction the export put in question, answered in the import review: the
+   code, the correction (it edits), the field and what the ERP now says, then
+   Keep / Accept. At half-screen the ERP's value moves under the box rather
+   than being hidden like other detail: it is half of the decision. */
+.flag-row.is-decision { grid-template-columns: 86px minmax(160px, 1.3fr) minmax(140px, 1.3fr) auto; }
+.flag-row.is-decision .fr-main input { width: 100%; box-sizing: border-box; font-size: 13.5px; padding: 5px 9px; border-radius: 7px; }
+.flag-row.is-decision button.mini:disabled { opacity: .4; cursor: default; border-color: var(--line); }
+@media (max-width: 900px) {
+  .flag-row.is-decision { grid-template-columns: 78px 1fr; }
+  .flag-row.is-decision .fr-detail { display: block; grid-column: 2; }
+  .flag-row.is-decision .fr-act { grid-column: 2; justify-content: flex-start; }
+  .flag-row.is-decision .fr-main input { font-size: 16px; }
+}
 .import-err, .import-warn { padding: 10px 12px; margin: 8px 0; border-left-width: 4px; }
 
 /* The correct dialog's rows. */

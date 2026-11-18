@@ -28,6 +28,7 @@ import { renderPrint, fitWarehouse, renderWatermakers, measure, fitToPage, fitHo
 import { renderGantt } from './gantt.js';
 import { balanceColumns } from './print.js';
 import { openItemHistory, logImportChanges, wireChangeRow } from './item-history.js';
+import { createReview } from './import-review.js';
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => {
@@ -2293,15 +2294,9 @@ const IMPORT_DETAIL = {
   tm:         { label: 'time & materials jobs', lane: 'tm' },
   excluded:   { label: 'rows excluded', lane: null },
 };
-let importOpenDetail = null;
-// Most rows in an export are unchanged, so the list can be narrowed to the ones
-// that are not. Off by default: the full list is still the sanity check.
-let importChangedOnly = false;
-const importOpenConcerns = new Set();
-// Groups inside an opened count. Shut by default on the excluded list, which
-// runs to four figures — scrolling past 730 completed rows to reach the next
-// heading is not a sanity check, it is an obstacle.
-const importShutGroups = new Set();
+// The review is drawn by import-review.js, which also keeps which count,
+// concerns and groups are open. Every click there draws the page again.
+const review = createReview(() => renderImport());
 
 /**
  * Rebuild the staged board in place.
@@ -2332,7 +2327,7 @@ function renderImport() {
   if (!staged) {
     if (state.source) {
       host.append(el('div', 'import-current',
-        `Currently loaded: ${state.source.sourceLabel ?? 'an export'} \u2014 `
+        `Currently loaded: ${state.source.sourceLabel ?? 'an export'} — `
         + `${state.board?.meta?.row_count ?? 0} rows, `
         + `${state.board?.meta?.job_count ?? 0} production orders. `
         + 'Drop a new export above to replace it.'));
@@ -2341,72 +2336,44 @@ function renderImport() {
   }
 
   const b = staged.board;
-  const box = el('div', 'import-review');
-  box.append(el('h2', null, 'Review this import'));
-  box.append(el('div', 'lede',
-    `${staged.src.sourceLabel} \u2014 ${staged.src.rows.length} rows from the `
-    + `"${staged.src.sheetName}" sheet. Nothing changes until you apply it.`));
-
-  // What an import does and does not touch. Worth saying on the page rather
-  // than only in the README: the word "import" reads like "replace".
-  box.append(el('div', 'import-scope',
-    'An import replaces the ERP rows only. Everything decided here \u2014 labels, '
-    + 'vessel codes, hidden jobs, hand-set statuses and completed work \u2014 is '
-    + 'keyed on the production number and survives it. Completed jobs stay in '
-    + 'History even once the ERP stops exporting them.'));
-
-  // --- counts, each one openable ---
-  const grid = el('div', 'import-stats');
-  const stat = (key, n, note) => {
-    const c = el('button', `stat${importOpenDetail === key ? ' is-open' : ''}`);
-    c.append(el('b', null, String(n)), el('span', null, IMPORT_DETAIL[key].label));
-    if (note) c.append(el('em', null, note));
-    c.append(el('span', 'stat-more', importOpenDetail === key ? 'Hide' : 'Show all'));
-    c.addEventListener('click', () => {
-      importOpenDetail = importOpenDetail === key ? null : key;
-      renderImport();
-    });
-    grid.append(c);
-  };
-  stat('production', b.meta.job_count, `${b.meta.print_count} on the printed sheet`);
-  stat('internal', b.meta.internal_count);
-  stat('tm', b.meta.tm_count);
-  stat('excluded', b.excluded.length, 'by status or category');
-  box.append(grid);
-
   // What this import actually changes, against the board already loaded.
   const diff = diffBoards(state.source ? state.board : null, b, staged.src.rows);
-  box.append(importSummary(diff));
-
-  if (importOpenDetail) box.append(importDetail(b, importOpenDetail, diff));
-
-  // --- concerns, itemised ---
-  const concerns = importConcerns(b, staged.src);
-  const total = concerns.reduce((n, c) => n + c.rows.length, 0);
-  if (total) {
-    const list = el('div', 'import-flags');
-    list.append(el('h3', null, `Items of concern (${total})`));
-    for (const c of concerns) list.append(concernBlock(c));
-    box.append(list);
-  } else {
-    box.append(el('div', 'import-clean',
-      'Nothing outstanding \u2014 every row classified cleanly.'));
-  }
-
-  const acts = el('div', 'import-actions');
-  const apply = el('button', 'primary', 'Apply this import');
-  apply.addEventListener('click', commitImport);
-  const cancel = el('button', 'ghost', 'Cancel');
-  cancel.addEventListener('click', () => {
-    staged = null; renderImport(); toast('Import cancelled \u2014 nothing changed.');
+  // Counts, each one openable to its full contents.
+  const stat = (key, n, note) => ({
+    key, n, note, label: IMPORT_DETAIL[key].label, detail: () => importDetail(b, key, diff),
   });
-  acts.append(apply, cancel);
-  if (total) {
-    acts.append(el('span', 'hint',
-      'You can apply with these outstanding \u2014 they will still be waiting on the board.'));
-  }
-  box.append(acts);
-  host.append(box);
+
+  host.append(review.render({
+    title: 'Review this import',
+    lede: `${staged.src.sourceLabel} — ${staged.src.rows.length} rows from the `
+      + `"${staged.src.sheetName}" sheet. Nothing changes until you apply it.`,
+    // What an import does and does not touch. Worth saying on the page rather
+    // than only in the README: the word "import" reads like "replace".
+    notes: [{
+      cls: 'import-scope',
+      text: 'An import replaces the ERP rows only. Everything decided here — labels, '
+        + 'vessel codes, hidden jobs, hand-set statuses and completed work — is '
+        + 'keyed on the production number and survives it. Completed jobs stay in '
+        + 'History even once the ERP stops exporting them.',
+    }],
+    stats: [
+      stat('production', b.meta.job_count, `${b.meta.print_count} on the printed sheet`),
+      stat('internal', b.meta.internal_count),
+      stat('tm', b.meta.tm_count),
+      stat('excluded', b.excluded.length, 'by status or category'),
+    ],
+    summary: importSummary(diff),
+    concerns: importConcerns(b, staged.src),
+    clean: 'Nothing outstanding — every row classified cleanly.',
+    actions: {
+      apply: { label: 'Apply this import', run: commitImport },
+      cancel: {
+        label: 'Cancel',
+        run: () => { staged = null; renderImport(); toast('Import cancelled — nothing changed.'); },
+      },
+      hint: 'You can apply with these outstanding — they will still be waiting on the board.',
+    },
+  }));
 }
 
 /**
@@ -2416,80 +2383,20 @@ function renderImport() {
  * numbers worth reading, and it is the number a flat list hides.
  */
 function importSummary(diff) {
-  const wrap = el('div', 'import-diff');
   if (diff.first) {
-    wrap.append(el('span', 'id-first',
-      'First import — nothing to compare against, so every row is new.'));
-    return wrap;
+    return { first: 'First import — nothing to compare against, so every row is new.' };
   }
   const { added, changed, same, leaving } = diff.counts;
-  wrap.append(el('b', null, 'Against the board you have now:'));
-  const part = (n, label, cls) => {
-    if (!n) return;
-    const x = el('span', `id-part${cls ? ` ${cls}` : ''}`);
-    x.append(el('b', null, String(n)), el('span', null, label));
-    wrap.append(x);
+  return {
+    lead: 'Against the board you have now:',
+    parts: [
+      { n: added, label: 'new', cls: 'is-new' },
+      { n: changed, label: 'changed', cls: 'is-changed' },
+      { n: same, label: 'unchanged', cls: 'is-same' },
+      { n: leaving, label: 'leaving the board', cls: 'is-leaving' },
+    ],
+    after: !added && !changed && !leaving ? 'nothing has moved since the last export' : null,
   };
-  part(added, 'new', 'is-new');
-  part(changed, 'changed', 'is-changed');
-  part(same, 'unchanged', 'is-same');
-  part(leaving, 'leaving the board', 'is-leaving');
-  if (!added && !changed && !leaving) {
-    wrap.append(el('span', 'id-part is-same', 'nothing has moved since the last export'));
-  }
-  return wrap;
-}
-
-/** One collapsible concern: a heading, and every item under it with its fix. */
-function concernBlock(c) {
-  const open = importOpenConcerns.has(c.id) || c.rows.length <= 3;
-  const wrap = el('div', `flag flag-${c.level}${open ? ' is-open' : ''}`);
-
-  const bar = el('div', 'flag-bar');
-
-  const head = el('button', 'flag-head');
-  head.setAttribute('aria-expanded', String(open));
-  head.append(el('span', 'flag-caret', open ? '\u25be' : '\u25b8'));
-  // The count leads. On the right it was the last thing read on a line whose
-  // whole point is "how many of these are there".
-  head.append(el('span', 'flag-n', `${c.rows.length}\u00d7`));
-  head.append(el('b', null, c.title));
-  head.addEventListener('click', () => {
-    if (importOpenConcerns.has(c.id)) importOpenConcerns.delete(c.id);
-    else importOpenConcerns.add(c.id);
-    renderImport();
-  });
-  bar.append(head);
-
-  // One button for the whole list, where a row's own button does only that row.
-  if (c.resolveAll && c.rows.length > 1) {
-    const all = el('button', 'mini', `Resolve all ${c.rows.length}`);
-    all.addEventListener('click', c.resolveAll);
-    bar.append(all);
-  }
-  wrap.append(bar);
-
-  if (c.note) wrap.append(el('div', 'flag-note', c.note));
-  if (!open) return wrap;
-
-  const table = el('div', 'flag-rows');
-  for (const r of c.rows) {
-    const row = el('div', 'flag-row');
-    row.append(el('span', 'fr-key', r.key));
-    row.append(el('span', 'fr-main', r.main));
-    row.append(el('span', 'fr-detail', r.detail ?? ''));
-    const act = el('span', 'fr-act');
-    if (r.control) act.append(r.control());
-    else if (r.action) {
-      const btn = el('button', 'mini', r.action.label);
-      btn.addEventListener('click', r.action.run);
-      act.append(btn);
-    }
-    row.append(act);
-    table.append(row);
-  }
-  wrap.append(table);
-  return wrap;
 }
 
 /**
@@ -2579,7 +2486,7 @@ function importConcerns(b, src) {
       rows: held.map((j) => ({
         key: j.prod_no,
         main: jobTitle(j),
-        detail: j.status_manual ? 'put on hold here' : `ERP says On Hold \u00b7 due ${j.due_display}`,
+        detail: j.status_manual ? 'put on hold here' : `ERP says On Hold · due ${j.due_display}`,
         control: () => statusControl(j),
       })),
     });
@@ -2594,7 +2501,7 @@ function importConcerns(b, src) {
       id: 'oddstock', level: 'warn',
       title: `Stock ${many(oddStock.length, 'build', 'builds')} booked as a component part`,
       note: 'On the production board because the ERP calls them Finished Good. '
-        + 'Check whether they are really internal work \u2014 hide one here if it should not be on the board.',
+        + 'Check whether they are really internal work — hide one here if it should not be on the board.',
       rows: oddStock.map((j) => ({
         key: j.prod_no,
         main: jobTitle(j),
@@ -2611,58 +2518,32 @@ function importConcerns(b, src) {
   return out;
 }
 
-/**
- * One collapsible group inside an opened count. Shut state is per session, not
- * saved: which part of a one-off import listing you were reading says nothing
- * worth remembering.
- */
-function appendGroup(wrap, key, title, n, body, { shutByDefault = false } = {}) {
-  const shut = importShutGroups.has(key)
-    || (shutByDefault && !importShutGroups.has(`open:${key}`));
-
-  const head = el('button', `detail-group${shut ? ' is-shut' : ''}`);
-  head.setAttribute('aria-expanded', String(!shut));
-  head.append(el('span', 'dg-caret', shut ? '\u25b8' : '\u25be'));
-  head.append(el('span', 'dg-name', title));
-  head.append(el('span', 'dg-n', String(n)));
-  head.addEventListener('click', () => {
-    if (shut) { importShutGroups.delete(key); importShutGroups.add(`open:${key}`); }
-    else { importShutGroups.add(key); importShutGroups.delete(`open:${key}`); }
-    renderImport();
-  });
-  wrap.append(head);
-  if (!shut) wrap.append(body);
-}
-
 /** The full contents of one count, so "69 production orders" can be checked. */
 function importDetail(b, key, diff = null) {
-  const wrap = el('div', 'import-detail');
   const cfg = IMPORT_DETAIL[key];
 
   if (key === 'excluded') {
-    wrap.append(el('h3', null, `Every excluded row (${b.excluded.length})`));
-    wrap.append(el('div', 'flag-note',
-      'Not on any tab. A sanity check on what the rules are throwing away.'));
-    const table = el('div', 'flag-rows');
-    // Grouped by reason so like sits with like, commonest first.
+    // Grouped by reason so like sits with like, commonest first. Each group
+    // starts shut: the list runs to four figures, and scrolling past 730
+    // completed rows to reach the next heading is not a sanity check, it is an
+    // obstacle.
     const byReason = new Map();
     for (const e of b.excluded) {
       if (!byReason.has(e.reason)) byReason.set(e.reason, []);
       byReason.get(e.reason).push(e);
     }
-    for (const [reason, rows] of [...byReason].sort((a, b2) => b2[1].length - a[1].length)) {
-      const t = el('div', 'flag-rows');
-      for (const e of rows) {
-        const row = el('div', 'flag-row');
-        row.append(el('span', 'fr-key', e.prod_no));
-        row.append(el('span', 'fr-main', e.inventory_id));
-        row.append(el('span', 'fr-detail', e.description || e.item_description || ''));
-        row.append(el('span', 'fr-act', ''));
-        t.append(row);
-      }
-      appendGroup(wrap, `excl:${reason}`, reason, rows.length, t, { shutByDefault: true });
-    }
-    return wrap;
+    return {
+      title: `Every excluded row (${b.excluded.length})`,
+      note: 'Not on any tab. A sanity check on what the rules are throwing away.',
+      groups: [...byReason].sort((a, b2) => b2[1].length - a[1].length).map(([reason, rows]) => ({
+        key: `excl:${reason}`,
+        title: reason,
+        shutByDefault: true,
+        rows: rows.map((e) => ({
+          key: e.prod_no, main: e.inventory_id, detail: e.description || e.item_description || '',
+        })),
+      })),
+    };
   }
 
   const all = key === 'production'
@@ -2670,18 +2551,10 @@ function importDetail(b, key, diff = null) {
     : (b[cfg.lane] ?? []).filter((j) => !j.completed);
   const stateOf = (j) => (diff && !diff.first ? diff.state.get(j.prod_no) : null);
   const movers = diff && !diff.first ? all.filter((j) => stateOf(j) !== 'same') : all;
-  const jobs = importChangedOnly ? movers : all;
-
-  const head = el('div', 'detail-head');
-  head.append(el('h3', null, `Every ${cfg.label.replace(/s$/, '')} (${jobs.length})`));
-  // Offered only when it would actually narrow something.
-  if (diff && !diff.first && movers.length < all.length) {
-    const only = el('button', `mini${importChangedOnly ? ' on' : ''}`,
-      importChangedOnly ? `Showing the ${movers.length} that moved` : 'Only what changed');
-    only.addEventListener('click', () => { importChangedOnly = !importChangedOnly; renderImport(); });
-    head.append(only);
-  }
-  wrap.append(head);
+  // Most rows in an export are unchanged, so the list can be narrowed to the
+  // ones that are not. Off by default: the full list is still the sanity check.
+  const changedOnly = review.isOn('changedOnly');
+  const jobs = changedOnly ? movers : all;
 
   const order = key === 'production' ? CATEGORY_ORDER
     : key === 'tm' ? TM_CATEGORY_ORDER : INTERNAL_CATEGORY_ORDER;
@@ -2691,55 +2564,64 @@ function importDetail(b, key, diff = null) {
     byCat.get(j.category).push(j);
   }
 
-  for (const [cat, rows] of byCat) {
-    if (!rows.length) continue;
-    const t = el('div', 'flag-rows');
-    for (const j of rows) {
+  const groups = [...byCat].map(([cat, rows]) => ({
+    key: `${key}:${cat}`,
+    title: cat,
+    rows: rows.map((j) => {
       const st = stateOf(j);
-      const row = el('div', `flag-row${isPrintable(j) || key !== 'production' ? '' : ' is-offpaper'}`
-        + (st ? ` is-${st}` : ''));
-      row.append(el('span', 'fr-key', j.prod_no));
-      row.append(el('span', 'fr-main', jobTitle(j)));
-      row.append(el('span', 'fr-detail', key === 'production'
-        ? j.due_display
-        : `${j.customer_display ?? ''}${j.age_display ? ` \u00b7 open ${j.age_display}` : ''}`));
       // The tag says WHAT moved, not merely that something did: a status and a
       // due date want different reactions from whoever is reading this.
-      const act = el('span', 'fr-act');
-      if (st === 'new') act.append(el('span', 'fr-tag is-new', 'new'));
+      const marks = [];
+      if (st === 'new') marks.push({ cls: 'fr-tag is-new', text: 'new' });
       else if (st === 'changed') {
-        act.append(el('span', 'fr-tag is-changed', diff.changes.get(j.prod_no).map((c) => c.field).join(', ')));
+        marks.push({ cls: 'fr-tag is-changed', text: diff.changes.get(j.prod_no).map((c) => c.field).join(', ') });
       }
-      if (key === 'production' && !isPrintable(j)) act.append(el('span', 'fr-note', 'no print'));
-      row.append(act);
-      t.append(row);
-      // A changed row opens to each field as it was and as it is.
-      if (st === 'changed') wireChangeRow(row, j.prod_no, diff.changes.get(j.prod_no), staged.src.retrievedAt);
-    }
-    appendGroup(wrap, `${key}:${cat}`, cat, rows.length, t);
-  }
+      if (key === 'production' && !isPrintable(j)) marks.push({ cls: 'fr-note', text: 'no print' });
+      return {
+        cls: [key === 'production' && !isPrintable(j) ? 'is-offpaper' : '', st ? `is-${st}` : '']
+          .filter(Boolean).join(' '),
+        key: j.prod_no,
+        main: jobTitle(j),
+        detail: key === 'production'
+          ? j.due_display
+          : `${j.customer_display ?? ''}${j.age_display ? ` · open ${j.age_display}` : ''}`,
+        marks,
+        // A changed row opens to each field as it was and as it is.
+        wire: st === 'changed'
+          ? (row) => wireChangeRow(row, j.prod_no, diff.changes.get(j.prod_no), staged.src.retrievedAt)
+          : undefined,
+      };
+    }),
+  }));
 
   // On the board now and not in this export: closed upstream since the last
   // one. Staging is the only moment the two lists exist side by side, so it is
   // the only place this can be shown at all.
   const going = (diff?.leaving ?? []).filter((j) => (j.lane ?? 'production') === cfg.lane);
   if (going.length) {
-    const t = el('div', 'flag-rows');
-    for (const j of going) {
-      const row = el('div', 'flag-row is-leaving');
-      row.append(el('span', 'fr-key', j.prod_no));
-      row.append(el('span', 'fr-main', jobTitle(j)));
-      // WHY, not just that. "Completed" and "cancelled" are the same event to
-      // the board and very different events to a person reading this.
-      row.append(el('span', 'fr-detail', j.leaving_why ?? ''));
-      const act = el('span', 'fr-act');
-      act.append(el('span', 'fr-tag is-leaving', 'leaving'));
-      row.append(act);
-      t.append(row);
-    }
-    appendGroup(wrap, `${key}:leaving`, 'Leaving the board', going.length, t);
+    groups.push({
+      key: `${key}:leaving`,
+      title: 'Leaving the board',
+      rows: going.map((j) => ({
+        cls: 'is-leaving',
+        key: j.prod_no,
+        main: jobTitle(j),
+        // WHY, not just that. "Completed" and "cancelled" are the same event to
+        // the board and very different events to a person reading this.
+        detail: j.leaving_why ?? '',
+        marks: [{ cls: 'fr-tag is-leaving', text: 'leaving' }],
+      })),
+    });
   }
-  return wrap;
+
+  return {
+    title: `Every ${cfg.label.replace(/s$/, '')} (${jobs.length})`,
+    // Offered only when it would actually narrow something.
+    toggle: diff && !diff.first && movers.length < all.length
+      ? { id: 'changedOnly', label: changedOnly ? `Showing the ${movers.length} that moved` : 'Only what changed' }
+      : null,
+    groups,
+  };
 }
 
 // ---------------------------------------------------------------------------

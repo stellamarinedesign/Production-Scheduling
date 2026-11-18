@@ -16,6 +16,8 @@ import { downloadWorkbook } from './adapters/drafting-xlsx.js';
 import { closeOnBackdrop } from './dialog.js';
 import { wireSettings } from './settings.js';
 import { showTestMode, carryFlag } from './test-mode.js';
+import { createReview } from './import-review.js';
+import { stockReview, settleAnswers } from './parts-review.js';
 import {
   transformParts, validateStockExport, diffParts, unknownFamilies,
   buildIndex, search, browse, familyCounts, familyOf, hasBin, effective,
@@ -898,8 +900,7 @@ function renderFix() {
   if (review.length) {
     rq.append(el('h3', null, `Needs a decision (${review.length})`));
     rq.append(el('div', 'flag-note',
-      'The ERP moved, but not to the corrected value — or the part is gone from the export. '
-      + 'Somebody who knows which is right decides; the importer does not.'));
+      'The ERP moved, but not to the corrected value — or the part is gone from the export.'));
     for (const o of review) {
       const row = el('div', 'fix-row review');
       row.append(el('div', 'fix-key', `${o.partId} · ${o.field === 'desc' ? 'Description' : 'Bin'}`));
@@ -1053,6 +1054,9 @@ async function reviewFixFile(file) {
 // import
 // ---------------------------------------------------------------------------
 let staged = null;
+// Drawn by import-review.js, as the board's review is. It keeps which count and
+// groups are open, and every click there draws the review again from `staged`.
+const importReview = createReview(() => renderPartsReview());
 
 function wireImport() {
   const zone = $('dropZone');
@@ -1069,19 +1073,53 @@ function wireImport() {
     e.target.value = '';
     if (f) stageImport(f);
   });
+  renderPartsReview();
+}
+
+/**
+ * Under the drop zone: the export being reviewed, or the list loaded now. The
+ * drop zone hides while one is under review, as on the board, so a second
+ * file cannot land on top of the first.
+ */
+function renderPartsReview() {
+  const host = $('partsReview');
+  host.textContent = '';
+  $('dropZone').hidden = Boolean(staged);
+  if (!staged) {
+    host.hidden = !record;
+    if (record) {
+      host.append(el('div', 'import-current',
+        `Currently loaded: ${record.sourceLabel ?? 'an export'} — ${record.count ?? parts.length} parts, `
+        + `exported ${fmtDate(record.exportDate)}. Drop a new export above to replace it.`));
+    }
+    return;
+  }
+  host.hidden = false;
+  host.append(importReview.render(stockReview({
+    ...staged,
+    loaded: parts.length,
+    hasCorrections: Object.keys(overrides).length > 0,
+    descOf: (id) => partsById.get(id)?.desc ?? '',
+    apply: commitImport,
+    cancel: () => { staged = null; renderPartsReview(); },
+  })));
 }
 
 async function stageImport(file) {
+  staged = null;
+  // What the last import left to do belongs to that import.
+  $('partsAfter').hidden = true;
   const host = $('partsReview');
   host.hidden = false;
   host.textContent = '';
-  host.append(el('div', 'lede', `Reading ${file.name}…`));
+  const line = (cls, text) => { const box = el('div', 'import-review'); box.append(el('div', cls, text)); return box; };
+  host.append(line('lede', `Reading ${file.name}…`));
   let src;
   try {
     src = await readStockExport(file);
   } catch (e) {
     host.textContent = '';
-    host.append(el('div', 'import-clean', `Could not read that file — ${e.message}`));
+    host.append(line('import-clean', `Could not read that file — ${e.message}`));
     return;
   }
   const { parts: fresh, excluded } = transformParts(src.rows);
@@ -1090,86 +1128,32 @@ async function stageImport(file) {
     exportDate: src.exportDate, count: fresh.length, excluded,
     current: record ? { exportDate: record.exportDate, count: record.count } : null,
   });
-  host.textContent = '';
-  host.append(el('h2', null, 'Review this import'));
-  host.append(el('div', 'lede', `${file.name} — exported ${src.exportDate ? fmtDate(src.exportDate) : 'on an unknown date'}. `
-    + `${src.rows.length} rows, ${fresh.length} parts. Nothing changes until you apply it.`));
+  const lede = `${file.name} — exported ${src.exportDate ? fmtDate(src.exportDate) : 'on an unknown date'}. `
+    + `${src.rows.length} rows, ${fresh.length} parts. Nothing changes until you apply it.`;
 
   if (errors.length) {
-    for (const m of errors) host.append(el('div', 'flag flag-bad import-err', m));
-    host.append(el('div', 'import-clean', 'This file was not imported.'));
+    host.textContent = '';
+    host.append(importReview.render({
+      title: 'Review this import',
+      lede,
+      notes: errors.map((m) => ({ cls: 'flag flag-bad import-err', text: m })),
+      clean: 'This file was not imported.',
+    }));
     return;
   }
 
   const nextById = new Map(fresh.map((p) => [p.id, p]));
   const d = diffParts(parts, fresh);
   const { updated, notices } = reconcile(overrides, nextById, src.exportDate ?? new Date().toISOString());
-  staged = { src, fresh, excluded, updated, notices, d };
-
-  const grid = el('div', 'import-stats');
-  const stat = (n, label, note) => {
-    const c = el('div', 'stat');
-    c.append(el('b', null, String(n)), el('span', null, label));
-    if (note) c.append(el('em', null, note));
-    grid.append(c);
-  };
-  stat(fresh.length, 'parts', parts.length ? `${parts.length} loaded now` : 'first load');
-  stat(d.added.length, 'new codes');
-  stat(d.removed.length, 'codes gone');
-  stat(d.descChanged.length, 'descriptions changed');
-  stat(d.binChanged.length, 'bins changed');
-  if (d.metaChanged.length) stat(d.metaChanged.length, 'type, unit or source changed');
-  host.append(grid);
-
-  for (const m of warnings) host.append(el('div', 'flag flag-warn import-warn', m));
-
-  if (Object.keys(overrides).length) {
-    const box = el('div', 'import-diff');
-    box.append(el('b', null, 'Corrections:'));
-    const part = (n, label, cls) => { if (!n) return; const x = el('span', `id-part ${cls}`); x.append(el('b', null, String(n)), el('span', null, label)); box.append(x); };
-    part(notices.resolved.length, 'fixed in the ERP', 'is-new');
-    part(notices.pending.length, 'still waiting', 'is-same');
-    part(notices.review.length, 'need a decision', 'is-changed');
-    if (!notices.resolved.length && !notices.pending.length && !notices.review.length) box.append(el('span', 'id-part is-same', 'none live'));
-    host.append(box);
-  }
-
-  const lists = [
-    ['New codes', d.added.map((id) => [id, nextById.get(id)?.desc ?? ''])],
-    ['Codes gone', d.removed.map((id) => [id, partsById.get(id)?.desc ?? ''])],
-    ['Descriptions changed', d.descChanged.map((c) => [c.id, `${c.from}  →  ${c.to}`])],
-    ['Bins changed', d.binChanged.map((c) => [c.id, `${c.from || '(blank)'}  →  ${c.to || '(blank)'}`])],
-    ['Type, unit or source changed', d.metaChanged.map((c) => [c.id, `${c.from || '(blank)'}  →  ${c.to || '(blank)'}`])],
-    ['Fixed in the ERP', notices.resolved.map((o) => [o.partId, `${o.field}: "${o.value}"`])],
-    ['Need a decision', notices.review.map((o) => [o.partId, o.reviewReason === 'missing_from_export' ? 'gone from the export' : `ERP now says "${o.observed}"`])],
-  ];
-  for (const [title, rows] of lists) {
-    if (!rows.length) continue;
-    const det = el('details', 'import-group');
-    det.append(el('summary', null, `${title} (${rows.length})`));
-    const t = el('div', 'flag-rows');
-    for (const [k, v] of rows.slice(0, 200)) {
-      const r = el('div', 'flag-row');
-      r.append(el('span', 'fr-key', k), el('span', 'fr-main', v), el('span', 'fr-detail', ''), el('span', 'fr-act', ''));
-      t.append(r);
-    }
-    det.append(t);
-    host.append(det);
-  }
-
-  const acts = el('div', 'import-actions');
-  const apply = el('button', 'primary', warnings.length ? 'Apply anyway' : 'Apply this import');
-  apply.addEventListener('click', commitImport);
-  const cancel = el('button', 'ghost', 'Cancel');
-  cancel.addEventListener('click', () => { staged = null; host.hidden = true; });
-  acts.append(apply, cancel);
-  if (warnings.length) acts.append(el('span', 'hint', 'Read the warnings above first.'));
-  host.append(acts);
+  // `answers`: what was said in the review to each correction this export puts
+  // in question. Nothing is written until Apply.
+  staged = { src, fresh, excluded, updated, notices, d, warnings, nextById, lede, answers: new Map() };
+  renderPartsReview();
 }
 
 async function commitImport() {
   if (!staged) return;
-  const { src, fresh, updated, notices, d, excluded } = staged;
+  const { src, fresh, updated, notices, d, excluded, nextById, answers } = staged;
   const now = new Date().toISOString();
   const rec = {
     exportDate: src.exportDate ?? now,
@@ -1185,7 +1169,7 @@ async function commitImport() {
   if (btn) btn.disabled = true;
   try {
     await Store.saveParts(rec);
-    await Store.setPartOverrides(updated);
+    await Store.setPartOverrides(settleAnswers(updated, answers, nextById, { by: who }));
     await Store.logPartImport({
       exportDate: rec.exportDate, importedAt: now, importedBy: who, sourceLabel: rec.sourceLabel,
       count: fresh.length, added: d.added.length, removed: d.removed.length,
@@ -1200,9 +1184,9 @@ async function commitImport() {
     return;
   }
   staged = null;
-  $('partsReview').hidden = true;
   await loadAll();
   renderAll();
+  renderPartsReview();
 
   // What the importer does next: the list for the ERP.
   const after = $('partsAfter');

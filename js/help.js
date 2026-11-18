@@ -144,8 +144,9 @@ export const HELP = [
           'It is temporary by design. Every new export is checked against every live '
           + 'correction: if the ERP now says the corrected value, it resolves itself; '
           + 'if the ERP still says the old thing, it stays and counts the export; if '
-          + 'the ERP says something ELSE, it is put up for a decision, because the '
-          + 'importer should not be guessing which value is right.',
+          + 'the ERP says something ELSE, the import review asks whether to keep the '
+          + 'correction, accept the ERP or edit it, and keeps it if nobody says. One '
+          + 'whose part has gone from the export waits on the Corrections tab for a decision.',
           'One made by mistake can be taken back. Open the part, or find it on the '
           + 'Corrections tab, and press Remove; it asks once. The part goes back to '
           + 'showing what the ERP says, and the correction is kept as history rather '
