@@ -585,6 +585,145 @@ export function stampPlan(items) {
   };
 }
 
+// The thinnest line a checklist PDF prints with, in points: about an eighth
+// of a millimetre, chosen from a test print beside the same checklist
+// printed from Word. Drafting's pictures are WMF files, and Word writes their
+// lines into the PDF about a hundredth of a point wide, far finer than any
+// printer's dot. A line that fine prints as whatever the program printing it
+// makes of it, and the browser's print makes the finest of them.
+export const MIN_LINE_PT = 0.35;
+
+const PDF_SPACE = new Set([0, 9, 10, 12, 13, 32]);
+const PDF_DELIM = '()<>[]{}/%';
+const PDF_NUMBER = /^[+-]?([0-9]+[.]?[0-9]*|[.][0-9]+)$/;
+const STROKES = new Set(['S', 's', 'B', 'B*', 'b', 'b*']);
+const PAINTS = new Set([...STROKES, 'f', 'F', 'f*', 'n']);
+
+/** A number as a PDF writes one: plain digits, never an exponent. */
+function pdfNumber(x) {
+  if (!Number.isFinite(x)) return '0';
+  const places = Math.min(12, Math.max(3, 3 - Math.floor(Math.log10(Math.abs(x) || 1))));
+  const s = x.toFixed(places);
+  return s.includes('.') ? s.replace(/[.]?0+$/, '') : s;
+}
+
+/**
+ * One PDF content stream with every line it strokes thinner than `min`
+ * points drawn at `min` instead: the width set just before the line and put
+ * back just after it, so nothing else on the page changes.
+ *
+ * A line's width on paper is its `w` times the scale it is drawn at, which
+ * `cm` and the stream's start set; `scale` and `lw` are those where the
+ * stream starts (a picture inherits them from the page that draws it). The
+ * pictures the stream draws come back in `forms`, with the scale and width
+ * each is drawn at, for the caller to look up and widen in turn.
+ *
+ * @param {string} text  the stream's bytes, one character per byte
+ * @param {{scale?: number, lw?: number, min?: number, gs?: Object<string, number>}} [opts]
+ *        `gs`: the line width each graphics state sets, by name, where one does
+ * @returns {{text: string, widened: number, forms: Array<{name: string, scale: number, lw: number}>}}
+ */
+export function widenThinLines(text, { scale = 1, lw = 1, min = MIN_LINE_PT, gs = {} } = {}) {
+  const src = String(text ?? '');
+  const n = src.length;
+  const stack = [];
+  let st = { scale, lw };
+  const inserts = [];
+  const forms = [];
+  let operands = [];
+  let pathStart = -1;
+  let widened = 0;
+  const regular = (c) => !PDF_SPACE.has(c.charCodeAt(0)) && !PDF_DELIM.includes(c);
+  const nums = () => operands.map((o) => o.v);
+
+  let i = 0;
+  while (i < n) {
+    const c = src[i];
+    if (PDF_SPACE.has(src.charCodeAt(i))) { i++; continue; }
+    if (c === '%') { while (i < n && src[i] !== String.fromCharCode(10) && src[i] !== String.fromCharCode(13)) i++; continue; }
+    const start = i;
+    if (c === '(') {
+      // A string, which may hold brackets of its own and escaped ones.
+      let depth = 0;
+      for (; i < n; i++) {
+        if (src.charCodeAt(i) === 92) { i++; continue; }
+        if (src[i] === '(') depth++;
+        else if (src[i] === ')' && --depth === 0) { i++; break; }
+      }
+      operands.push({ start, v: null });
+      continue;
+    }
+    if (c === '<' && src[i + 1] !== '<') {
+      const close = src.indexOf('>', i);
+      i = close < 0 ? n : close + 1;
+      operands.push({ start, v: null });
+      continue;
+    }
+    if (PDF_DELIM.includes(c) && c !== '/') {
+      i += (c === '<' || c === '>') && src[i + 1] === c ? 2 : 1;
+      operands.push({ start, v: null });
+      continue;
+    }
+    if (c === '/') {
+      i++;
+      while (i < n && regular(src[i])) i++;
+      operands.push({ start, v: src.slice(start, i) });
+      continue;
+    }
+    while (i < n && regular(src[i])) i++;
+    const tok = src.slice(start, i);
+    if (PDF_NUMBER.test(tok)) { operands.push({ start, v: Number(tok) }); continue; }
+    if (tok === 'true' || tok === 'false' || tok === 'null') { operands.push({ start, v: null }); continue; }
+
+    // An operator, and what it means for the lines.
+    const first = operands.length ? operands[0].start : start;
+    if (tok === 'q') stack.push({ ...st });
+    else if (tok === 'Q') st = stack.pop() ?? st;
+    else if (tok === 'cm') {
+      const [a, b, cc, d] = nums();
+      if ([a, b, cc, d].every(Number.isFinite)) st.scale *= Math.sqrt(Math.abs(a * d - b * cc));
+    } else if (tok === 'w') {
+      const [width] = nums();
+      if (Number.isFinite(width)) st.lw = width;
+    } else if (tok === 'gs') {
+      const name = String(operands[0]?.v ?? '').slice(1);
+      if (Number.isFinite(gs[name])) st.lw = gs[name];
+    } else if (tok === 'm' || tok === 're') {
+      if (pathStart < 0) pathStart = first;
+    } else if (PAINTS.has(tok)) {
+      if (STROKES.has(tok) && pathStart >= 0 && st.scale > 0 && st.lw * st.scale < min) {
+        inserts.push([pathStart, `${pdfNumber(min / st.scale)} w `], [i, ` ${pdfNumber(st.lw)} w`]);
+        widened++;
+      }
+      pathStart = -1;
+    } else if (tok === 'Do') {
+      const name = operands[0]?.v;
+      if (typeof name === 'string' && name.startsWith('/')) {
+        forms.push({
+          name: name.slice(1).replace(/#([0-9a-fA-F]{2})/g, (m, h) => String.fromCharCode(parseInt(h, 16))),
+          scale: st.scale, lw: st.lw,
+        });
+      }
+    } else if (tok === 'ID') {
+      // An image's own bytes follow, up to an "EI" on its own.
+      i++;
+      while (i < n && !(src[i] === 'E' && src[i + 1] === 'I' && PDF_SPACE.has(src.charCodeAt(i - 1))
+        && (i + 2 >= n || PDF_SPACE.has(src.charCodeAt(i + 2))))) i++;
+      i = Math.min(n, i + 2);
+    }
+    operands = [];
+  }
+
+  if (!inserts.length) return { text: src, widened, forms };
+  let out = '';
+  let at = 0;
+  for (const [pos, add] of inserts.sort((a, b) => a[0] - b[0])) {
+    out += src.slice(at, pos) + add;
+    at = pos;
+  }
+  return { text: out + src.slice(at), widened, forms };
+}
+
 // ---------------------------------------------------------------------------
 // print defaults
 //
