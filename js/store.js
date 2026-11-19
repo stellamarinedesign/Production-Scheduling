@@ -684,6 +684,31 @@ export const Store = {
     return [...seen.values()].filter(mine).sort(newestFirst);
   },
 
+  /**
+   * Which of these production numbers already have an added line. One read
+   * per number, after an apply and never holding it up: a handful on a normal
+   * import. Two equality filters, the shape listActivityFor already uses, so
+   * no composite index.
+   * @returns {Promise<Set<string>>}
+   */
+  async addedAlready(prodNos) {
+    const want = [...new Set((prodNos ?? []).filter(Boolean))];
+    if (!want.length) return new Set();
+    if (this.mode === 'local') {
+      return new Set(lsGet('activity', []).filter((e) => e?.added === true && want.includes(e.prodNo))
+        .map((e) => e.prodNo));
+    }
+    const { collection, getDocs, query, where, limit } = this._fs;
+    const col = collection(this._db, 'activity');
+    const have = new Set();
+    for (const part of chunk(want, 20)) {
+      const snaps = await Promise.all(part.map((p) =>
+        getDocs(query(col, where('prodNo', '==', p), where('added', '==', true), limit(1)))));
+      snaps.forEach((snap, i) => { if (!snap.empty) have.add(part[i]); });
+    }
+    return have;
+  },
+
   /** Newest first. */
   async listActivity(max = 100) {
     if (this.mode === 'local') return lsGet('activity', []).slice(0, max);

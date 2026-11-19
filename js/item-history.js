@@ -8,9 +8,11 @@
 //
 // So an import now writes what it moved to the same log: one entry per changed
 // job, carrying each field as it was and as it is, in the shape the review
-// already computes (`diffBoards`). This dialog reads the log back for one job,
-// newest first. The log stays a record: nothing here reads it to decide
-// anything.
+// already computes (`diffBoards`). It also writes a line for each job it adds,
+// so a job's history starts with when it came in and who brought it. This
+// dialog reads the log back for one job, newest first. The log stays a record:
+// nothing reads it to decide anything, except whether a job already has its
+// added line.
 
 import { Store } from './store.js';
 import { closeOnBackdrop } from './dialog.js';
@@ -62,10 +64,7 @@ export const importSentence = (changes, day) => `Import ${toAU(day)}: ${describe
  */
 export function importChangeEntries(diff, { board, by, importAt = null, at = new Date() } = {}) {
   if (!diff || diff.first || !diff.changes?.size) return [];
-  const jobs = new Map();
-  for (const j of [...(board?.jobs ?? []), ...(board?.tm ?? []), ...(board?.internal ?? [])]) {
-    jobs.set(j.prod_no, j);
-  }
+  const jobs = jobsByNumber(board);
   const day = { y: at.getFullYear(), m: at.getMonth() + 1, d: at.getDate() };
   const out = [];
   for (const [prodNo, moved] of diff.changes) {
@@ -86,16 +85,80 @@ export function importChangeEntries(diff, { board, by, importAt = null, at = new
   return out;
 }
 
+/** Every job on a board by its production number, held-back part orders too. */
+const jobsByNumber = (board) => new Map(
+  [...(board?.jobs ?? []), ...(board?.tm ?? []), ...(board?.internal ?? []), ...(board?.held ?? [])]
+    .map((j) => [j.prod_no, j]));
+
+/** The line for a job an import adds. */
+export const ADDED_TEXT = 'Added by import';
 /**
- * Write an import's changes to the log, once the import is applied.
+ * The line for a job already on the board at its first import: open then, but
+ * when it was added nobody can say.
+ */
+export const ADDED_FIRST_TEXT = 'On the board since the first import';
+
+/**
+ * The log entries an import writes for the jobs it adds: one per job new
+ * against the board it replaces (the review's own `diffBoards`), by whoever
+ * applied it, at the apply. On a first import, with no board before it, every
+ * job is new and its line says only that it was there from the start.
+ *
+ * Marked `added: true`, which is how the next import (and the one-off
+ * backfill) knows a job already has its line.
+ */
+export function importAddedEntries(diff, { board, by, importAt = null, at = new Date() } = {}) {
+  if (!diff?.state?.size) return [];
+  const jobs = jobsByNumber(board);
+  const first = Boolean(diff.first);
+  const out = [];
+  for (const [prodNo, state] of diff.state) {
+    if (state !== 'new') continue;
+    const job = jobs.get(prodNo);
+    out.push({
+      ...activityEntry({
+        action: ACTION.import, text: first ? ADDED_FIRST_TEXT : ADDED_TEXT, by, prodNo, at,
+        label: job ? jobTitle(job) : null,
+        inventoryId: job?.inventory_id ?? null,
+      }),
+      added: true,
+      firstImport: first,
+      importAt: importAt ?? null,
+    });
+  }
+  return out;
+}
+
+/**
+ * FIRST APPEARANCE ONLY. A job missing from a partial export is new again in
+ * the full one after it, but it was not added twice: any job that already has
+ * an added line gets no second one. If the check cannot be read, no added line
+ * is written this time (the backfill can supply it); the change lines still go.
+ */
+async function firstTimeOnly(entries) {
+  if (!entries.length) return entries;
+  try {
+    const have = await Store.addedAlready(entries.map((e) => e.prodNo));
+    return entries.filter((e) => !have.has(e.prodNo));
+  } catch (e) {
+    console.warn('[activity] added lines not written:', e.message);
+    return [];
+  }
+}
+
+/**
+ * Write an import's changes, and the jobs it added, to the log, once the
+ * import is applied.
  *
  * NOT AWAITED BY THE APPLY. The import is committed whether or not its history
  * is: a log that fails must not undo or delay the board it describes, so a
  * failure is said in a toast and nothing more. Resolves to the number written.
  */
-export function logImportChanges(diff, { board, by, importAt = null, toast } = {}) {
-  const entries = importChangeEntries(diff, { board, by, importAt });
-  if (!entries.length) return Promise.resolve(0);
+export async function logImportChanges(diff, { board, by, importAt = null, toast, at = new Date() } = {}) {
+  const changed = importChangeEntries(diff, { board, by, importAt, at });
+  const added = await firstTimeOnly(importAddedEntries(diff, { board, by, importAt, at }));
+  const entries = [...changed, ...added];
+  if (!entries.length) return 0;
   return Store.logActivityBatch(entries).catch((e) => {
     console.warn('[activity]', e.message);
     toast?.(`The import's changes could not be logged — ${e.message}`, 8000);

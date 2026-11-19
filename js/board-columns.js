@@ -1,0 +1,54 @@
+// board-columns.js - which columns a board row has, for whom, and the created
+// date's cells.
+//
+// THE HEADER HAS EXACTLY THE CELLS THE ROWS HAVE. A header cell with no column
+// under it walks every heading after it one track off the data it labels, so
+// the list of columns is written once, here, and the header is drawn from it.
+// The rows (app.js `jobRow`) append the same cells in the same order, and the
+// stylesheet gives each view as many tracks as it shows cells.
+//
+// The created date is a manager's column, never on the printed sheet (print.js
+// draws its own columns). Where a screen has no room for it - below a wide
+// desk screen, and on a phone - the column gives way and the row's folded
+// controls carry it instead, worded so it is never read as the due date.
+
+const el = (tag, cls, text) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+};
+
+/** Every column a production row can have: key, heading, the cell's class. */
+export const BOARD_COLUMNS = [
+  { key: 'prod', head: 'Prod Nbr' },
+  { key: 'po', head: 'PO', cls: 'po', manager: true },
+  { key: 'label', head: 'Vessel' },
+  { key: 'hull', head: 'Hull' },
+  { key: 'created', head: 'Created', cls: 'created', manager: true },
+  { key: 'due', head: 'Due' },
+  // Classed so its heading gives way with the column on a narrower screen.
+  { key: 'status', head: 'Status', cls: 'status', manager: true, full: true },
+  { key: 'acts', head: '', manager: true },
+];
+
+/** The columns a row has: the floor's are the printed ones and the hull. */
+export const boardColumns = ({ manager = false, full = false } = {}) =>
+  BOARD_COLUMNS.filter((c) => (!c.manager || manager) && (!c.full || full));
+
+/** The header row for a category block. */
+export function boardHead({ manager = false, full = false } = {}) {
+  const hdr = el('div', `job col-head${full ? ' is-full' : ''}`);
+  for (const c of boardColumns({ manager, full })) hdr.append(el('span', c.cls ?? null, c.head));
+  return hdr;
+}
+
+/** The created date in its column; blank when the ERP gave none. */
+export const createdCell = (j) => el('span', 'created', j?.created_display ?? '');
+
+/**
+ * The created date among the folded controls, for a screen that has no room
+ * for the column. Null when there is no date to show.
+ */
+export const createdNote = (j) =>
+  (j?.created_display ? el('span', 'created-note', `Created: ${j.created_display}`) : null);
