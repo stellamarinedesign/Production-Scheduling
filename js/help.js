@@ -296,8 +296,8 @@ export const HELP = [
         a: [
           'Recent changes, beside History on Current orders: the Activity log. Every edit on the board lands there '
           + 'with a name and a time - a status set or let go, Done and Reopen, Hide '
-          + 'and Show, a label, a hull, a part mark, a package, and what an import '
-          + 'changed. The newest fifty are shown; Show older brings the next fifty. '
+          + 'and Show, a label, a hull, a part mark, a package, what an import '
+          + 'changed and the jobs it added. The newest fifty are shown; Show older brings the next fifty. '
           + 'The row above it narrows the list to edits or to imports. Changes to the '
           + 'Accounts lists are shown to master users only. It is a record, not a '
           + 'control: nothing reads it back.',
@@ -550,7 +550,9 @@ export const HELP = [
           + 'part mark are the lines the log already keeps. An import adds a line for '
           + 'each job it moved — the start and end dates, the quantity, the description, '
           + 'a status the ERP changed — each field as it was and as it is, with the date '
-          + 'of the import and who applied it.',
+          + 'of the import and who applied it. The oldest line says when the job came in: '
+          + 'Added by import, with who applied it, or On the board since the first import '
+          + 'for a job that was already there when the board began.',
           'In the import review, a changed row opens on a click to show the same fields, '
           + 'old and new, before the import is applied.',
         ],
