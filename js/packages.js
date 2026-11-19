@@ -585,12 +585,13 @@ export function stampPlan(items) {
   };
 }
 
-// The thinnest line a checklist PDF prints with, in points: Word's own
-// thinnest line. Drafting's pictures are WMF files, and Word writes their
+// The thinnest line a checklist PDF prints with, in points: about an eighth
+// of a millimetre, chosen from a test print beside the same checklist
+// printed from Word. Drafting's pictures are WMF files, and Word writes their
 // lines into the PDF about a hundredth of a point wide, far finer than any
 // printer's dot. A line that fine prints as whatever the program printing it
 // makes of it, and the browser's print makes the finest of them.
-export const MIN_LINE_PT = 0.25;
+export const MIN_LINE_PT = 0.35;
 
 const PDF_SPACE = new Set([0, 9, 10, 12, 13, 32]);
 const PDF_DELIM = '()<>[]{}/%';
