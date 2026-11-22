@@ -454,12 +454,13 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 :root {
   --dur-fast: 120ms;                      /* a colour, a press */
   --dur: 200ms;                           /* the toast */
+  --dur-sweep: 1.8s;                      /* the skeleton's sweep, while loading */
   --ease-out: cubic-bezier(.23, 1, .32, 1);
   --shadow-float: 0 1px 2px rgba(0,0,0,.3), 0 6px 16px rgba(0,0,0,.3), 0 20px 48px rgba(0,0,0,.4);
   --touch-floor: 48px;                    /* standing up, in the workshop */
 }
 @media (prefers-reduced-motion: reduce) {
-  :root { --dur-fast: 0s; --dur: 0s; }
+  :root { --dur-fast: 0s; --dur: 0s; --dur-sweep: 0s; }
 }
 
 /* Headings and short titles break evenly; paragraphs leave no word on its
@@ -1532,6 +1533,95 @@ button.linkish:disabled { opacity: .5; cursor: default; }
 }
 @keyframes boot-pulse { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .boot-dot { animation: none; opacity: .7; } }
+
+/* The connection, when start-up has something to say about it: offline, or
+   no answer after the retry. Written by watchdog.js; still, like the words. */
+.net-status {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 2px 4px; color: var(--text-dim); font-size: 13.5px;
+}
+.net-status::before {
+  content: ''; flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--text-dim);
+}
+
+/* THE SIZE OF WHAT IS COMING. Each line is one full-width bar cut into blocks
+   by a mask, so the highlight sweeps left to right through every block as one
+   band, at one speed, and the gaps between them stay page. On the motion
+   tokens: under reduced motion the sweep has no duration and stands still. */
+.skeleton { padding: 8px 2px 24px; }
+.sk-line {
+  position: relative; overflow: hidden; height: 12px; margin: 13px 0;
+  background: rgba(255, 255, 255, .07);
+}
+.sk-line::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent 25%, rgba(255, 255, 255, .09) 50%, transparent 75%);
+  transform: translateX(-100%);
+  animation: sk-sweep var(--dur-sweep) ease-in-out infinite;
+}
+@keyframes sk-sweep { to { transform: translateX(100%); } }
+.sk-tabs { height: 30px; margin: 6px 0 22px; }
+.sk-tabs {
+  -webkit-mask-image: linear-gradient(90deg, #000 0 120px, transparent 120px 132px, #000 132px 196px,
+    transparent 196px 208px, #000 208px 360px, transparent 360px 372px, #000 372px 540px,
+    transparent 540px calc(100% - 56px), #000 calc(100% - 56px));
+          mask-image: linear-gradient(90deg, #000 0 120px, transparent 120px 132px, #000 132px 196px,
+    transparent 196px 208px, #000 208px 360px, transparent 360px 372px, #000 372px 540px,
+    transparent 540px calc(100% - 56px), #000 calc(100% - 56px));
+}
+.sk-tabs-parts {
+  -webkit-mask-image: linear-gradient(90deg, #000 0 72px, transparent 72px 84px, #000 84px 176px,
+    transparent 176px 188px, #000 188px 300px, transparent 300px 312px, #000 312px 376px, transparent 376px);
+          mask-image: linear-gradient(90deg, #000 0 72px, transparent 72px 84px, #000 84px 176px,
+    transparent 176px 188px, #000 188px 300px, transparent 300px 312px, #000 312px 376px, transparent 376px);
+}
+.sk-head { height: 14px; width: 34%; margin-top: 30px; }
+.sk-row {
+  -webkit-mask-image: linear-gradient(90deg, #000 0 64px, transparent 64px 78px,
+    #000 78px calc(78px + var(--w, 40%)), transparent calc(78px + var(--w, 40%)) calc(100% - 196px),
+    #000 calc(100% - 196px) calc(100% - 112px), transparent calc(100% - 112px) calc(100% - 96px),
+    #000 calc(100% - 96px));
+          mask-image: linear-gradient(90deg, #000 0 64px, transparent 64px 78px,
+    #000 78px calc(78px + var(--w, 40%)), transparent calc(78px + var(--w, 40%)) calc(100% - 196px),
+    #000 calc(100% - 196px) calc(100% - 112px), transparent calc(100% - 112px) calc(100% - 96px),
+    #000 calc(100% - 96px));
+}
+.sk-search { height: 44px; margin: 0 0 16px; border-radius: 8px; }
+.sk-pills {
+  height: 30px; margin: 0 0 22px;
+  -webkit-mask-image: linear-gradient(90deg, #000 0 44px, transparent 44px 52px, #000 52px 112px,
+    transparent 112px 120px, #000 120px 176px, transparent 176px 184px, #000 184px 244px,
+    transparent 244px 252px, #000 252px 304px, transparent 304px);
+          mask-image: linear-gradient(90deg, #000 0 44px, transparent 44px 52px, #000 52px 112px,
+    transparent 112px 120px, #000 120px 176px, transparent 176px 184px, #000 184px 244px,
+    transparent 244px 252px, #000 252px 304px, transparent 304px);
+}
+.sk-part {
+  margin: 22px 0;
+  -webkit-mask-image: linear-gradient(90deg, #000 0 92px, transparent 92px 108px,
+    #000 108px calc(108px + var(--w, 40%)), transparent calc(108px + var(--w, 40%)) calc(100% - 56px),
+    #000 calc(100% - 56px));
+          mask-image: linear-gradient(90deg, #000 0 92px, transparent 92px 108px,
+    #000 108px calc(108px + var(--w, 40%)), transparent calc(108px + var(--w, 40%)) calc(100% - 56px),
+    #000 calc(100% - 56px));
+}
+
+/* THE HOLD (boot.js): while the screen is the saved copy, the controls that
+   change anything are disabled, and this says why, beside them. */
+.held-note { display: none; font-size: 12.5px; color: var(--text-dim); align-self: center; }
+.is-held .held-note { display: inline; }
+/* Above the warning panels only while they have something in them. */
+.held-block { margin: 4px 2px 10px; }
+.is-held .held-block { display: none; }
+.is-held .held-block:has(+ #warnings:not(:empty)) { display: block; }
+/* Held controls look it, whatever their own styles: a mini in a panel, the
+   header's Import, the slider. The primary button has its own disabled look. */
+.is-held :is(button:not(.primary), select, input):disabled { opacity: .45; cursor: default; }
+.is-held #ganttHint { display: none; }
+.is-held #matDropZone { opacity: .45; cursor: default; }
+.tabs .held-note { margin-left: 12px; white-space: nowrap; }
+
+@media print { .skeleton, .net-status, .held-note { display: none !important; } }
 
 /* THE TAB STRIP SCROLLS RATHER THAN WRAPPING.
    Wrapping it onto two rows pushes the board down the page and reads as two

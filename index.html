@@ -3,6 +3,115 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- watchdog:start - js/watchdog.js, inline so it runs before any module; regenerate with: python tools/importmap.py -->
+<script>
+// watchdog.js — the start-up watch that runs before any module.
+//
+// A CLASSIC SCRIPT, WRITTEN INLINE. tools/importmap.py copies this file into
+// the <head> of the three pages, between the watchdog markers, so it runs
+// before a single module has arrived and costs no request of its own. It is
+// never imported. Edit it here and rerun the tool; a test fails when a page's
+// copy differs from this file.
+//
+// WHAT IT WATCHES. The page's modules. A request that goes dead - weak
+// signal, a hand-over from Wi-Fi to mobile data - leaves the browser waiting
+// on it, and nothing in the page runs until it arrives: the "slow, then a
+// refresh is instant" of a phone on the workshop floor. If the page's entry
+// module has not started and no response has completed for LIMIT, the page
+// reloads once, on fresh connections, with everything that did arrive already
+// cached. From the moment the module starts, boot.js watches the steps after
+// it with the same two tools: `say` and `reloadOnce`.
+//
+// WHAT IT SAYS. Only the approved words, in one line at the top of the page,
+// and only while true: offline, or no answer after the retry.
+(function () {
+  var LIMIT = 10000;
+  var GUARD = 'stella.boot.reloadedAt';     // one automatic reload per two minutes
+  var WORDS = {
+    offline: 'Offline – not yet loaded',
+    offlineSaved: 'Offline – saved copy shown',
+    failing: 'No response from the server – retrying'
+  };
+  var shown = null;
+  var B = window.__boot = {
+    started: false,     // the page's entry module is running
+    done: false,        // start-up has finished
+    saved: false,       // a copy saved on the device is on screen
+    say: say,
+    reloadOnce: reloadOnce,
+    recent: recent
+  };
+
+  function line() {
+    var n = document.getElementById('netStatus');
+    if (n) return n;
+    var main = document.querySelector('main');
+    if (!main) return null;
+    n = document.createElement('div');
+    n.id = 'netStatus';
+    n.className = 'net-status';
+    n.setAttribute('role', 'status');
+    n.hidden = true;
+    main.insertBefore(n, main.firstChild);
+    return n;
+  }
+
+  /** 'offline', 'failing', or null to take the line away. */
+  function say(kind) {
+    shown = kind || null;
+    var n = line();
+    if (!n) {
+      if (shown) document.addEventListener('DOMContentLoaded', function () { say(shown); }, { once: true });
+      return;
+    }
+    var text = shown === 'offline' ? (B.saved ? WORDS.offlineSaved : WORDS.offline)
+      : shown === 'failing' ? WORDS.failing : '';
+    n.textContent = text;
+    n.hidden = !text;
+  }
+
+  /** Did this tab reload itself in the last two minutes? Then the retry has been spent. */
+  function recent() {
+    try { return Date.now() - (Number(sessionStorage.getItem(GUARD)) || 0) < 120000; } catch (e) { return true; }
+  }
+
+  /** Reload, unless this tab already did in the last two minutes. */
+  function reloadOnce() {
+    if (recent()) return false;
+    try { sessionStorage.setItem(GUARD, String(Date.now())); } catch (e) { return false; }
+    location.reload();
+    return true;
+  }
+
+  /** When a response last completed, on the page's own clock. */
+  function lastActivity() {
+    var t = 0;
+    var list = performance.getEntriesByType ? performance.getEntriesByType('resource') : [];
+    for (var i = 0; i < list.length; i++) if (list[i].responseEnd > t) t = list[i].responseEnd;
+    var nav = performance.getEntriesByType ? performance.getEntriesByType('navigation')[0] : null;
+    if (nav && nav.responseEnd > t) t = nav.responseEnd;
+    return t;
+  }
+
+  var timer = setInterval(function () {
+    if (B.started) { clearInterval(timer); return; }
+    if (navigator.onLine === false) { say('offline'); return; }
+    if (performance.now() - lastActivity() < LIMIT) return;
+    if (!reloadOnce()) say('failing');
+  }, 2000);
+
+  window.addEventListener('offline', function () { if (!B.done) say('offline'); });
+  window.addEventListener('online', function (e) {
+    // boot.js raises a synthetic one to restart Firestore's streams; only the
+    // browser's own says the device is back.
+    if (!e.isTrusted || B.done) return;
+    if (shown === 'offline') say(null);
+    if (!B.started) reloadOnce();
+  });
+  if (navigator.onLine === false) say('offline');
+})();
+</script>
+<!-- watchdog:end -->
 <meta name="theme-color" content="#0E0A0A">
 <link rel="icon" type="image/png" href="assets/logo.png">
 <link rel="apple-touch-icon" href="assets/logo.png">
@@ -10,7 +119,7 @@
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="css/style.css?v=2026-11-23.2">
 <style id="pageRule"></style>  <!-- the paper's orientation; app.js switches it with the sheet -->
-<!-- importmap:start - every module named with the build's ?v=, so a page is never mixed with cached modules; regenerate with: python tools/importmap.py -->
+<!-- importmap:start - every module named with the build's ?v=, so a page is never mixed with cached modules, then every file the page starts with preloaded; regenerate with: python tools/importmap.py -->
 <script type="importmap">
 {
   "imports": {
@@ -24,6 +133,7 @@
     "./js/adapters/xlsx.js": "./js/adapters/xlsx.js?v=2026-11-23.2",
     "./js/app.js": "./js/app.js?v=2026-11-23.2",
     "./js/auth.js": "./js/auth.js?v=2026-11-23.2",
+    "./js/boot.js": "./js/boot.js?v=2026-11-23.2",
     "./js/codes-page.js": "./js/codes-page.js?v=2026-11-23.2",
     "./js/codes-print.js": "./js/codes-print.js?v=2026-11-23.2",
     "./js/davits.js": "./js/davits.js?v=2026-11-23.2",
@@ -51,10 +161,45 @@
     "./js/test-mode.js": "./js/test-mode.js?v=2026-11-23.2",
     "./js/transform.js": "./js/transform.js?v=2026-11-23.2",
     "./js/version.js": "./js/version.js?v=2026-11-23.2",
-    "./js/vessel-codes.js": "./js/vessel-codes.js?v=2026-11-23.2"
+    "./js/vessel-codes.js": "./js/vessel-codes.js?v=2026-11-23.2",
+    "./js/watchdog.js": "./js/watchdog.js?v=2026-11-23.2"
   }
 }
 </script>
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js">
+<link rel="modulepreload" href="js/app.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/adapters/index.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/transform.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/rules.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/vessel-codes.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/auth.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/test-mode.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/version.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/help.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/davits.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/dialog.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/settings.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/package-dialog.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/plinth-control.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/plinths.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/activity.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/activity-log.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/store.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/print.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/gantt.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/item-history.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/import-review.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/boot.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/firebase.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/press.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/adapters/xlsx.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/password.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/access.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/packages.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/stella-folder.js?v=2026-11-23.2">
+<link rel="modulepreload" href="js/adapters/package-files.js?v=2026-11-23.2">
 <!-- importmap:end -->
 </head>
 <body>
@@ -81,7 +226,7 @@
   <div id="localNote"></div>
 </div>
 
-<div id="appShell" hidden>
+<div id="appShell">
 
 <header>
   <img class="logo" src="assets/logo.svg" alt="Stella Marine">
@@ -111,6 +256,24 @@
   <div id="booting" class="booting">
     <span class="boot-dot"></span>
     <span id="bootWhat">Starting</span>
+  </div>
+
+  <!-- THE SIZE OF WHAT IS COMING, when nothing is saved on this device yet:
+       the tab strip and two categories of rows, swept slowly while loading.
+       Removed with the line above. -->
+  <div id="bootSkeleton" class="skeleton" aria-hidden="true">
+    <div class="sk-line sk-tabs"></div>
+    <div class="sk-line sk-head"></div>
+    <div class="sk-line sk-row" style="--w: 46%"></div>
+    <div class="sk-line sk-row" style="--w: 34%"></div>
+    <div class="sk-line sk-row" style="--w: 52%"></div>
+    <div class="sk-line sk-row" style="--w: 28%"></div>
+    <div class="sk-line sk-row" style="--w: 40%"></div>
+    <div class="sk-line sk-head"></div>
+    <div class="sk-line sk-row" style="--w: 38%"></div>
+    <div class="sk-line sk-row" style="--w: 50%"></div>
+    <div class="sk-line sk-row" style="--w: 31%"></div>
+    <div class="sk-line sk-row" style="--w: 44%"></div>
   </div>
 
   <!-- Where this board came from. Always visible: with an uploaded file it
@@ -144,6 +307,7 @@
   <div id="boardWrap" hidden>
 
 
+    <div class="held-note held-block">Latest board not yet loaded</div>
     <div id="warnings"></div>
 
     <!-- Print sits alone on the right. This is a scheduling board that can be
@@ -161,6 +325,7 @@
     <section id="tabEdit">
       <div class="view-bar">
         <button class="mini manager-only" id="completePastDue">Complete past due…</button>
+        <span class="held-note">Latest board not yet loaded</span>
         <button class="mini" id="collapseAll">Collapse all</button>
         <button class="mini on" id="partOrders" aria-pressed="true" title="Orders for numbered parts - glands, rope kits, a head rest - on the board, the Gantt and the sheet, or held back. Units are never touched.">Part orders</button>
         <span class="spacer"></span>
@@ -180,6 +345,7 @@
     <section id="tabInternal" class="offstage">
       <div class="view-bar">
         <span class="hint" id="internalCount"></span>
+        <span class="held-note">Latest board not yet loaded</span>
         <span class="spacer"></span>
         <button class="mini quiet" id="historyInternal" data-lane="internal">History</button>
       </div>
@@ -191,6 +357,7 @@
     <section id="tabTm" class="offstage">
       <div class="view-bar">
         <span class="hint" id="tmCount"></span>
+        <span class="held-note">Latest board not yet loaded</span>
         <span class="spacer"></span>
         <button class="mini quiet" id="historyTm" data-lane="tm">History</button>
       </div>
@@ -204,6 +371,7 @@
         <button class="mini" id="ganttAll" aria-pressed="false">Show everything</button>
         <span class="spacer"></span>
         <span class="hint" id="ganttHint">Click a bar to mark it complete.</span>
+        <span class="held-note">Latest board not yet loaded</span>
       </div>
       <div id="gantt"></div>
     </section>
@@ -259,6 +427,7 @@
       </div>
 
       <span class="spacer"></span>
+      <span class="held-note">Latest board not yet loaded</span>
       <button class="primary" id="printBtn">Print board</button>
     </div>
       <div class="fit-status" id="fitStatus"></div>

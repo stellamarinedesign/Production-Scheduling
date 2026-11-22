@@ -20,6 +20,7 @@ import { VERSION } from './version.js';
 import { fitCodesSheet, TYPE_STEPS } from './codes-print.js';
 import { davitsByBoat } from './davits.js';
 import { wireHelp } from './help.js';
+import { startup } from './boot.js';
 import './press.js';
 
 const $ = (id) => document.getElementById(id);
@@ -39,6 +40,9 @@ let davits = [];    // boat -> davits, straight from the export
 
 (async function boot() {
   $('pageVersion').textContent = `v${VERSION}`;
+  // Start-up, watched: a time limit on each step and the offline line. See boot.js.
+  const watch = startup();
+  watch.step('sign-in');
 
   // THE STORE COMES UP BEFORE THE ROLE IS READ.
   //
@@ -51,10 +55,13 @@ let davits = [];    // boat -> davits, straight from the export
   // fires asynchronously, so reading Auth.role right after init is a race.
   const first = await new Promise((resolve) => {
     let done = false;
-    Auth.init((st) => { if (!done) { done = true; resolve(st); } });
+    Auth.init((st) => { if (!done) { done = true; resolve(st); } })
+      .then((mode) => { if (mode === 'failed') watch.retry(); });
   });
 
+  watch.step('connect');
   await Store.init();
+  watch.step('access', 'firestore');
   const access = await Store.loadAccess();
   setManagers(access.managers);
   setEngineers(access.engineers);
@@ -88,11 +95,13 @@ let davits = [];    // boat -> davits, straight from the export
     for (const n of document.querySelectorAll('main .view-bar, main #rows, main #warnings, main .provenance')) {
       n.hidden = true;
     }
+    watch.done();
     return;
   }
 
   $('storeMode').textContent = Store.mode === 'firestore' ? 'Saved to Firestore' : 'Saved on this device only';
   if (Store.mode !== 'firestore') $('storeMode').style.color = 'var(--red-bright)';
+  watch.step('codes', 'firestore');
   codeMap = await Store.loadCodes();
   facts = await loadFacts();
   // The davit fall-back reads vessel codes off the rows, which needs the builders.
@@ -129,6 +138,7 @@ let davits = [];    // boat -> davits, straight from the export
     window.print();
   });
   render();
+  watch.done();
 
   // A rename made on the board page, or by the other manager, lands here
   // without a reload. Debounced because renaming a boat writes one document per

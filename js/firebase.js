@@ -36,13 +36,26 @@ export const isConfigured = () => Boolean(firebaseConfig.apiKey && firebaseConfi
 
 let _fb = null;
 let _failed = null;
+let _pending = null;
 
 /**
  * @returns {Promise<{app, db, auth, fs, fa}|null>} null when unconfigured or
- *          unreachable — callers fall back to local mode.
+ *          unreachable. Unconfigured is local mode; unreachable on a
+ *          configured board is a start-up that failed, never local mode (see
+ *          Auth.init and Store.init).
+ *
+ * ONE START, HOWEVER MANY CALLERS. The board now asks for Firebase from two
+ * places at once - the copy saved on the device is drawn while sign-in is
+ * restored - and two calls racing through initializeApp would have the second
+ * fail on an app that already exists. Every caller waits on the same start.
  */
-export async function getFirebase() {
-  if (_fb) return _fb;
+export function getFirebase() {
+  if (_fb) return Promise.resolve(_fb);
+  if (!_pending) _pending = startFirebase();
+  return _pending;
+}
+
+async function startFirebase() {
   if (_failed) return null;
   if (!isConfigured()) { _failed = 'Firebase not configured'; return null; }
 
