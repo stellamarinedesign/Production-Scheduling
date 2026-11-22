@@ -202,8 +202,8 @@ export const Store = {
       return merge(stored);
     }
 
-    const { collection, getDocs, doc, setDoc } = this._fs;
-    const snap = await getDocs(collection(this._db, 'vesselCodes'));
+    const { collection, doc, setDoc } = this._fs;
+    const snap = await this._read(collection(this._db, 'vesselCodes'));
     if (snap.empty && !Object.keys(seed).length) return {};
     if (snap.empty) {
       await Promise.all(Object.entries(seed).map(([code, entry]) =>
@@ -312,8 +312,8 @@ export const Store = {
 
   async loadOverrides() {
     if (this.mode === 'local') return lsGet('jobOverrides', {});
-    const { collection, getDocs } = this._fs;
-    const snap = await getDocs(collection(this._db, 'jobOverrides'));
+    const { collection } = this._fs;
+    const snap = await this._read(collection(this._db, 'jobOverrides'));
     const out = {};
     snap.forEach((d) => { out[d.id] = d.data(); });
     return out;
@@ -378,8 +378,8 @@ export const Store = {
 
   async loadItemOverrides() {
     if (this.mode === 'local') return lsGet('itemOverrides', {});
-    const { collection, getDocs } = this._fs;
-    const snap = await getDocs(collection(this._db, 'itemOverrides'));
+    const { collection } = this._fs;
+    const snap = await this._read(collection(this._db, 'itemOverrides'));
     const out = {};
     snap.forEach((d) => { const v = d.data(); out[v.inventoryId ?? d.id] = v; });
     return out;
@@ -413,8 +413,8 @@ export const Store = {
 
   async loadPackages() {
     if (this.mode === 'local') return lsGet('packages', {});
-    const { collection, getDocs } = this._fs;
-    const snap = await getDocs(collection(this._db, 'packages'));
+    const { collection } = this._fs;
+    const snap = await this._read(collection(this._db, 'packages'));
     const out = {};
     snap.forEach((d) => { out[d.id] = d.data(); });
     return out;
@@ -448,15 +448,19 @@ export const Store = {
   // ---- settings -----------------------------------------------------------
 
   async loadSettings() {
-    const defaults = { horizonWeeks: 12, maxStock: null, autoFit: true, builders: [] };
-    let out;
-    if (this.mode === 'local') {
-      out = { ...defaults, ...lsGet('settings', {}) };
-    } else {
-      const { doc, getDoc } = this._fs;
-      const snap = await getDoc(doc(this._db, 'settings', 'board'));
-      out = { ...defaults, ...(snap.exists() ? snap.data() : {}) };
-    }
+    if (this.mode === 'local') return this.boardSettings(lsGet('settings', {}));
+    const { doc } = this._fs;
+    const snap = await this._read(doc(this._db, 'settings', 'board'), 'doc');
+    return this.boardSettings(snap.exists() ? snap.data() : {});
+  },
+
+  /**
+   * The board settings as the board uses them: the stored document over the
+   * defaults, and the builders from the private file when the document has
+   * none. One place, for the read and for the listener's first answer alike.
+   */
+  async boardSettings(stored) {
+    const out = { horizonWeeks: 12, maxStock: null, autoFit: true, builders: [], ...(stored ?? {}) };
     if (!Array.isArray(out.builders) || !out.builders.length) out.builders = await this._buildersFile();
     return out;
   },
@@ -494,8 +498,8 @@ export const Store = {
   async loadAccess() {
     if (this.mode === 'local') return { managers: ['*'], engineers: [], floor: [], masters: [], testers: [] };
     try {
-      const { doc, getDoc } = this._fs;
-      const snap = await getDoc(doc(this._db, 'settings', 'access'));
+      const { doc } = this._fs;
+      const snap = await this._read(doc(this._db, 'settings', 'access'), 'doc');
       const d = snap.exists() ? snap.data() : {};
       const list = (k) => (Array.isArray(d?.[k]) ? d[k] : []);
       // `floor` is the floor accounts (the rules read it too: unlisted reads
@@ -525,8 +529,8 @@ export const Store = {
   async loadParts() {
     if (this.mode === 'local') return lsGet('parts', null);
     try {
-      const { doc, getDoc } = this._fs;
-      const snap = await getDoc(doc(this._db, 'parts', 'current'));
+      const { doc } = this._fs;
+      const snap = await this._read(doc(this._db, 'parts', 'current'), 'doc');
       return snap.exists() ? snap.data() : null;
     } catch (e) { console.warn('[parts]', e.message); return null; }
   },
@@ -550,8 +554,8 @@ export const Store = {
   async loadMaterials() {
     if (this.mode === 'local') return lsGet('materials', null);
     try {
-      const { doc, getDoc } = this._fs;
-      const snap = await getDoc(doc(this._db, 'parts', 'materials'));
+      const { doc } = this._fs;
+      const snap = await this._read(doc(this._db, 'parts', 'materials'), 'doc');
       return snap.exists() ? snap.data() : null;
     } catch (e) { console.warn('[materials]', e.message); return null; }
   },
@@ -564,8 +568,8 @@ export const Store = {
 
   async loadPartOverrides() {
     if (this.mode === 'local') return lsGet('partOverrides', {});
-    const { collection, getDocs } = this._fs;
-    const snap = await getDocs(collection(this._db, 'partOverrides'));
+    const { collection } = this._fs;
+    const snap = await this._read(collection(this._db, 'partOverrides'));
     const out = {};
     snap.forEach((d) => { out[d.id] = d.data(); });
     return out;
@@ -787,33 +791,90 @@ export const Store = {
   // snapshot is this client's own write that the server has not acknowledged
   // yet — Firestore fires those immediately for latency compensation. Callers
   // use it to avoid redrawing a control out from under the person using it.
+  //
+  // THE FIRST ANSWER IS THE LOAD. `meta.confirmed` is true on exactly one
+  // call: the first the server has answered (`fromCache` false). The board
+  // waits for that on every source instead of reading each one first and then
+  // watching it, which downloaded everything twice: the memory cache drops a
+  // document as soon as the read that fetched it is done, so the listener
+  // opened after it fetched it all again.
+  //
+  // To see that answer the listener asks for metadata changes: a snapshot
+  // the SDK raised from its cache (it gives up on the server after ten
+  // seconds and answers from what it has, which with a memory cache is
+  // nothing) is followed by the same data confirmed, and only a metadata
+  // change says so. Every other metadata-only snapshot - an own write
+  // acknowledged, the SDK going offline and back - changes no data and is not
+  // passed on, so the callbacks run as often as they always did.
 
-  _watch(build, shape) {
+  _watch(build, shape, onError) {
     if (this.mode !== 'firestore') return () => {};
     const { onSnapshot } = this._fs;
-    return onSnapshot(build(this._fs, this._db), (snap) => {
-      shape(snap, { fromSelf: snap.metadata.hasPendingWrites });
-    }, (err) => console.warn('[live]', err.message));
+    let delivered = false;
+    let confirmed = false;
+    let last;
+    return onSnapshot(build(this._fs, this._db), { includeMetadataChanges: true }, (snap) => {
+      const fromCache = Boolean(snap.metadata?.fromCache);
+      const first = !fromCache && !confirmed;
+      if (first) confirmed = true;
+      const body = typeof snap.docChanges === 'function' ? null : JSON.stringify(snap.exists?.() ? snap.data() : null);
+      const changed = body === null ? snap.docChanges().length > 0 : body !== last;
+      last = body;
+      if (delivered && !first && !changed) return;
+      delivered = true;
+      shape(snap, { fromSelf: Boolean(snap.metadata?.hasPendingWrites), fromCache, confirmed: first });
+    }, (err) => { console.warn('[live]', err.message); onError?.(err); });
   },
 
-  watchOverrides(cb) {
+  /**
+   * One read, as the server answers it.
+   *
+   * getDoc and getDocs settle for the SDK's cache once it has decided it is
+   * offline - ten seconds without an answer - and with a memory cache that is
+   * an empty collection or a refused document: a board with no overrides, an
+   * access list that reads as nobody, the floor told nothing is published.
+   * So the read is a listener that takes the first snapshot the server
+   * answered and stops. A listener already on the same target answers it at
+   * once, from the one download.
+   *
+   * In test mode the wrapped namespace's own reads are kept: they hold their
+   * target and fall back to the cache after the first change (test-mode.js),
+   * where a server answer would never come.
+   */
+  _read(target, kind = 'docs') {
+    const fs = this._fs;
+    if (this._testing || !('onSnapshot' in fs)) return kind === 'doc' ? fs.getDoc(target) : fs.getDocs(target);
+    return new Promise((resolve, reject) => {
+      let stop = null;
+      let done = false;
+      stop = fs.onSnapshot(target, { includeMetadataChanges: true }, (snap) => {
+        if (done || snap.metadata?.fromCache) return;
+        done = true;
+        resolve(snap);
+        stop?.();
+      }, (e) => { done = true; reject(e); });
+      if (done) stop();
+    });
+  },
+
+  watchOverrides(cb, onError) {
     return this._watch(
       (fs, db) => fs.collection(db, 'jobOverrides'),
       (snap, meta) => {
         const out = {};
         snap.forEach((d) => { out[d.id] = d.data(); });
         cb(out, meta);
-      });
+      }, onError);
   },
 
-  watchItemOverrides(cb) {
+  watchItemOverrides(cb, onError) {
     return this._watch(
       (fs, db) => fs.collection(db, 'itemOverrides'),
       (snap, meta) => {
         const out = {};
         snap.forEach((d) => { const v = d.data(); out[v.inventoryId ?? d.id] = v; });
         cb(out, meta);
-      });
+      }, onError);
   },
 
   /**
@@ -821,7 +882,7 @@ export const Store = {
    * otherwise a live update would drop the seed-only fields and a code could
    * lose its `boat` mid-session.
    */
-  watchCodes(cb) {
+  watchCodes(cb, onError) {
     if (this.mode !== 'firestore') return () => {};
     let seed = null;
     const merge = (stored) => {
@@ -843,22 +904,33 @@ export const Store = {
         await start;
         const stored = {};
         snap.forEach((d) => { stored[codeFromDocId(d.id)] = d.data(); });
-        cb(merge(upgradeCodeMap(stored).map), meta);
-      });
+        const { map, upgraded } = upgradeCodeMap(stored);
+        // The server's first answer is the board's load of the codes, so it
+        // does what loadCodes does with one: seed a fresh environment, and
+        // rewrite records still on the old model key (see loadCodes).
+        if (meta?.confirmed && !Object.keys(stored).length && Object.keys(seed ?? {}).length) {
+          const { doc, setDoc } = this._fs;
+          await Promise.all(Object.entries(seed).map(([code, entry]) =>
+            setDoc(doc(this._db, 'vesselCodes', codeDocId(code)), entry))).catch((e) => console.warn('[codes] seed', e.message));
+        } else if (meta?.confirmed && upgraded.length) {
+          this._rewriteLegacyCodes(map, upgraded);
+        }
+        cb(merge(map), meta);
+      }, onError);
   },
 
-  watchSettings(cb) {
+  watchSettings(cb, onError) {
     return this._watch(
       (fs, db) => fs.doc(db, 'settings', 'board'),
-      (snap, meta) => cb(snap.exists() ? snap.data() : {}, meta));
+      (snap, meta) => cb(snap.exists() ? snap.data() : {}, meta), onError);
   },
 
   /** The newest published board, as it is published. */
-  watchLatestImport(cb) {
+  watchLatestImport(cb, onError) {
     return this._watch(
       (fs, db) => fs.query(fs.collection(db, 'imports'),
         fs.orderBy('retrievedAt', 'desc'), fs.limit(1)),
-      (snap, meta) => cb(snap.empty ? null : { _id: snap.docs[0].id, ...snap.docs[0].data() }, meta));
+      (snap, meta) => cb(snap.empty ? null : { _id: snap.docs[0].id, ...snap.docs[0].data() }, meta), onError);
   },
 
   // ---- import history -----------------------------------------------------
@@ -885,8 +957,8 @@ export const Store = {
    */
   async latestBoard() {
     if (this.mode === 'local') return lsGet('imports', [])[0] ?? null;
-    const { collection, getDocs, query, orderBy, limit } = this._fs;
-    const snap = await getDocs(query(collection(this._db, 'imports'), orderBy('retrievedAt', 'desc'), limit(1)));
+    const { collection, query, orderBy, limit } = this._fs;
+    const snap = await this._read(query(collection(this._db, 'imports'), orderBy('retrievedAt', 'desc'), limit(1)));
     return snap.empty ? null : { _id: snap.docs[0].id, ...snap.docs[0].data() };
   },
 

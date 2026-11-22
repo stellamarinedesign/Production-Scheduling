@@ -8,14 +8,14 @@
 // Everything that decides is in parts.js; this draws and wires.
 
 import { Store } from './store.js';
-import { Auth, ROLE, setManagers, setEngineers, setMasters, setTesters } from './auth.js';
+import { Auth, ROLE, setManagers, setEngineers, setMasters, setTesters, tidyEmail } from './auth.js';
 import { VERSION } from './version.js';
 import { wireHelp } from './help.js';
 import { readStockExport } from './adapters/stock.js';
 import { downloadWorkbook } from './adapters/drafting-xlsx.js';
 import { closeOnBackdrop } from './dialog.js';
 import { wireSettings } from './settings.js';
-import { showTestMode, carryFlag } from './test-mode.js';
+import { showTestMode, carryFlag, isTestMode } from './test-mode.js';
 import { createReview } from './import-review.js';
 import { stockReview, settleAnswers, materialsReview } from './parts-review.js';
 import {
@@ -27,6 +27,8 @@ import {
   parseMaterialsCsv, buildMaterialsIndex, materialGroups, browseMaterials,
   copyApart, partFileName, copyFailure, COPY_FAILED,
 } from './parts.js';
+import { startup, deviceCache, recallSession, rememberSession, forgetDevice, hold, isHeld } from './boot.js';
+import { isConfigured } from './firebase.js';
 import './press.js';
 
 const $ = (id) => document.getElementById(id);
@@ -58,9 +60,21 @@ const HAS_CLIPBOARD_HISTORY = /\bWindows\b/.test(navigator.userAgent);
 function booting(what) {
   const box = $('booting');
   if (!box) return;
-  if (what === false) { box.remove(); return; }
+  if (what === false) { box.remove(); $('bootSkeleton')?.remove(); return; }
   $('bootWhat').textContent = what;
 }
+
+// Start-up, watched: a time limit on each step, a retry on fresh connections,
+// and the offline line. See boot.js.
+const watch = startup();
+
+// While the list on screen is the copy saved on the device, Corrections and
+// Import are held (Pete, 23 Nov 2026) with "Latest part list not yet loaded"
+// beside them; Search and Materials work throughout.
+const PART_EDITS = '#ptFixBtn, #ptImportBtn, .part-acts .corrects, #matFile';
+let releaseHold = null;
+// The account and role the saved copy was drawn for, or null when nothing was.
+let savedFor = null;
 
 // ---------------------------------------------------------------------------
 // boot
@@ -68,16 +82,28 @@ function booting(what) {
 (async function boot() {
   $('pageVersion').textContent = `v${VERSION}`;
 
-  // Same shape as the codes page: the store comes up before the role is read,
-  // because the access lists live in Firestore and Firebase reports the user
-  // before the store exists.
+  // THE DEVICE FIRST: the list this device last loaded, drawn while sign-in
+  // is restored. Then the same shape as the codes page: the store comes up
+  // before the role is read, because the access lists live in Firestore and
+  // Firebase reports the user before the store exists.
+  const early = drawSaved().catch((e) => { console.warn('[saved]', e.message); return null; });
   booting('Connecting');
+  watch.step('sign-in');
   const first = await new Promise((resolve) => {
     let done = false;
-    Auth.init((st) => { if (!done) { done = true; resolve(st); } });
+    Auth.init((st) => { if (!done) { done = true; resolve(st); } })
+      .then((mode) => { if (mode === 'failed') watch.retry(); });
   });
+  const saved = await early;
+  if (first.role === ROLE.NONE || (saved && tidyEmail(first.email) !== saved.email)) {
+    // Signed out, or somebody else: nothing saved stays for them.
+    await forgetDevice();
+    if (saved && window.__boot?.reloadOnce?.()) return;
+  }
+  watch.step('connect');
   await Store.init();
   booting('Checking your access');
+  watch.step('access', 'firestore');
   const access = await Store.loadAccess();
   setManagers(access.managers);
   setEngineers(access.engineers);
@@ -85,19 +111,23 @@ function booting(what) {
   setTesters(access.testers);
   role = Auth.refreshRole();
   who = first.email ?? null;
+  // The saved copy was drawn for a role; another answer starts the page again.
+  if (saved && saved.role !== role) {
+    await forgetDevice();
+    if (window.__boot?.reloadOnce?.()) return;
+  }
+  if (Auth.mode === 'firebase' && role !== ROLE.NONE) rememberSession(who, role);
   // A tester is in test mode from here, flag or no flag; see test-mode.js.
   if (Auth.isTester) Store.enterTestMode();
   showTestMode();
-
-  document.body.classList.toggle('role-floor', role === ROLE.FLOOR);
-  document.body.classList.toggle('role-engineer', role === ROLE.ENGINEER);
-  document.body.classList.toggle('role-manager', Auth.isManager);
-  const whoami = $('whoami');
-  whoami.textContent = Auth.mode === 'local' ? 'Local mode' : (who ?? '');
-  wireSettings($('settingsBtn'), { onSignOut: () => location.reload() });
+  present();
 
   if (role === ROLE.NONE) {
     booting(false);
+    watch.done();
+    // A list drawn from the device for an account that is no longer signed in.
+    $('partsTabs').hidden = true;
+    for (const id of Object.values(TABS)) $(id).hidden = true;
     const host = $('partsDenied');
     host.hidden = false;
     host.append(el('strong', null, 'Sign in to look up parts'));
@@ -108,13 +138,82 @@ function booting(what) {
     return;
   }
 
-  $('storeMode').textContent = Store.mode === 'firestore' ? 'Saved to Firestore' : 'Saved on this device only';
-  if (Store.mode !== 'firestore') $('storeMode').style.color = 'var(--red-bright)';
-
   booting('Loading the part list');
-  await loadAll();
+  watch.step('parts', 'firestore');
+  let fresh;
+  try {
+    fresh = await readAll();
+  } catch (e) {
+    console.error('[parts]', e);
+    watch.fail();
+    return;
+  }
+  const shown = savedFor ? record : null;
+  const changed = !savedFor || !sameCopy(copyOf(fresh), copyOf({ record, overrides, materials }));
+  if (changed) apply(fresh);
+  releaseHold?.();
+  releaseHold = null;
   booting(false);
+  enter();
+  if (changed) renderAll();
+  if (shown && (fresh.record?.importedAt ?? '') > (shown.importedAt ?? '')) toast('Part list updated from a newer export.', 5000);
+  watch.done();
+  confirmed = true;
+  saveCopy();
+})();
 
+/**
+ * The part list as this device last had it, drawn before anything has
+ * answered: for an account this device has seen, with a list saved. Local
+ * mode has the list on the device already, and test mode writes nothing to
+ * it, so neither draws from here.
+ *
+ * @returns {Promise<{email: string, role: string}|null>} who it was drawn for
+ */
+async function drawSaved() {
+  if (!isConfigured() || isTestMode()) return null;
+  const session = await recallSession();
+  if (!session || session.role === ROLE.NONE) return null;
+  const copy = await deviceCache.get('parts');
+  if (!copy?.record) return null;
+  Auth.assume(session.email, session.role);
+  if ((await Store.init()) !== 'firestore') return null;
+  role = session.role;
+  who = session.email;
+  showTestMode();
+  present();
+  watch.saved();
+  apply(copy);
+  releaseHold = hold(PART_EDITS);
+  booting(false);
+  enter();
+  renderAll();
+  savedFor = { email: tidyEmail(session.email), role: session.role };
+  return savedFor;
+}
+
+/** The role on the page, and the account in the header. Once per role. */
+function present() {
+  document.body.classList.toggle('role-floor', role === ROLE.FLOOR);
+  document.body.classList.toggle('role-engineer', role === ROLE.ENGINEER);
+  document.body.classList.toggle('role-manager', Auth.isManager);
+  const whoami = $('whoami');
+  whoami.textContent = Auth.mode === 'local' ? 'Local mode' : (who ?? '');
+  $('storeMode').textContent = Store.mode === 'firestore' ? 'Saved to Firestore' : 'Saved on this device only';
+  $('storeMode').style.color = Store.mode === 'firestore' ? '' : 'var(--red-bright)';
+  if (presented) return;
+  presented = true;
+  wireSettings($('settingsBtn'), {
+    onSignOut: async () => { await forgetDevice(); location.reload(); },
+  });
+}
+let presented = false;
+
+/** The tabs and everything under them, wired once whichever copy came first. */
+let entered = false;
+function enter() {
+  if (entered) return;
+  entered = true;
   wireHelp();
   wireTabs();
   wireSearch();
@@ -122,24 +221,63 @@ function booting(what) {
   wireCorrect();
   wireFix();
   wireImport();
-
   $('partsTabs').hidden = false;
   showTab('search');
-  renderAll();
-})();
+}
 
-async function loadAll() {
-  [record, overrides, materials] = await Promise.all([Store.loadParts(), Store.loadPartOverrides(), Store.loadMaterials()]);
+/** The list, its corrections and the materials manifest, as the server answers them. */
+async function readAll() {
+  const [rec, ovs, mats] = await Promise.all([Store.loadParts(), Store.loadPartOverrides(), Store.loadMaterials()]);
+  return { record: rec, overrides: ovs, materials: mats };
+}
+
+/** Put a loaded list on the page's state, with its indexes. */
+function apply(loaded) {
+  record = loaded.record ?? null;
+  overrides = loaded.overrides ?? {};
+  materials = loaded.materials ?? null;
   parts = record?.partsJson ? JSON.parse(record.partsJson) : [];
   partsById = new Map(parts.map((p) => [p.id, p]));
   manifest = materials?.itemsJson ? JSON.parse(materials.itemsJson) : [];
   rebuildIndexes();
 }
 
+async function loadAll() {
+  apply(await readAll());
+}
+
+/**
+ * What the device keeps: the list under its import time, its corrections and
+ * the manifest. The import time is what says a fresh list is another one.
+ */
+const copyOf = ({ record: r, overrides: o, materials: m }) => ({
+  importedAt: r?.importedAt ?? r?.exportDate ?? null,
+  record: r ?? null,
+  overrides: o ?? {},
+  materials: m ?? null,
+});
+
+/** The same list, corrections and manifest: nothing to redraw. */
+const sameCopy = (a, b) => a.importedAt === b.importedAt
+  && (a.record?.partsJson ?? null) === (b.record?.partsJson ?? null)
+  && JSON.stringify(a.overrides) === JSON.stringify(b.overrides)
+  && (a.materials?.importedAt ?? null) === (b.materials?.importedAt ?? null)
+  && (a.materials?.itemsJson ?? null) === (b.materials?.itemsJson ?? null);
+
+/** Keep the list on the device once the server has confirmed it, and after each change to it. */
+let confirmed = false;
+let copyTimer = null;
+function saveCopy() {
+  if (!confirmed || Store.mode !== 'firestore') return;
+  clearTimeout(copyTimer);
+  copyTimer = setTimeout(() => deviceCache.set('parts', copyOf({ record, overrides, materials })), 1000);
+}
+
 /** Both indexes come from the same list and corrections, so they move together. */
 function rebuildIndexes() {
   index = buildIndex(parts, overrides);
   mindex = buildMaterialsIndex(parts, manifest, overrides);
+  saveCopy();
 }
 
 function renderAll() {
@@ -453,7 +591,8 @@ function wireMaterials() {
   zone.addEventListener('drop', (e) => {
     e.preventDefault(); zone.classList.remove('dragover');
     const f = e.dataTransfer?.files?.[0];
-    if (f) stageMaterials(f);
+    // Held while the list is the saved copy, as the file picker is.
+    if (f && !isHeld()) stageMaterials(f);
   });
   $('matFile').addEventListener('change', (e) => {
     const f = e.target.files?.[0];
@@ -715,9 +854,9 @@ function partCard(e) {
     });
     acts.append(named);
     if (Auth.canEditParts) {
-      const cd = el('button', 'mini', 'Correct description');
+      const cd = el('button', 'mini corrects', 'Correct description');
       cd.addEventListener('click', () => openCorrect(p, 'desc'));
-      const cb = el('button', 'mini', 'Correct bin');
+      const cb = el('button', 'mini corrects', 'Correct bin');
       cb.addEventListener('click', () => openCorrect(p, 'bin'));
       acts.append(cd, cb);
     }

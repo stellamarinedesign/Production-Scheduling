@@ -88,8 +88,15 @@ export const Auth = {
    * @returns {Promise<'firebase'|'local'>}
    */
   async init(onChange) {
-    const { getFirebase } = await import('./firebase.js');
+    const { getFirebase, isConfigured } = await import('./firebase.js');
     const fb = await getFirebase();
+
+    // A CONFIGURED BOARD THAT CANNOT REACH FIREBASE IS NOT LOCAL MODE. That
+    // used to fall through to the branch below, which made whoever was holding
+    // the phone the manager of a board kept in its localStorage. It is a
+    // start-up that failed: nothing is reported, the page stays as it is, and
+    // the start-up watch (boot.js) retries it and says so.
+    if (!fb && isConfigured()) return 'failed';
 
     if (!fb) {
       // LOCAL MODE. There is no auth to enforce and no second device to
@@ -106,10 +113,28 @@ export const Auth = {
     this._fb = fb;
     fb.fa.onAuthStateChanged(fb.auth, (user) => {
       this.user = user;
-      this._setRole(user ? roleFor(user.email) : ROLE.NONE);
+      // The role remembered on the device holds for the account it was
+      // remembered for, until the access list has been read and refreshRole
+      // decides; read against lists not yet loaded it would be FLOOR.
+      const kept = user && this._assumed && tidyEmail(user.email) === this._assumed.email;
+      this._setRole(user ? (kept ? this._assumed.role : roleFor(user.email)) : ROLE.NONE);
       onChange({ role: this.role, email: user?.email ?? null, mode: 'firebase' });
     });
     return 'firebase';
+  },
+
+  /**
+   * Take the account and role this device last saw, before Firebase has
+   * restored the sign-in - a network round trip or two, and on a phone with
+   * a dead connection the SDK waits a minute before giving up. The board is
+   * drawn from the device for this account meanwhile; the sign-in and the
+   * access list confirm it, and a different answer reloads the page.
+   */
+  assume(email, role) {
+    this.mode = 'firebase';
+    this._assumed = { email: tidyEmail(email), role };
+    this.user = { email: this._assumed.email, assumed: true };
+    this._setRole(role);
   },
 
   /**
@@ -124,6 +149,7 @@ export const Auth = {
    */
   refreshRole() {
     if (this.mode === 'local') return this.role;
+    this._assumed = null;
     return this._setRole(this.user ? roleFor(this.user.email) : ROLE.NONE);
   },
 

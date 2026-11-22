@@ -10,7 +10,7 @@ import { CATEGORY_ORDER, PRINT_LAYOUT, EXCLUSION_ORDER, EXCLUSION_GROUP_LABEL,
 import { stellaCode, labelFor, existingBoats, acceptNewCode, applyTemplate,
   setBuilders, buildersConfigured } from './vessel-codes.js';
 import { Auth, ROLE, friendlyAuthError, setManagers, setEngineers, setMasters, setTesters, managerCount, tidyEmail } from './auth.js';
-import { prefs, showTestMode, isNotAvailable, NOT_AVAILABLE } from './test-mode.js';
+import { prefs, showTestMode, isNotAvailable, NOT_AVAILABLE, isTestMode } from './test-mode.js';
 import { VERSION } from './version.js';
 import { wireHelp } from './help.js';
 import { davitsByBoat, mergeDavits } from './davits.js';
@@ -29,6 +29,8 @@ import { renderGantt } from './gantt.js';
 import { balanceColumns } from './print.js';
 import { openItemHistory, logImportChanges, wireChangeRow } from './item-history.js';
 import { createReview } from './import-review.js';
+import { startup, deviceCache, recallSession, rememberSession, forgetDevice, hold, isHeld } from './boot.js';
+import { isConfigured } from './firebase.js';
 import './press.js';
 
 const $ = (id) => document.getElementById(id);
@@ -114,20 +116,128 @@ const state = {
 function booting(what) {
   const box = document.getElementById('booting');
   if (!box) return;
-  if (what === false) { box.remove(); return; }
+  if (what === false) { box.remove(); document.getElementById('bootSkeleton')?.remove(); return; }
   const line = document.getElementById('bootWhat');
   if (line) line.textContent = what;
 }
+
+// Start-up, watched: a time limit on each step, a retry on fresh connections,
+// and the offline line. See boot.js.
+const watch = startup();
+
+// While the board on screen is the copy saved on the device, nothing on it
+// can be changed (Pete, 23 Nov 2026): every control that writes, Print board
+// included, with "Latest board not yet loaded" beside them.
+const BOARD_EDITS = [
+  '#importNav', '#completePastDue', '#horizon', '#maxStock', '#autoFit', '#printBtn', '#warnings button',
+  '.acts button:not(.more)', '.acts select', '.acts input', '.acts-more button', '.acts-more select', '.acts-more input',
+].join(', ');
+let releaseHold = null;
+// The account and role the saved copy was drawn for, or null when nothing was.
+let savedFor = null;
 
 (async function boot() {
   wireAuth();
   showTestMode();
 
-  await Auth.init(async (st) => {
-    if (st.role === ROLE.NONE) { showAuth(); return; }
+  // THE DEVICE FIRST. The copy this device last loaded is drawn while sign-in
+  // is restored, which is a round trip or two at best and a minute at worst.
+  const early = drawSaved().catch((e) => { console.warn('[saved]', e.message); return null; });
+  watch.step('sign-in');
+  const mode = await Auth.init(async (st) => {
+    const saved = await early;
+    const other = saved && st.role !== ROLE.NONE && tidyEmail(st.email) !== saved.email;
+    if (st.role === ROLE.NONE || other) {
+      // Signed out, or somebody else: nothing saved stays for them, and a page
+      // drawn for the last account starts again. Should it not (it reloaded
+      // itself a moment ago), somebody signed in goes on from here.
+      if (await startAgain(saved)) return;
+      if (st.role === ROLE.NONE) { watch.done(); showAuth(); return; }
+    }
     await start(st);
   });
+  // A configured board whose SDK did not load: the page starts again on fresh
+  // connections, once, and says so after that.
+  if (mode === 'failed') watch.retry();
 })();
+
+/**
+ * The board as this device last had it, drawn before anything has answered.
+ *
+ * Only for an account this device has seen, and only with everything the
+ * board is built from: a manager's needs the rows, settings, codes and
+ * overrides; the floor's the published jobs. Local mode has all of it on the
+ * device already and skips this.
+ *
+ * @returns {Promise<{email: string, role: string}|null>} who it was drawn for
+ */
+async function drawSaved() {
+  // Test mode writes nothing to the device, so what it would remember of this
+  // session could never replace what is there; it loads from the server.
+  if (!isConfigured() || isTestMode()) return null;
+  const session = await recallSession();
+  if (!session) return null;
+  const { email, role } = session;
+  const manager = role === ROLE.MANAGER || role === ROLE.TESTER;
+  let data = null;
+  if (manager) {
+    const board = await deviceCache.get('board');
+    const rows = Store.cachedRows();
+    if (!board?.settings || !rows?.rows?.length) return null;
+    data = { ...board, rows };
+  } else if (role === ROLE.FLOOR) {
+    data = await deviceCache.get('floor');
+    if (!data?.jobs?.length) return null;
+  } else if (role !== ROLE.ENGINEER) {
+    return null;
+  }
+
+  Auth.assume(email, role);
+  if ((await Store.init()) !== 'firestore') return null;
+  showTestMode();
+  present({ role, email, mode: 'firebase' });
+  watch.saved();
+
+  if (manager) {
+    enterManager(data);
+    releaseHold = hold(BOARD_EDITS);
+    state.rows = data.rows.rows;
+    state.source = data.rows.source;
+    rebuild();
+    showImportPage(false);
+  } else if (role === ROLE.FLOOR) {
+    showFloor(data);
+  } else {
+    $('engineerHome').hidden = false;
+  }
+  booting(false);
+  savedFor = { email: tidyEmail(email), role };
+  return savedFor;
+}
+
+/**
+ * Forget what this device holds and load the page afresh: the sign-in came
+ * back as nobody or as somebody else, or the role is not the one the saved
+ * copy was drawn for. False when the tab reloaded itself moments ago, so a
+ * device that cannot forget never reloads in a loop; the page goes on as it is.
+ */
+async function startAgain(saved) {
+  await forgetDevice();
+  Store.clearCache();
+  return Boolean(saved) && window.__boot?.reloadOnce?.() === true;
+}
+
+/** The role on the page: what is drawn, and the account in the header. */
+function present(st) {
+  document.body.classList.toggle('role-floor', st.role === ROLE.FLOOR);
+  document.body.classList.toggle('role-engineer', st.role === ROLE.ENGINEER);
+  document.body.classList.toggle('role-manager', Auth.isManager);
+  const who = $('whoami');
+  who.textContent = st.mode === 'local' ? 'Local mode' : (st.email ?? '');
+  const chip = el('span', `role ${Auth.isManager ? 'manager' : ''}`,
+    Auth.isManager ? 'MANAGER' : st.role === ROLE.ENGINEER ? 'ENGINEER' : 'FLOOR');
+  who.append(chip);
+}
 
 function showAuth() {
   $('authView').classList.add('show');
@@ -206,8 +316,10 @@ async function start(st) {
   if (!storeReady) {
     storeReady = true;
     booting('Connecting');
+    watch.step('connect');
     await Store.init();
     booting('Checking your access');
+    watch.step('access', 'firestore');
     const access = await Store.loadAccess();
     setManagers(access.managers);
     setEngineers(access.engineers);
@@ -216,21 +328,23 @@ async function start(st) {
     state.access = access;
   }
   st = { ...st, role: Auth.refreshRole() };
+  // The saved copy was drawn for a role. Another answer starts the page again
+  // rather than rewiring it under the person holding it.
+  if (savedFor && savedFor.role !== st.role) {
+    if (await startAgain(savedFor)) return;
+    // It reloaded itself a moment ago: go on in this page, as the role it is.
+    releaseHold?.();
+    releaseHold = null;
+    $('engineerHome').hidden = true;
+  }
+  if (Auth.mode === 'firebase') rememberSession(st.email, st.role);
   // A tester is in test mode from here, flag or no flag; see test-mode.js.
   if (Auth.isTester) Store.enterTestMode();
   showTestMode();
 
   // Role decides what is drawn. The Firestore rules decide what is allowed —
   // hiding a button is not security, it is tidiness.
-  document.body.classList.toggle('role-floor', st.role === ROLE.FLOOR);
-  document.body.classList.toggle('role-engineer', st.role === ROLE.ENGINEER);
-  document.body.classList.toggle('role-manager', Auth.isManager);
-
-  const who = $('whoami');
-  who.textContent = st.mode === 'local' ? 'Local mode' : (st.email ?? '');
-  const chip = el('span', `role ${Auth.isManager ? 'manager' : ''}`,
-    Auth.isManager ? 'MANAGER' : st.role === ROLE.ENGINEER ? 'ENGINEER' : 'FLOOR');
-  who.append(chip);
+  present(st);
 
   if (started) { rebuild(); return; }
   started = true;
@@ -243,34 +357,62 @@ async function start(st) {
   // looks like — so say which, rather than leaving a manager wondering why
   // their own board has gone read-only.
   if (st.role === ROLE.FLOOR && Auth.mode === 'firebase' && !managerCount()) {
+    watch.done();
     if (await offerBootstrap(st.email)) return;   // claimed; start() re-ran
   }
 
   if (st.role === ROLE.FLOOR) { await startFloor(); booting(false); return; }
-  if (st.role === ROLE.ENGINEER) { $('engineerHome').hidden = false; booting(false); return; }
+  if (st.role === ROLE.ENGINEER) { $('engineerHome').hidden = false; booting(false); watch.done(); return; }
 
-  // FOUR READS, ONE WAIT. These are independent of each other and were awaited
-  // in a chain, so the browser paid the round trip four times in a row before
-  // anything could be drawn. On a desk that is a blink; on a phone it is most
-  // of the delay before the page stops looking broken.
-  booting('Loading settings and vessel codes');
-  const [settings, codeMap, overrides, itemOverrides, packages] = await Promise.all([
-    Store.loadSettings(),
-    Store.loadCodes(),
-    Store.loadOverrides(),
-    Store.loadItemOverrides(),
-    // The packages, for the davits' rows: the plinth folder as last read, and
-    // any plinth model a package names. A board without them still opens.
-    Store.loadPackages().catch(() => ({})),
-  ]);
+  // ONE WAIT, ONE DOWNLOAD. Everything the board is built from arrives
+  // together: in Firestore mode as the live listeners' first answers, which
+  // is the load (see startLiveSync); in local mode from the store.
+  booting('Loading the board');
+  watch.step('board', 'firestore');
+  let loaded;
+  try {
+    loaded = await loadBoardData();
+  } catch (e) {
+    console.error('[board]', e);
+    watch.fail();
+    return;
+  }
+  // From here until the live sync takes over nothing else runs, so whatever
+  // arrived while the packages were being read is in `loaded` already.
+  enterManager(boardData(loaded));
+  releaseHold?.();
+  releaseHold = null;
+  const settled = loadLastBoard(loaded.first.latest);
+  liveApplied();
+  booting(false);
+
+  // The shell is up whether or not there is a board: the tab bar is how you
+  // reach the Import tab, and the Import tab is where you go when there is
+  // nothing loaded. It used to be hidden behind the drop zone, which meant the
+  // only way to see the app was to already have data in it.
+  showImportPage(!state.rows);
+  watch.done();
+  boardConfirmed = true;
+  saveBoardCopy();
+  await settled;
+}
+
+/**
+ * The manager's board settings and controls, from what was loaded. Wired
+ * once: the saved copy and the server's answer both come through here.
+ */
+let managerWired = false;
+function enterManager({ settings, codeMap, overrides, itemOverrides, packages }) {
   state.settings = settings;
   // Before anything is built: no builders, no vessel codes. See vessel-codes.js.
   if (!setBuilders(settings.builders)) console.error('[codes] no boat builder in the board settings');
   state.codeMap = codeMap;
   state.overrides = overrides;
   state.itemOverrides = itemOverrides;
-  state.packages = packages;
-  state.plinths = packages[PLINTHS_KEY] ?? null;
+  // The packages, for the davits' rows: the plinth folder as last read, and
+  // any plinth model a package names. A board without them still opens.
+  state.packages = packages ?? {};
+  state.plinths = state.packages[PLINTHS_KEY] ?? null;
 
   $('horizon').value = state.settings.horizonWeeks;
   $('horizonVal').textContent = `${state.settings.horizonWeeks} weeks`;
@@ -283,23 +425,65 @@ async function start(st) {
     : `Local only — ${Store.reason}`;
   $('provStore').style.color = Store.mode === 'firestore' ? '' : 'var(--red-bright)';
 
+  if (managerWired) return;
+  managerWired = true;
   wireHelp();
   wireUpload();
   wireControls();
   wireRowTaps();
   wireOverlays();
+}
 
-  booting('Loading the board');
-  await loadLastBoard();
-  booting(false);
+/**
+ * Everything the manager's board is built from, as the server first answers
+ * it; in local mode the store's reads, which are the device.
+ *
+ * @returns {{first: {settings, codes, overrides, itemOverrides, latest}, packages, defaults}}
+ *          `first` is the live sync's own object, so it carries anything that
+ *          arrives after this resolves and before the board is applied.
+ */
+async function loadBoardData() {
+  if (Store.mode !== 'firestore') {
+    const [settings, codes, overrides, itemOverrides, packages, latest] = await Promise.all([
+      Store.loadSettings(), Store.loadCodes(), Store.loadOverrides(), Store.loadItemOverrides(),
+      Store.loadPackages().catch(() => ({})), Store.latestBoard().catch(() => null),
+    ]);
+    return { first: { settings, codes, overrides, itemOverrides, latest }, packages, defaults: settings };
+  }
+  const [first, packages] = await Promise.all([startLiveSync(), Store.loadPackages().catch(() => ({}))]);
+  // The defaults, and the builders from the private file when the settings
+  // name none (a local scratch copy); see Store.boardSettings.
+  const named = first.settings?.builders;
+  const defaults = await Store.boardSettings(named?.length ? { builders: named } : {});
+  return { first, packages, defaults };
+}
 
-  // The shell is up whether or not there is a board: the tab bar is how you
-  // reach the Import tab, and the Import tab is where you go when there is
-  // nothing loaded. It used to be hidden behind the drop zone, which meant the
-  // only way to see the app was to already have data in it.
-  showImportPage(!state.rows);
+/** What loadBoardData read, as enterManager takes it, read at the moment of use. */
+function boardData({ first, packages, defaults }) {
+  const settings = { ...defaults, ...first.settings };
+  if (!settings.builders?.length) settings.builders = defaults.builders;
+  return { settings, codeMap: first.codes, overrides: first.overrides, itemOverrides: first.itemOverrides, packages };
+}
 
-  startLiveSync();
+/**
+ * Keep what the board was built from on the device, for the next open to
+ * draw at once. Only what the server has confirmed: written once the board
+ * has loaded, and again a moment after each change that reached it.
+ */
+let boardConfirmed = false;
+let copyTimer = null;
+function saveBoardCopy() {
+  if (!boardConfirmed || Store.mode !== 'firestore') return;
+  clearTimeout(copyTimer);
+  copyTimer = setTimeout(() => {
+    deviceCache.set('board', {
+      settings: state.settings,
+      codeMap: state.codeMap,
+      overrides: state.overrides,
+      itemOverrides: state.itemOverrides,
+      packages: state.packages ?? {},
+    });
+  }, 1000);
 }
 
 // ---------------------------------------------------------------------------
@@ -341,25 +525,53 @@ function flushDeferredRebuild() {
   scheduleRebuild();
 }
 
+/**
+ * Watch everything shared, and resolve with each source's first answer from
+ * the server: that answer IS the board's load, so nothing is read twice.
+ *
+ * Until the board has been built from it (`liveApplied`), an arrival is part
+ * of the load and goes into the object this resolves with; after that, the
+ * same callbacks apply changes as they always have.
+ */
+let liveLoaded = false;
+let liveApplied = () => {};
 function startLiveSync() {
-  if (Store.mode !== 'firestore') return;
+  if (Store.mode !== 'firestore') return Promise.resolve(null);
+  const first = {};
+  const waiting = new Set(['overrides', 'itemOverrides', 'codes', 'settings', 'latest']);
+  let settle;
+  let refuse;
+  const loaded = new Promise((resolve, reject) => { settle = resolve; refuse = reject; });
+  liveApplied = () => { liveLoaded = true; };
+  const loading = (name, value, meta) => {
+    if (liveLoaded) return false;
+    first[name] = value;
+    if (meta.confirmed) waiting.delete(name);
+    if (!waiting.size) settle(first);
+    return true;
+  };
+  const failed = (e) => { if (!liveLoaded) refuse(e); };
 
-  unsubscribes.push(Store.watchOverrides((o) => {
+  unsubscribes.push(Store.watchOverrides((o, meta) => {
+    if (loading('overrides', o, meta)) return;
     state.overrides = o;
     scheduleRebuild();
-  }));
+  }, failed));
 
-  unsubscribes.push(Store.watchItemOverrides((o) => {
+  unsubscribes.push(Store.watchItemOverrides((o, meta) => {
+    if (loading('itemOverrides', o, meta)) return;
     state.itemOverrides = o;
     scheduleRebuild();
-  }));
+  }, failed));
 
-  unsubscribes.push(Store.watchCodes((m) => {
+  unsubscribes.push(Store.watchCodes((m, meta) => {
+    if (loading('codes', m, meta)) return;
     state.codeMap = m;
     scheduleRebuild();
-  }));
+  }, failed));
 
   unsubscribes.push(Store.watchSettings((v, meta) => {
+    if (loading('settings', v, meta)) return;
     // Board settings are shared on purpose: every manager should be looking at
     // the same horizon. Skip the echo of our own write so the slider does not
     // jump while it is being dragged.
@@ -373,28 +585,39 @@ function startLiveSync() {
     $('maxStock').value = state.settings.maxStock ?? '';
     setAutoFit(state.settings.autoFit, { save: false, render: false });
     scheduleRebuild();
-  }));
+  }, failed));
 
   unsubscribes.push(Store.watchLatestImport((rec, meta) => {
+    if (loading('latest', rec, meta)) return;
     // NEWER, not merely different — see `isNewerImport`.
     if (meta.fromSelf || !isNewerImport(rec, state.source?.retrievedAt)) return;
     const rows = unpackRows(rec.rowsJson);
     if (!rows?.length) return;
     state.rows = rows;
-    state.source = {
-      sourceId: rec.sourceId,
-      sourceLabel: rec.sourceLabel,
-      retrievedAt: rec.retrievedAt,
-      uploadedBy: rec.uploadedBy ?? null,
-      warnings: [],
-    };
+    state.source = sourceOf(rec);
     Store.cacheRows(rows, state.source);
     markPublished(rec.retrievedAt);
     scheduleRebuild();
-    toast(rec.uploadedBy && rec.uploadedBy !== Auth.user?.email
-      ? `New export uploaded by ${rec.uploadedBy} — board updated.`
-      : 'Board updated from a newer export.', 5000);
-  }));
+    toastNewer(rec);
+  }, failed));
+
+  return loaded;
+}
+
+/** Where a published board came from, as `state.source` keeps it. */
+const sourceOf = (rec) => ({
+  sourceId: rec.sourceId,
+  sourceLabel: rec.sourceLabel,
+  retrievedAt: rec.retrievedAt,
+  uploadedBy: rec.uploadedBy ?? null,
+  warnings: [],
+});
+
+/** The board on screen was replaced by a newer export. */
+function toastNewer(rec) {
+  toast(rec.uploadedBy && rec.uploadedBy !== Auth.user?.email
+    ? `New export uploaded by ${rec.uploadedBy} — board updated.`
+    : 'Board updated from a newer export.', 5000);
 }
 
 window.addEventListener('beforeunload', () => {
@@ -412,11 +635,14 @@ window.addEventListener('beforeunload', () => {
  *
  * Local wins only if it is genuinely newer — otherwise a stale cache would hide
  * a colleague's fresh upload, which is the same failure the other way round.
+ *
+ * @param published  the newest import record, as the server answered (null: none)
  */
-async function loadLastBoard() {
+async function loadLastBoard(published) {
   const cached = Store.cachedRows();
-  let published = null;
-  try { published = await Store.latestBoard(); } catch (e) { console.warn('[board]', e.message); }
+  // The saved copy on screen, if one was drawn: a newer export replacing it
+  // says so, as a newer export arriving later always has.
+  const shownAt = savedFor ? (state.source?.retrievedAt ?? null) : null;
 
   const publishedRows = published?.rowsJson ? unpackRows(published.rowsJson) : null;
   const localAt = cached?.source?.retrievedAt ?? '';
@@ -426,16 +652,7 @@ async function loadLastBoard() {
   if (cached?.rows?.length && (!publishedRows?.length || localAt >= remoteAt)) {
     pick = { rows: cached.rows, source: cached.source };
   } else if (publishedRows?.length) {
-    pick = {
-      rows: publishedRows,
-      source: {
-        sourceId: published.sourceId,
-        sourceLabel: published.sourceLabel,
-        retrievedAt: published.retrievedAt,
-        uploadedBy: published.uploadedBy ?? null,
-        warnings: [],
-      },
-    };
+    pick = { rows: publishedRows, source: sourceOf(published) };
     // Keep it locally too, so a reload is instant and works offline.
     Store.cacheRows(pick.rows, pick.source);
   }
@@ -458,6 +675,7 @@ async function loadLastBoard() {
   state.rows = pick.rows;
   state.source = pick.source;
   rebuild();
+  if (shownAt && (pick.source.retrievedAt ?? '') > shownAt) toastNewer(pick.source);
   // A code added since the last load still needs answering.
   if (Auth.isManager) queueImportQuestions();
 
@@ -478,19 +696,56 @@ async function startFloor() {
   // here rather than letting the first read fail as if the board were empty.
   const email = tidyEmail(Auth.user?.email);
   if (Auth.mode === 'firebase' && state.access && !state.access.floor.includes(email)) {
+    hideBoard();
     const host = $('floorEmpty');
     host.textContent = '';
     host.append(el('strong', null, 'This account is not on the access list yet'));
     host.append(el('div', null, `Signed in as ${email}, but nobody has given it a role. `
       + 'Ask a master user to add it under their cog; it works from your next page load.'));
     host.hidden = false;
+    watch.done();
     return;
   }
-  const published = await Store.latestBoard();
+  watch.step('board', 'firestore');
+  let published;
+  try {
+    published = await Store.latestBoard();
+  } catch (e) {
+    console.error('[floor]', e);
+    watch.fail();
+    return;
+  }
   if (!published?.jobs?.length) {
+    hideBoard();
     $('floorEmpty').hidden = false;
+    watch.done();
     return;
   }
+  // The saved copy on screen stays unless the server's is another export.
+  const shownAt = state.source?.retrievedAt ?? null;
+  if (published.retrievedAt !== shownAt) {
+    showFloor(published);
+    if (shownAt && (published.retrievedAt ?? '') > shownAt) toast('Board updated from a newer export.', 5000);
+  }
+  watch.done();
+  if (Store.mode === 'firestore') deviceCache.set('floor', floorCopy(published));
+}
+
+/** What the floor keeps on the device: the published jobs, not the raw rows it never reads. */
+const floorCopy = (p) => ({
+  jobs: p.jobs, meta: p.meta ?? null, sourceLabel: p.sourceLabel ?? null, sourceId: p.sourceId ?? null,
+  retrievedAt: p.retrievedAt ?? null, uploadedBy: p.uploadedBy ?? null,
+});
+
+/** A board drawn from the device that the server says is not there to show. */
+function hideBoard() {
+  $('boardWrap').hidden = true;
+  $('provenance').hidden = true;
+}
+
+/** The floor's board: the published jobs, drawn as the manager's table cut to the printed columns. */
+let floorWired = false;
+function showFloor(published) {
   state.board = { jobs: published.jobs, meta: published.meta, warnings: {}, excluded: [] };
   state.source = {
     sourceLabel: published.sourceLabel,
@@ -498,6 +753,7 @@ async function startFloor() {
     retrievedAt: published.retrievedAt,
     warnings: [],
   };
+  $('floorEmpty').hidden = true;
   $('provenance').hidden = false;
   $('boardWrap').hidden = false;
   renderProvenance();
@@ -509,9 +765,12 @@ async function startFloor() {
   // number, vessel, due date. It used to be the print preview — a picture of
   // an A4 page, which on a phone is a picture of an A4 page. Only the current
   // orders for now; the other lanes stay behind the manager's tabs.
-  wireHelp();
-  wireRowTaps();
-  wireCollapseAll();
+  if (!floorWired) {
+    floorWired = true;
+    wireHelp();
+    wireRowTaps();
+    wireCollapseAll();
+  }
   renderBoard();
   showTab('edit');
 }
@@ -1133,6 +1392,7 @@ function rebuild() {
   renderLane('tm');
   for (const lane of Object.keys(HISTORY_HOST)) renderHistory(lane);
   renderRecent();
+  saveBoardCopy();
 }
 
 function renderProvenance() {
@@ -1647,7 +1907,8 @@ function renderGanttView() {
     asOf: today(),
     mode: packed ? 'packed' : 'rows',
     pxPerDay: all ? 8 : null,
-    onBarClick: Auth.isManager ? (r) => openCompleteDialog([r]) : null,
+    // Held while the board is the saved copy, like every other control that writes.
+    onBarClick: Auth.isManager && !isHeld() ? (r) => openCompleteDialog([r]) : null,
     isCollapsed: (cat) => collapsed.has(`gantt:${cat}`),
     onToggleCategory: (cat) => {
       const key = `gantt:${cat}`;
