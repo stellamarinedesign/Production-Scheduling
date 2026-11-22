@@ -29,6 +29,7 @@ import { renderGantt } from './gantt.js';
 import { balanceColumns } from './print.js';
 import { openItemHistory, logImportChanges, wireChangeRow } from './item-history.js';
 import { createReview } from './import-review.js';
+import './press.js';
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => {
@@ -1602,7 +1603,7 @@ function jobRow(j, { full = false } = {}) {
 
   fold.append(statusControl(j));
 
-  const done = el('button', 'mini', 'Done');
+  const done = el('button', 'mini', 'Complete');
   done.title = 'Mark completed \u2014 off the board for good, reversible from History';
   done.addEventListener('click', () => openCompleteDialog([j]));
   fold.append(done);
@@ -2268,7 +2269,7 @@ function laneRow(j, lane) {
   lbl.addEventListener('click', () => openLabelEditor(j));
   const hide = el('button', 'mini', j.hidden ? 'Unhide' : 'Hide');
   hide.addEventListener('click', () => (j.hidden ? unhide(j) : openHideDialog(j)));
-  const done = el('button', 'mini', 'Done');
+  const done = el('button', 'mini', 'Complete');
   done.title = 'Mark completed \u2014 reversible from History';
   done.addEventListener('click', () => openCompleteDialog([j]));
   acts.append(lbl, hide, statusControl(j), done);
@@ -2792,6 +2793,7 @@ function showLabelForm(scope) {
 
   if (scope === 'job') {
     $('lblFieldLabel').textContent = 'Label for this job';
+    $('lblSave').textContent = 'Save label';
     $('lblInput').value = job.label;
     $('lblHint').textContent = `Replaces the label on ${job.prod_no} only.`;
     $('lblReset').hidden = job.label === job.base_label;
@@ -2801,6 +2803,7 @@ function showLabelForm(scope) {
     // anything else — davits, chocks — has no code, so it gets a whole label.
     if (code) {
       $('lblFieldLabel').textContent = `Display code for ${job.inventory_id}`;
+      $('lblSave').textContent = 'Save display code';
       $('lblInput').value = pinned?.displayCode
         ?? state.board.resolved.display.get(code) ?? code;
       // The example is built from THIS item, so it is never a code from
@@ -2809,6 +2812,7 @@ function showLabelForm(scope) {
       $('lblHint').textContent = `Code only — wording comes from the template ("XX00" → "${sample}").`;
     } else {
       $('lblFieldLabel').textContent = `Label for ${job.inventory_id}`;
+      $('lblSave').textContent = 'Save label';
       $('lblInput').value = pinned?.label ?? job.base_label;
       $('lblHint').textContent = 'No vessel code on this item, so this is the whole label.';
     }
@@ -2817,6 +2821,7 @@ function showLabelForm(scope) {
   } else {
     const group = state.board.resolved.groups.find((g) => g.codes.includes(code));
     $('lblFieldLabel').textContent = `Display code for boat ${group.boat ?? group.codes[0]}`;
+    $('lblSave').textContent = 'Save display code';
     $('lblInput').value = state.board.resolved.display.get(code) ?? code;
     $('lblHint').textContent = `Applies to ${group.codes.join(', ')} — every product on this boat.`;
   }

@@ -169,7 +169,7 @@ main { padding: 16px 22px 60px; max-width: 1720px; margin: 0 auto; }
 #dropZone, .drop-zone {
   border: 2px dashed var(--line); border-radius: 14px;
   padding: 44px 24px; text-align: center; color: var(--text-dim);
-  transition: border-color .15s, background .15s; cursor: pointer;
+  transition: border-color var(--dur-fast), background var(--dur-fast); cursor: pointer;
 }
 #dropZone:hover, #dropZone.dragover, .drop-zone:hover, .drop-zone.dragover { border-color: var(--red-bright); background: rgba(234,55,46,.06); color: var(--white); }
 #dropZone strong, .drop-zone strong { display: block; color: var(--white); font-size: 17px; margin-bottom: 6px; }
@@ -192,10 +192,19 @@ input[type=range] { width: 190px; accent-color: var(--red-bright); }
 input[type=text], input[type=number], input[type=search], select, textarea {
   background: var(--black-night); border: 2px solid var(--line); border-radius: 9px;
   color: var(--white); font-size: 15px; font-family: inherit;
-  padding: 9px 12px; outline: none; transition: border-color .15s;
+  padding: 9px 12px; outline: none; transition: border-color var(--dur-fast);
 }
 input:focus, select:focus, textarea:focus { border-color: var(--red-bright); }
 input[type=number] { width: 84px; }
+/* iOS zooms the page into any field under 16px when it is tapped, and leaves
+   it zoomed. Phones and touch screens get 16px and a finger's height; a desk
+   keeps 15px. */
+@media screen and (pointer: coarse), screen and (max-width: 760px) {
+  input[type=text], input[type=number], input[type=search], input[type=email],
+  input[type=password], select, textarea, select.acct-role {
+    font-size: 16px; min-height: var(--touch-min);
+  }
+}
 .controls .spacer { margin-left: auto; }
 
 button.primary {
@@ -221,6 +230,32 @@ button.mini.on { background: var(--red-deep); border-color: var(--red-bright); }
 /* A moment of "it worked" or "it did not" on the button itself. */
 button.mini.ok, button.mini.ok:disabled { border-color: #5fb85f; color: #9be09b; opacity: 1; }
 button.mini.bad, button.mini.bad:disabled { border-color: var(--red-bright); color: var(--red-bright); opacity: 1; }
+
+/* Pressed: the control gives a little under the finger, at once. Buttons,
+   pills, tabs and the header's links only - a full-width heading or option
+   card that is a button too would lurch at this scale, not press. */
+button.primary, button.ghost, button.mini, .pill, .tab,
+header nav a, header nav .navlink, header .cog {
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+:is(button.primary, button.ghost, button.mini, .pill, .tab,
+    header nav a, header nav .navlink, header .cog):not(:disabled):active {
+  transform: scale(.97);
+}
+
+/* Fingers, not pointers. On a phone-width screen and on any touch screen,
+   every button, pill and tab is at least 44px; on the parts page, which is
+   used standing up in the workshop, 48px. A desk with a mouse keeps the
+   compact sizes. */
+@media screen and (pointer: coarse), screen and (max-width: 760px) {
+  button.mini { min-height: var(--touch-min); min-width: var(--touch-min); }
+  .pill, .tab { min-height: var(--touch-min); }
+  header nav a, header nav .navlink {
+    display: inline-flex; align-items: center; min-height: var(--touch-min);
+  }
+  header button.cog { width: var(--touch-min); height: var(--touch-min); }
+  .parts-page :is(button.mini, .pill, .tab) { min-height: var(--touch-floor); }
+}
 
 /* ---------- warning panels ---------- */
 .panel {
@@ -369,6 +404,7 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 .box {
   background: var(--shadow-grey); border: 2px solid var(--line); border-top: 3px solid var(--red-bright);
   border-radius: 16px; width: 100%; max-width: 540px; padding: 22px;
+  box-shadow: var(--shadow-float);
 }
 .box h3 { font-size: 17px; margin-bottom: 6px; letter-spacing: .04em; }
 .box .lede { color: var(--text-dim); font-size: 13.5px; line-height: 1.6; margin-bottom: 18px; }
@@ -401,14 +437,39 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
   transform: translateX(-50%) translateY(12px);
   opacity: 0; visibility: hidden; pointer-events: none;
   background: var(--shadow-grey); border: 1.5px solid var(--red-bright);
-  border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.55);
+  border-radius: 10px; box-shadow: var(--shadow-float);
   padding: 13px 22px; font-size: 14px; line-height: 1.45; z-index: 90;
   max-width: min(560px, 90vw); text-align: center;
-  transition: transform .2s ease-out, opacity .2s ease-out, visibility .2s;
+  transition: transform var(--dur) var(--ease-out), opacity var(--dur) var(--ease-out), visibility var(--dur);
 }
 #toast.show {
   transform: translateX(-50%) translateY(0);
   opacity: 1; visibility: visible;
+}
+
+/* ---------- motion, depth, touch sizes ----------
+   Every duration is one of these, so the one rule under them takes all of
+   them to zero for anyone who has asked for less motion. The shadow is for
+   what floats - the toast and the dialogs - and nothing at rest. */
+:root {
+  --dur-fast: 120ms;                      /* a colour, a press */
+  --dur: 200ms;                           /* the toast */
+  --ease-out: cubic-bezier(.23, 1, .32, 1);
+  --shadow-float: 0 1px 2px rgba(0,0,0,.3), 0 6px 16px rgba(0,0,0,.3), 0 20px 48px rgba(0,0,0,.4);
+  --touch-floor: 48px;                    /* standing up, in the workshop */
+}
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-fast: 0s; --dur: 0s; }
+}
+
+/* Headings and short titles break evenly; paragraphs leave no word on its
+   own. Screen only, and never on the sheets: the preview is measured to fit
+   the page, and a moved line break would move the fit. */
+@media screen {
+  :is(h1, h2, h3, h4, .state strong, .drop-zone strong, #dropZone strong,
+      .help-topic summary):not(#printRoot *, #codesPrintRoot *) { text-wrap-style: balance; }
+  :is(p, .lede, .hint, .state, .flag-note, .scope-note, .import-scope,
+      .part-missing, .part-note):not(#printRoot *, #codesPrintRoot *) { text-wrap-style: pretty; }
 }
 
 .state { text-align: center; padding: 50px 30px; color: var(--text-dim); line-height: 1.6; }
@@ -665,9 +726,10 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 .lane-table { font-size: 13.5px; }
 .lane-row {
   /* The actions track holds FOUR controls — Label, Hide, the status select and
-     Done — and was sized for three, so the Open column ran underneath them.
-     Same fault as the board rows had, in the place that was missed. */
-  display: grid; grid-template-columns: 78px 1.6fr 1fr 92px 264px;
+     Complete — and was sized for three, so the Open column ran underneath them.
+     Same fault as the board rows had, in the place that was missed. 284px is
+     the four measured with Unhide, the wider of Hide's two words. */
+  display: grid; grid-template-columns: 78px 1.6fr 1fr 92px 290px;
   align-items: baseline; gap: 10px;
   padding: 7px 0; border-bottom: 1px solid var(--line);
 }
@@ -904,7 +966,7 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 }
 
 @media (max-width: 1240px) {
-  .lane-row { grid-template-columns: 72px 1.3fr 1fr 80px 258px; }
+  .lane-row { grid-template-columns: 72px 1.3fr 1fr 80px 284px; }
 }
 
 /* Kept in the layout but out of sight, so the print view can still be
@@ -1078,6 +1140,9 @@ header .who .role.manager { border-color: var(--red-deep); color: var(--red-brig
 .scope-opt em { color: var(--red-bright); font-style: normal; font-weight: 700; }
 .scope-opt .inline { display: flex; gap: 8px; margin-top: 10px; align-items: center; }
 .scope-opt .inline select, .scope-opt .inline input { flex: 1; font-size: 14px; padding: 8px 10px; }
+@media screen and (pointer: coarse), screen and (max-width: 760px) {
+  .scope-opt .inline select, .scope-opt .inline input { font-size: 16px; }
+}
 .scope-opt .inline .mini { padding: 9px 14px; }
 
 /* ---------- role: floor ----------
@@ -1580,8 +1645,15 @@ button.linkish:disabled { opacity: .5; cursor: default; }
   .job .hull { display: none; }
 
   /* Thumbs, not mouse pointers. */
-  .job .acts button, .lane-row .acts button { min-height: 40px; padding: 0 14px; }
-  .job .acts select, .lane-row .acts select { min-height: 40px; }
+  .job .acts button, .lane-row .acts button { min-height: var(--touch-min); padding: 0 14px; }
+  .job .acts select, .lane-row .acts select { min-height: var(--touch-min); }
+  /* The status and plinth controls in the fold: a finger's height, and 16px
+     so iOS does not zoom into them. The fold wraps, so they may take the
+     width their words need. */
+  .job .acts-more select, .lane-row .acts select {
+    min-height: var(--touch-min); font-size: 16px; width: auto; max-width: none;
+  }
+  .job .acts-more input { min-height: var(--touch-min); font-size: 16px; }
 
   /* PAPER IS PAPER. An A4 preview is 794px wide because A4 is; reflowing it
      would make it a preview of something that will never be printed. So the
@@ -1771,15 +1843,21 @@ body.role-engineer .not-engineer { display: none !important; }
   width: 100%; box-sizing: border-box; padding: 10px 12px; font: inherit; font-size: 15px;
   background: var(--band); color: var(--white); border: 1.5px solid var(--line); border-radius: 8px;
 }
+@media screen and (pointer: coarse), screen and (max-width: 760px) {
+  .form-row input[type=text] { font-size: 16px; }   /* no iOS zoom; see the base inputs */
+}
 .form-row .readonly { padding: 8px 12px; background: var(--band); border-radius: 8px; color: var(--text-dim); }
 .form-err { color: var(--red-bright); font-size: 12.5px; min-height: 18px; }
 
 @media screen and (max-width: 760px) {
-  /* Code, bin, description — and the rest only once the card is open. */
-  .part-head { grid-template-columns: minmax(0, 1fr) auto; }
-  .part-code { grid-column: 1; grid-row: 1; }
-  .part-bin { grid-column: 2; grid-row: 1; }
-  .part-desc { grid-column: 1 / -1; grid-row: 2; }
+  /* Code, bin, description — and the rest only once the card is open.
+     The code is never cut short: it is what gets copied into an order. Code
+     and bin share the top line while both fit; when they do not, the bin
+     drops under the code, on the right. */
+  .part-head { display: flex; flex-wrap: wrap; }
+  .part-code { flex: 0 0 auto; max-width: 100%; }
+  .part-bin { margin-left: auto; }
+  .part-desc { order: 1; flex: 1 0 100%; }
   .part-meta, .results-head { display: none; }
   .part-meta-line { display: block; font-size: 12.5px; color: var(--text-dim); margin-bottom: 8px; }
   .part-body { padding-left: 0; }

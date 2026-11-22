@@ -27,6 +27,7 @@ import {
   parseMaterialsCsv, buildMaterialsIndex, materialGroups, browseMaterials,
   copyApart, partFileName, copyFailure, COPY_FAILED,
 } from './parts.js';
+import './press.js';
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => {

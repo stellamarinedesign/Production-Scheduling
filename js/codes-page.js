@@ -20,6 +20,7 @@ import { VERSION } from './version.js';
 import { fitCodesSheet, TYPE_STEPS } from './codes-print.js';
 import { davitsByBoat } from './davits.js';
 import { wireHelp } from './help.js';
+import './press.js';
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => {
