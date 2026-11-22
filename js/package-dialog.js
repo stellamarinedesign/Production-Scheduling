@@ -823,7 +823,7 @@ function draw() {
   act('download').disabled = Boolean(ctx.busy);
   act('download').textContent = ctx.busy === 'download' ? 'Working…' : 'Download Word';
   act('folder').hidden = !ready();
-  act('manage').textContent = ctx.manage ? 'Done' : 'Manage';
+  act('manage').textContent = ctx.manage ? 'Close library' : 'Manage';
 }
 
 /**
