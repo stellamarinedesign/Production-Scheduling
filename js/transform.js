@@ -385,7 +385,11 @@ export const DIFF_FIELDS = [
   ['inventory_id', 'item code'],
 ];
 
-const everyJob = (b) => [...(b?.jobs ?? []), ...(b?.tm ?? []), ...(b?.internal ?? [])];
+// The part orders the toggle holds back count too. The board in hand is built
+// with this manager's toggle and the staged one without it, so leaving them out
+// called every part order new on every import while the toggle was off, and
+// never saw one leave.
+const everyJob = (b) => [...(b?.jobs ?? []), ...(b?.tm ?? []), ...(b?.internal ?? []), ...(b?.held ?? [])];
 
 /**
  * A value as it is kept in a change record: a blank is null, a Date is its
@@ -611,7 +615,8 @@ function sideJob(r, lane, { overrides, asOf }) {
   const customer = text(r['Customer Name']);
   const startDate = toDateOnly(r['Start Date']);
   const endDate = toDateOnly(r['End Date']);
-  const opened = startDate ?? toDateOnly(r['Created Date']);
+  const created = toDateOnly(r['Created Date']);
+  const opened = startDate ?? created;
   const age = daysBetween(opened, asOf);
 
   // The description is the job. Trimmed of the ERP's own boilerplate prefix so
@@ -649,6 +654,9 @@ function sideJob(r, lane, { overrides, asOf }) {
     end_date: toISO(endDate),
     opened_date: toISO(opened),
     opened_display: opened ? toAU(opened) : '',
+    // When the order was entered in the ERP, which Open falls back on.
+    created_date: toISO(created),
+    created_display: created ? toAU(created) : '',
     age_days: age,
     age_display: ageLabel(age),
     // The ERP stamps start and end the same day on a row nobody has scheduled.
@@ -792,6 +800,7 @@ export function buildBoard(rows, opts = {}) {
       });
 
     const startDate = toDateOnly(r['Start Date']);
+    const created = toDateOnly(r['Created Date']);
 
     const job = {
       prod_no: prodNo,
@@ -809,6 +818,10 @@ export function buildBoard(rows, opts = {}) {
       due_display: isStock ? 'STOCK' : toAU(endDate),
       end_date: toISO(endDate),                // real date even for stock — Gantt needs it
       start_date: toISO(startDate),
+      // When the order was entered in the ERP: a manager's column on the page,
+      // never on the printed sheet. Blank when the row has none.
+      created_date: toISO(created),
+      created_display: created ? toAU(created) : '',
       status,
       erp_status: status0,
       status_manual: status !== status0,
@@ -963,6 +976,8 @@ export function buildBoard(rows, opts = {}) {
     jobs: kept,
     tm: tmJobs,
     internal: internalJobs,
+    // Part orders the toggle is holding back: off this board, still the ERP's.
+    held: partOrdersHidden,
     excluded,
     completed: completed.sort((a, b) =>
       String(b.completed_at ?? '').localeCompare(String(a.completed_at ?? ''))),

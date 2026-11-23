@@ -32,6 +32,7 @@ import { createReview } from './import-review.js';
 import { startup, deviceCache, recallSession, rememberSession, forgetDevice, hold, isHeld } from './boot.js';
 import { isConfigured } from './firebase.js';
 import './press.js';
+import { boardHead, createdCell, createdNote } from './board-columns.js';
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => {
@@ -892,8 +893,10 @@ async function commitImport() {
   // buildBoard ever sees them, so a job the ERP has finished does not even
   // reach the excluded list - it simply stops being anywhere. Captured here,
   // on the way past, and written to History below.
-  const diff = state.source ? diffBoards(state.board, staged.board, src.rows) : null;
-  const leaving = diff?.leaving ?? [];
+  // Against nothing on a first import: every job is new, and logged as there
+  // from the start.
+  const diff = diffBoards(state.source ? state.board : null, staged.board, src.rows);
+  const leaving = diff.leaving;
 
   // The open order book, not the whole file. See `retainedRows`: carrying the
   // 1047 closed rows in the 01/09 export pushed the import record past
@@ -964,12 +967,10 @@ async function commitImport() {
     }
   }
 
-  // What the ERP moved on each job, into that job's change history. After the
-  // commit and never awaited: see logImportChanges.
-  if (diff) {
-    logImportChanges(diff, { board: state.board, by: Auth.user?.email ?? 'local',
-      importAt: state.source.retrievedAt, toast });
-  }
+  // What the ERP moved on each job, and the jobs it added, into each job's
+  // change history. After the commit and never awaited: see logImportChanges.
+  logImportChanges(diff, { board: state.board, by: Auth.user?.email ?? 'local',
+    importAt: state.source.retrievedAt, toast });
 
   await publish(keep, 'shared with the other managers');
 }
@@ -1710,18 +1711,8 @@ function categoryBlock(cat, jobs, { full = false } = {}) {
   if (isShut) return block;
 
   const body = el('div', 'cat-body');
-  // The header has exactly the cells the rows have — the floor's rows carry
-  // the three printed columns, the manager's carry PO, status and actions as
-  // well — because a header cell with no column under it walks the rest of
-  // the headings one track off the data they label.
-  const manager = Auth.isManager;
-  const hdr = el('div', `job col-head${full ? ' is-full' : ''}`);
-  hdr.append(el('span', null, 'Prod Nbr'));
-  if (manager) hdr.append(el('span', 'po', 'PO'));
-  hdr.append(el('span', null, 'Vessel'), el('span', null, 'Hull'), el('span', null, 'Due'));
-  if (full && manager) hdr.append(el('span', null, 'Status'));
-  if (manager) hdr.append(el('span', null, ''));
-  body.append(hdr);
+  // The header has exactly the cells the rows have (board-columns.js).
+  body.append(boardHead({ manager: Auth.isManager, full }));
   for (const j of jobs) body.append(jobRow(j, { full }));
   block.append(body);
   return block;
@@ -1813,6 +1804,8 @@ function jobRow(j, { full = false } = {}) {
     hull.addEventListener('click', () => openHullDialog(j));
   }
   row.append(hull);
+  // When the order was entered in the ERP: the manager's, never printed.
+  if (manager) row.append(createdCell(j));
 
   row.append(el('span', `due${j.is_stock ? ' stock' : ''}`, j.due_display));
   // Status only in the full-width block, and only for the manager.
@@ -1839,6 +1832,9 @@ function jobRow(j, { full = false } = {}) {
   row.append(acts);
 
   const fold = el('span', 'acts-more');
+  // The created date, where the screen has no room for its column.
+  const created = createdNote(j);
+  if (created) fold.append(created);
   const pkg = el('button', 'mini', 'Package');
   pkg.addEventListener('click', () => openPackageDialog(j, {
     who: Auth.user?.email ?? null,
@@ -2492,7 +2488,7 @@ function renderLane(lane) {
       const hdr = el('div', 'lane-row lane-head');
       hdr.append(el('span', null, 'Prod Nbr'), el('span', null, 'Job'),
         el('span', null, lane === 'tm' ? 'For' : 'Item'),
-        el('span', null, 'Open'), el('span', null, ''));
+        el('span', 'created', 'Created'), el('span', null, 'Open'), el('span', null, ''));
       table.append(hdr);
       for (const j of list) table.append(laneRow(j, lane));
       blk.append(table);
@@ -2523,9 +2519,12 @@ function laneRow(j, lane) {
     ? `Raised ${j.opened_display}${j.unscheduled ? ' \u2014 the ERP has no schedule for this job' : ''}`
     : '';
   if ((j.age_days ?? 0) > 180) age.classList.add('is-stale');
-  row.append(age);
+  row.append(createdCell(j), age);
 
   const acts = el('span', 'acts');
+  // On a phone the column gives way and the opened row carries the date.
+  const created = createdNote(j);
+  if (created) acts.append(created);
   const lbl = el('button', 'mini', 'Label');
   lbl.addEventListener('click', () => openLabelEditor(j));
   const hide = el('button', 'mini', j.hidden ? 'Unhide' : 'Hide');

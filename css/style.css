@@ -320,7 +320,7 @@ header nav a, header nav .navlink, header .cog {
      92px Status track — invisible while that held three buttons, and an overlap
      the moment the status control made it four. A row's tracks must match the
      cells it actually renders. */
-  grid-template-columns: 76px 74px minmax(150px, 1.7fr) 92px 92px 112px;
+  grid-template-columns: 76px 74px minmax(150px, 1.7fr) 92px 92px 92px 112px;
   gap: 12px; align-items: center;
   padding: 9px 10px; border-bottom: 1px solid var(--line);
   font-size: 14px;
@@ -343,6 +343,11 @@ button.hull { background: none; border: 0; padding: 0; text-align: left; font: i
 button.hull:hover { color: var(--white); text-decoration: underline; }
 button.hull.is-empty::before { content: 'Add hull'; opacity: .45; }
 button.hull.is-empty:hover::before { opacity: 1; }
+/* When the order was entered in the ERP: a manager's column, never printed.
+   Where it gives way, the row's folded controls carry it as a note. */
+.job .created, .lane-row .created { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.created-note { font-size: 12.5px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.job .acts-more .created-note, .lane-row .acts .created-note { display: none; }
 .job .part-chip {
   font-size: 10.5px; color: var(--text-dim); border: 1px solid var(--line);
   border-radius: 5px; padding: 0 5px; letter-spacing: .05em; margin-left: 6px;
@@ -350,6 +355,7 @@ button.hull.is-empty:hover::before { opacity: 1; }
 }
 .job .due.stock { color: var(--text-dim); font-weight: 700; letter-spacing: .05em; }
 .job .status { font-size: 12px; color: var(--text-dim); }
+.job.col-head .status { font-size: inherit; }
 /* The customer's PO is manager-view only — it never reaches the printed board.
    It sits beside the production number because that is the pair read together. */
 .job .po { font-size: 12.5px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
@@ -730,7 +736,7 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
      Complete — and was sized for three, so the Open column ran underneath them.
      Same fault as the board rows had, in the place that was missed. 284px is
      the four measured with Unhide, the wider of Hide's two words. */
-  display: grid; grid-template-columns: 78px 1.6fr 1fr 92px 290px;
+  display: grid; grid-template-columns: 78px 1.6fr 1fr 92px 92px 290px;
   align-items: baseline; gap: 10px;
   padding: 7px 0; border-bottom: 1px solid var(--line);
 }
@@ -967,7 +973,7 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 }
 
 @media (max-width: 1240px) {
-  .lane-row { grid-template-columns: 72px 1.3fr 1fr 80px 284px; }
+  .lane-row { grid-template-columns: 72px 1.3fr 1fr 84px 80px 284px; }
 }
 
 /* Kept in the layout but out of sight, so the print view can still be
@@ -1338,12 +1344,25 @@ button.linkish:disabled { opacity: .5; cursor: default; }
    which is why the buttons sat left of where they belonged and the due date
    appeared to run through them. */
 .board-col .job {
-  grid-template-columns: 66px 62px minmax(90px, 1fr) 78px 82px 100px;
+  grid-template-columns: 66px 62px minmax(90px, 1fr) 78px 82px 82px 100px;
   gap: 10px; font-size: 13px; padding: 7px 8px;
 }
 .board-col .job .acts { gap: 5px; }
 .board-col .job .acts .mini { padding: 4px 7px; font-size: 11px; }
-.job.is-full { grid-template-columns: 76px 74px minmax(200px, 1.8fr) 92px 96px 88px 112px; }
+.job.is-full { grid-template-columns: 76px 74px minmax(200px, 1.8fr) 92px 92px 96px 88px 112px; }
+
+/* The Created column needs a wide desk screen: below one, a two-up column
+   has no room for a second date beside the vessel. It gives way first, before
+   the PO does, and the row's folded controls carry it instead. Six tracks on
+   a two-up row and seven on the full-width one, as before it came. */
+@media (max-width: 1440px) {
+  .job { grid-template-columns: 76px 74px minmax(150px, 1.7fr) 92px 92px 112px; }
+  .board-col .job { grid-template-columns: 66px 62px minmax(90px, 1fr) 78px 82px 100px; }
+  .job.is-full { grid-template-columns: 76px 74px minmax(200px, 1.8fr) 92px 96px 88px 112px; }
+  .job .created { display: none; }
+  .job .acts-more .created-note { display: inline; order: -2; margin-right: auto; }
+  .job .acts-more:has(.plinth) .created-note { margin-right: 0; }
+}
 
 /* Below roughly a laptop a two-up column is about 450px, which is not room
    for six cells: the PO gives way (it stays in the production number's
@@ -1733,6 +1752,9 @@ button.linkish:disabled { opacity: .5; cursor: default; }
   .job.col-head, .lane-head { display: none; }
   /* The hull has no place in the two-column phone row; it is a desk column. */
   .job .hull { display: none; }
+  /* Nor has the created date: it is in the opened row, as a note. */
+  .lane-row .created { display: none; }
+  .lane-row .acts .created-note { display: inline; order: -1; margin-right: auto; }
 
   /* Thumbs, not mouse pointers. */
   .job .acts button, .lane-row .acts button { min-height: var(--touch-min); padding: 0 14px; }
