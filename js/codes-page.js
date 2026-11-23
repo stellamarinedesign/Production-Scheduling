@@ -102,11 +102,23 @@ let davits = [];    // boat -> davits, straight from the export
   $('storeMode').textContent = Store.mode === 'firestore' ? 'Saved to Firestore' : 'Saved on this device only';
   if (Store.mode !== 'firestore') $('storeMode').style.color = 'var(--red-bright)';
   watch.step('codes', 'firestore');
-  codeMap = await Store.loadCodes();
-  facts = await loadFacts();
-  // The davit fall-back reads vessel codes off the rows, which needs the builders.
-  setBuilders((await Store.loadSettings().catch(() => ({}))).builders);
-  davits = await loadDavits();
+  // ONE READ OF EACH, ALL AT ONCE. The codes come from the listener that keeps
+  // them live (its first answer from the server is the load), and the latest
+  // import, which the facts and the davits both fall back to, is read once
+  // between them. These used to be four reads in a row, with the codes and the
+  // import each downloaded twice.
+  try {
+    [facts, davits] = await Promise.all([
+      loadFacts(),
+      // The davit fall-back reads vessel codes off the rows, which needs the builders.
+      Store.loadSettings().catch(() => ({})).then((s) => { setBuilders(s.builders); return loadDavits(); }),
+      watchCodeMap(),
+    ]);
+  } catch (e) {
+    console.error('[codes]', e);
+    watch.fail();
+    return;
+  }
 
   // The seed file is no longer deployed — Firestore is the source of truth. An
   // empty map here means a store that has never been seeded, not a page with
@@ -138,19 +150,40 @@ let davits = [];    // boat -> davits, straight from the export
     window.print();
   });
   render();
+  rendered = true;
   watch.done();
-
-  // A rename made on the board page, or by the other manager, lands here
-  // without a reload. Debounced because renaming a boat writes one document per
-  // ERP code on the line, and each write fires its own snapshot.
-  let t = null;
-  const stop = Store.watchCodes((m) => {
-    codeMap = m;
-    clearTimeout(t);
-    t = setTimeout(render, 150);
-  });
-  window.addEventListener('beforeunload', () => { try { stop(); } catch {} });
 })();
+
+/**
+ * The code map, kept live. Resolves once the server has first answered,
+ * with `codeMap` set from that answer; every change after it - a rename made
+ * on the board page, or by the other manager - lands here without a reload,
+ * debounced because renaming a boat writes one document per ERP code on the
+ * line, and each write fires its own snapshot. In local mode there is nothing
+ * to watch and the store's read is the load.
+ */
+let rendered = false;
+async function watchCodeMap() {
+  if (Store.mode !== 'firestore') { codeMap = await Store.loadCodes(); return; }
+  await new Promise((resolve, reject) => {
+    let loaded = false;
+    let t = null;
+    const stop = Store.watchCodes((m, meta) => {
+      if (!loaded && !meta.confirmed) return;      // the SDK's cache, before the server answered
+      codeMap = m;
+      if (!loaded) { loaded = true; resolve(); return; }
+      if (!rendered) return;                        // the first render reads it
+      clearTimeout(t);
+      t = setTimeout(render, 150);
+    }, (e) => { if (!loaded) reject(e); });
+    window.addEventListener('beforeunload', () => { try { stop(); } catch {} });
+  });
+}
+
+// The newest import, read at most once: the facts and the davits both fall
+// back to its rows when nothing has been accumulated yet.
+let latestRead = null;
+const latestBoard = () => (latestRead ??= Store.latestBoard());
 
 function setMode(m) {
   mode = m;
@@ -542,7 +575,7 @@ async function loadDavits() {
     // hand: less complete, since those are the open ones, but present.
     const cached = Store.cachedRows?.();
     if (cached?.rows?.length) return davitsByBoat(cached.rows);
-    const published = await Store.latestBoard();
+    const published = await latestBoard();
     return davitsByBoat(published?.rowsJson ? unpackRows(published.rowsJson) : []);
   } catch (e) { console.warn('[davits]', e.message); return []; }
 }
@@ -559,7 +592,7 @@ async function loadFacts() {
     if (stored.size && !factsAreStale(raw)) return stored;
 
     const cached = Store.cachedRows?.();
-    const published = cached?.rows?.length ? null : await Store.latestBoard();
+    const published = cached?.rows?.length ? null : await latestBoard();
     const fresh = itemFacts(cached?.rows?.length ? cached.rows
       : (published?.rowsJson ? unpackRows(published.rowsJson) : []));
     if (!stored.size) return fresh;

@@ -744,8 +744,8 @@ export const Store = {
   async loadItemFacts() {
     if (this.mode === 'local') return lsGet('itemFacts', {});
     try {
-      const { doc, getDoc } = this._fs;
-      const snap = await getDoc(doc(this._db, 'settings', 'items'));
+      const { doc } = this._fs;
+      const snap = await this._read(doc(this._db, 'settings', 'items'), 'doc');
       return snap.exists() ? (snap.data()?.items ?? {}) : {};
     } catch (e) { console.warn('[items]', e.message); return {}; }
   },
@@ -761,8 +761,8 @@ export const Store = {
   async loadDavits() {
     if (this.mode === 'local') return lsGet('davits', []);
     try {
-      const { doc, getDoc } = this._fs;
-      const snap = await getDoc(doc(this._db, 'settings', 'davits'));
+      const { doc } = this._fs;
+      const snap = await this._read(doc(this._db, 'settings', 'davits'), 'doc');
       const list = snap.exists() ? snap.data()?.boats : null;
       return Array.isArray(list) ? list : [];
     } catch (e) { console.warn('[davits]', e.message); return []; }
