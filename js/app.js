@@ -32,7 +32,8 @@ import { createReview } from './import-review.js';
 import { startup, deviceCache, recallSession, rememberSession, forgetDevice, hold, isHeld } from './boot.js';
 import { isConfigured } from './firebase.js';
 import './press.js';
-import { boardHead, createdCell, createdNote } from './board-columns.js';
+import { boardHead, createdCell, createdNote, historyColumns, historyHead, historyRowClass } from './board-columns.js';
+import { collapseScope, anyShut, toggleAll, historyKey } from './collapse.js';
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => {
@@ -1055,11 +1056,12 @@ async function publish(rows, what) {
  */
 /** Collapse all / expand all. Its own function because the floor path wires it too. */
 function wireCollapseAll() {
+  // It acts on what is in the board's place: the board's categories, or
+  // History's while History is open (collapse.js).
   $('collapseAll').addEventListener('click', () => {
-    if (collapsed.size) collapsed.clear();
-    else for (const c of CATEGORY_ORDER) collapsed.add(c);
+    toggleAll(boardFolds(), collapsed);
     saveCollapsed(collapsed);
-    renderBoard();
+    if (historyOpen.has('production')) renderHistory('production'); else renderBoard();
   });
   // Part orders in or out. The board is rebuilt rather than filtered, so the
   // Gantt, the sheet and its auto-fit all follow.
@@ -1088,7 +1090,7 @@ function wireRowTaps() {
   if (rowTapsWired) return;
   rowTapsWired = true;
   document.addEventListener('click', (e) => {
-    const row = e.target.closest('.job, .lane-row');
+    const row = e.target.closest('.job, .lane-row, .hist-row');
     if (!row || row.classList.contains('col-head')) return;
     // A control inside the row is the thing being used, not the row itself -
     // otherwise opening the status select would also collapse what it sits in.
@@ -1678,7 +1680,7 @@ function renderBoard() {
   $('boardCount').textContent = `${state.board.meta.job_count} on the board`
     + (pastDue ? ` · ${pastDue} past due` : '');
   $('completePastDue').disabled = !pastDue;
-  $('collapseAll').textContent = collapsed.size ? 'Expand all' : 'Collapse all';
+  showCollapseAll();
   // The toggle says what it holds: how many part orders are on the board, or
   // how many it is keeping off it.
   const po = $('partOrders');
@@ -1688,6 +1690,30 @@ function renderBoard() {
   po.classList.toggle('on', on);
   po.setAttribute('aria-pressed', String(on));
   po.disabled = !n && on;
+}
+
+/** The folds the Collapse all button acts on now. */
+function boardFolds() {
+  const jobs = Auth.isManager ? state.board.jobs
+    : state.board.jobs.filter((j) => !j.hidden && !j.completed);
+  const groups = byCategory(jobs, { includeHidden: Auth.isManager });
+  const done = (state.board.completed ?? []).filter((j) => (j.lane ?? 'production') === 'production');
+  return collapseScope({
+    recent: recentOpen,
+    history: historyOpen.has('production'),
+    order: CATEGORY_ORDER,
+    count: (c) => (groups.get(c) ?? []).length,
+    historyCount: (c) => done.filter((j) => j.category === c).length,
+  });
+}
+
+/** The button reads what it would do; with nothing to fold it is off. */
+function showCollapseAll() {
+  if (!state.board) return;
+  const folds = boardFolds();
+  const btn = $('collapseAll');
+  btn.textContent = anyShut(folds, collapsed) ? 'Expand all' : 'Collapse all';
+  btn.disabled = !folds.shown.length;
 }
 
 function categoryBlock(cat, jobs, { full = false } = {}) {
@@ -1962,6 +1988,7 @@ function renderRecent() {
   $(HISTORY_BODY.production).hidden = recentOpen || historyOpen.has('production');
   host.hidden = !recentOpen;
   host.textContent = '';
+  showCollapseAll();
   if (recentOpen) renderActivityLog(host, { master: Auth.isMaster });
 }
 
@@ -1975,6 +2002,7 @@ function renderHistory(lane = 'production') {
   btn.setAttribute('aria-pressed', String(open));
   $(HISTORY_BODY[lane]).hidden = open || (lane === 'production' && recentOpen);
   host.hidden = !open;
+  if (lane === 'production') showCollapseAll();
   if (!open) return;
 
   host.textContent = '';
@@ -1993,7 +2021,7 @@ function renderHistory(lane = 'production') {
     const rows = byCat.get(cat) ?? [];
     if (!rows.length) continue;
 
-    const key = `hist:${lane}:${cat}`;
+    const key = historyKey(lane, cat);
     const shut = collapsed.has(key);
     const block = el('div', `hist-cat${shut ? ' is-collapsed' : ''}`);
 
@@ -2011,33 +2039,48 @@ function renderHistory(lane = 'production') {
 
     if (!shut) {
       const table = el('div', 'hist');
-      const hdr = el('div', 'hist-row hist-head');
-      hdr.append(el('span', null, 'Prod Nbr'), el('span', null, lane === 'production' ? 'Vessel' : 'Job'),
-        el('span', null, lane === 'production' ? 'Due' : 'Opened'),
-        el('span', null, 'Completed'), el('span', null, 'Last changed'), el('span', null, ''));
-      table.append(hdr);
+      table.append(historyHead(lane));
 
       // Most recently completed first within a category.
       rows.sort((a, b) => String(b.completed_at ?? '').localeCompare(String(a.completed_at ?? '')));
 
       for (const j of rows) {
-        const row = el('div', 'hist-row');
-        row.append(el('span', 'prod', j.prod_no));
+        // Its own key among the opened rows: a job reopened from here must not
+        // come back to the board with its controls out.
+        const foldKey = `hist:${j.prod_no}`;
+        const row = el('div', `${historyRowClass(lane)}${openRows.has(foldKey) ? ' is-open' : ''}`);
+        row.dataset.prod = foldKey;
+        // On a phone the headings go, and three dates would be left unnamed:
+        // each cell that needs one carries its own column's heading.
+        const heads = Object.fromEntries(historyColumns(lane).map((c) => [c.key, c.head]));
+        const prod = el('span', 'prod', j.prod_no);
+        row.append(prod);
+        // The PO and the hull, as the board shows them.
+        if (lane === 'production') {
+          if (j.customer_po) prod.title = `PO ${j.customer_po}`;   // the PO column gives way on a narrow screen
+          row.append(el('span', 'po', j.customer_po ?? ''));
+        }
         const label = el('span', 'label', jobTitle(j));
         // A job the ERP closed reads differently from one somebody ticked, and
         // History is the wrong place to blur the two.
         if (j.closed_why) label.append(el('span', 'hist-why', j.closed_why));
         row.append(label);
-        row.append(el('span', 'due', lane === 'production' ? j.due_display : (j.opened_display ?? '')));
+        if (lane === 'production') row.append(el('span', 'hull', j.hull ?? ''));
+        const due = el('span', 'due', lane === 'production' ? j.due_display : (j.opened_display ?? ''));
+        due.dataset.head = heads.due;
+        row.append(due);
         const when = j.completed_at ? new Date(j.completed_at) : null;
         const stamp = el('span', 'when', when
           ? when.toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' })
           : '\u2014');
         if (j.completed_by) stamp.title = `Marked by ${j.completed_by === ERP_CLOSER ? 'ERP import' : j.completed_by}`;
+        stamp.dataset.head = heads.when;
         row.append(stamp);
         // Who last touched it: the override's stamp, else the completion, else
         // the log's newest line for it once the log has loaded.
-        row.append(touchedCell(lastChanged({ override: state.overrides[j.prod_no], job: j, rows: loadedEntries() }), j.prod_no));
+        const touched = touchedCell(lastChanged({ override: state.overrides[j.prod_no], job: j, rows: loadedEntries() }), j.prod_no);
+        touched.dataset.head = heads.touched;
+        row.append(touched);
 
         const acts = el('span', 'acts');
         const reopen = el('button', 'mini', 'Reopen');

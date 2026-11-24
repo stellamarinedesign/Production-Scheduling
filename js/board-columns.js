@@ -43,6 +43,43 @@ export function boardHead({ manager = false, full = false } = {}) {
   return hdr;
 }
 
+/**
+ * History's columns. A production job has the board's PO and hull, in the
+ * board's order; the other lanes have neither on the board, so neither here.
+ */
+const HISTORY_COLUMNS = {
+  production: [
+    { key: 'prod', head: 'Prod Nbr' },
+    { key: 'po', head: 'PO', cls: 'po' },
+    { key: 'label', head: 'Vessel' },
+    { key: 'hull', head: 'Hull', cls: 'hull' },
+    { key: 'due', head: 'Due' },
+    { key: 'when', head: 'Completed' },
+    { key: 'touched', head: 'Last changed' },
+    { key: 'acts', head: '' },
+  ],
+  other: [
+    { key: 'prod', head: 'Prod Nbr' },
+    { key: 'label', head: 'Job' },
+    { key: 'due', head: 'Opened' },
+    { key: 'when', head: 'Completed' },
+    { key: 'touched', head: 'Last changed' },
+    { key: 'acts', head: '' },
+  ],
+};
+
+export const historyColumns = (lane) => HISTORY_COLUMNS[lane] ?? HISTORY_COLUMNS.other;
+
+/** The class that gives a History row as many tracks as it has cells. */
+export const historyRowClass = (lane) => `hist-row${lane === 'production' ? ' is-prod' : ''}`;
+
+/** The header row of a History category. */
+export function historyHead(lane) {
+  const hdr = el('div', `${historyRowClass(lane)} hist-head`);
+  for (const c of historyColumns(lane)) hdr.append(el('span', c.cls ?? null, c.head));
+  return hdr;
+}
+
 /** The created date in its column; blank when the ERP gave none. */
 export const createdCell = (j) => el('span', 'created', j?.created_display ?? '');
 

@@ -346,6 +346,10 @@ export function fromSnapshot(prodNo, ov) {
     opened_display: snap.opened_display ?? '',
     age_display: snap.age_display ?? '',
     customer: snap.customer ?? '',
+    customer_po: snap.customer_po ?? null,
+    // A hull typed in by hand outranks the one the record was made with, as it
+    // does on the board.
+    hull: ov.hullOverride || snap.hull || null,
     is_stock: Boolean(snap.is_stock),
     is_custom: Boolean(snap.is_custom),
     status: snap.status ?? '',
@@ -507,6 +511,8 @@ export const snapshotOf = (j) => ({
   opened_display: j.opened_display ?? '',
   age_display: j.age_display ?? '',
   customer: j.customer ?? '',
+  customer_po: j.customer_po ?? null,
+  hull: j.hull ?? null,
   is_stock: Boolean(j.is_stock),
   status: j.status ?? '',
 });
