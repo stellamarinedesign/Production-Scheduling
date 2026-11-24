@@ -32,7 +32,7 @@ import { createReview } from './import-review.js';
 import { startup, deviceCache, recallSession, rememberSession, forgetDevice, hold, isHeld } from './boot.js';
 import { isConfigured } from './firebase.js';
 import './press.js';
-import { boardHead, createdCell, createdNote, historyHead, historyRowClass } from './board-columns.js';
+import { boardHead, createdCell, createdNote, historyColumns, historyHead, historyRowClass } from './board-columns.js';
 import { collapseScope, anyShut, toggleAll, historyKey } from './collapse.js';
 
 const $ = (id) => document.getElementById(id);
@@ -1090,7 +1090,7 @@ function wireRowTaps() {
   if (rowTapsWired) return;
   rowTapsWired = true;
   document.addEventListener('click', (e) => {
-    const row = e.target.closest('.job, .lane-row');
+    const row = e.target.closest('.job, .lane-row, .hist-row');
     if (!row || row.classList.contains('col-head')) return;
     // A control inside the row is the thing being used, not the row itself -
     // otherwise opening the status select would also collapse what it sits in.
@@ -2045,7 +2045,14 @@ function renderHistory(lane = 'production') {
       rows.sort((a, b) => String(b.completed_at ?? '').localeCompare(String(a.completed_at ?? '')));
 
       for (const j of rows) {
-        const row = el('div', historyRowClass(lane));
+        // Its own key among the opened rows: a job reopened from here must not
+        // come back to the board with its controls out.
+        const foldKey = `hist:${j.prod_no}`;
+        const row = el('div', `${historyRowClass(lane)}${openRows.has(foldKey) ? ' is-open' : ''}`);
+        row.dataset.prod = foldKey;
+        // On a phone the headings go, and three dates would be left unnamed:
+        // each cell that needs one carries its own column's heading.
+        const heads = Object.fromEntries(historyColumns(lane).map((c) => [c.key, c.head]));
         const prod = el('span', 'prod', j.prod_no);
         row.append(prod);
         // The PO and the hull, as the board shows them.
@@ -2059,16 +2066,21 @@ function renderHistory(lane = 'production') {
         if (j.closed_why) label.append(el('span', 'hist-why', j.closed_why));
         row.append(label);
         if (lane === 'production') row.append(el('span', 'hull', j.hull ?? ''));
-        row.append(el('span', 'due', lane === 'production' ? j.due_display : (j.opened_display ?? '')));
+        const due = el('span', 'due', lane === 'production' ? j.due_display : (j.opened_display ?? ''));
+        due.dataset.head = heads.due;
+        row.append(due);
         const when = j.completed_at ? new Date(j.completed_at) : null;
         const stamp = el('span', 'when', when
           ? when.toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: 'numeric' })
           : '\u2014');
         if (j.completed_by) stamp.title = `Marked by ${j.completed_by === ERP_CLOSER ? 'ERP import' : j.completed_by}`;
+        stamp.dataset.head = heads.when;
         row.append(stamp);
         // Who last touched it: the override's stamp, else the completion, else
         // the log's newest line for it once the log has loaded.
-        row.append(touchedCell(lastChanged({ override: state.overrides[j.prod_no], job: j, rows: loadedEntries() }), j.prod_no));
+        const touched = touchedCell(lastChanged({ override: state.overrides[j.prod_no], job: j, rows: loadedEntries() }), j.prod_no);
+        touched.dataset.head = heads.touched;
+        row.append(touched);
 
         const acts = el('span', 'acts');
         const reopen = el('button', 'mini', 'Reopen');
