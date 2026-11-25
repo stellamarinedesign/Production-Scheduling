@@ -18,7 +18,6 @@ import { itemFacts, mergeItemFacts } from './vessel-codes.js';
 import { closeOnBackdrop, closeOnEscape, keepFocus, watchDialogs, whenClosed } from './dialog.js';
 import { toast, toastFailed, unsay } from './toast.js';
 import { count, failure, reason } from './words.js';
-import { busy } from './busy.js';
 import { refuse, accept } from './field.js';
 import { faultLine, setFault, clearFault, notDone, carries } from './faults.js';
 import { wireSettings } from './settings.js';
@@ -760,7 +759,7 @@ async function startFloor() {
     hideBoard();
     $('floorEmpty').hidden = false;
   } else {
-    floorChanged(published);
+    floorChanged(published, { first: true });
   }
   watch.done();
   keepWatch({ what: 'Board', onLink: (cb) => Store.onLink(cb) });
@@ -779,11 +778,15 @@ function watchFloor() {
   });
 }
 
-/** Draw a floor board that differs from the one on screen, and keep it for the next open. */
-function floorChanged(rec) {
+/**
+ * Draw a floor board that differs from the one on screen, and keep it for the
+ * next open. The server's first answer is taken as it is; after that nothing
+ * goes back to an older export.
+ */
+function floorChanged(rec, { first = false } = {}) {
   const shown = state.board ? floorSignature({ jobs: floorShown, retrievedAt: state.source?.retrievedAt }) : null;
   const shownAt = state.source?.retrievedAt ?? '';
-  if ((rec.retrievedAt ?? '') < shownAt) return;         // never back to an older export
+  if (!first && (rec.retrievedAt ?? '') < shownAt) return;
   if (floorSignature(rec) !== shown) keepFocus(() => showFloor(rec));
   if (shownAt && (rec.retrievedAt ?? '') > shownAt) toast('Board updated from a newer export.', 5000);
   if (Store.mode === 'firestore') deviceCache.set('floor', floorCopy(rec));
@@ -793,6 +796,7 @@ function floorChanged(rec) {
 
 let floorTimer = null;
 let floorSent = null;       // the signature of what the floor was last given
+let floorAt = '';           // and the export it was of
 
 /** A moment after an edit the server has taken, so a run of them is one write. */
 function shareFloorSoon() {
@@ -810,10 +814,12 @@ async function shareFloor() {
     maxStock: state.settings.maxStock, horizonWeeks: state.settings.horizonWeeks,
   }), state.source);
   const sig = floorSignature(rec);
-  if (sig === floorSent) return;
+  // Nor is an export older than the one the floor has.
+  if (sig === floorSent || (rec.retrievedAt ?? '') < floorAt) return;
   try {
     await Store.saveFloorBoard(rec);
     floorSent = sig;
+    floorAt = rec.retrievedAt ?? '';
     state.floorFault = null;
   } catch (e) {
     state.floorFault = failure('Floor screens not updated', e);
@@ -824,7 +830,11 @@ async function shareFloor() {
 /** At the open: an edit whose moment never came - a tab shut, a connection lost - is made good. */
 async function checkFloor() {
   if (Store.mode !== 'firestore' || !Auth.isManager || isTestMode()) return;
-  try { floorSent = floorSignature(await Store.loadFloorBoard()); } catch (e) { console.warn('[floor]', e.message); return; }
+  try {
+    const rec = await Store.loadFloorBoard();
+    floorSent = floorSignature(rec);
+    floorAt = rec?.retrievedAt ?? '';
+  } catch (e) { console.warn('[floor]', e.message); return; }
   shareFloor();
 }
 
