@@ -9,6 +9,8 @@
 
 import { Store } from './store.js';
 import { Auth, ROLE, setManagers, setEngineers, setMasters, setTesters, tidyEmail } from './auth.js';
+import { standing } from './access.js';
+import { signInForm, focusSignIn, readAccess, notListed } from './sign-in.js';
 import { VERSION } from './version.js';
 import { wireHelp } from './help.js';
 import { readStockExport } from './adapters/stock.js';
@@ -106,37 +108,40 @@ let savedFor = null;
   await Store.init();
   booting('Checking your access');
   watch.step('access', 'firestore');
-  const access = await Store.loadAccess();
+  const access = await readAccess(watch);
   setManagers(access.managers);
   setEngineers(access.engineers);
   setMasters(access.masters);
   setTesters(access.testers);
   role = Auth.refreshRole();
   who = first.email ?? null;
+  // On no list the part list cannot be read, whatever the device has kept of it.
+  const listed = Auth.mode !== 'firebase' || standing(access, who) === 'listed';
   // The saved copy was drawn for a role; another answer starts the page again.
-  if (saved && saved.role !== role) {
+  if (!listed || (saved && saved.role !== role)) {
     await forgetDevice();
-    if (window.__boot?.reloadOnce?.()) return;
+    if (saved && window.__boot?.reloadOnce?.()) return;
   }
-  if (Auth.mode === 'firebase' && role !== ROLE.NONE) rememberSession(who, role);
+  if (Auth.mode === 'firebase' && listed) rememberSession(who, role);
   // A tester is in test mode from here, flag or no flag; see test-mode.js.
   if (Auth.isTester) Store.enterTestMode();
   showTestMode();
   present();
 
-  if (role === ROLE.NONE) {
+  if (!listed) {
     booting(false);
     watch.done();
-    // A list drawn from the device for an account that is no longer signed in.
+    // A list drawn from the device for an account that is no longer signed in,
+    // or no longer on a list.
     $('partsTabs').hidden = true;
     for (const id of Object.values(TABS)) $(id).hidden = true;
     const host = $('partsDenied');
+    if (role !== ROLE.NONE) { notListed(host, who); return; }
     host.hidden = false;
     host.append(el('strong', null, 'Sign in to look up parts'));
-    host.append(el('div', null, 'The part list is for signed-in accounts. Sign in on the board, then come back.'));
-    const back = el('a', 'backlink', 'Go to the board');
-    back.href = carryFlag('./');
-    host.append(back);
+    // Signed in, the page loads again: as that account's, from the start.
+    host.append(signInForm({ signedIn: () => { location.reload(); return new Promise(() => {}); } }));
+    focusSignIn();
     return;
   }
 
