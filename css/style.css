@@ -2090,3 +2090,55 @@ body.role-engineer .not-engineer { display: none !important; }
 }
 .test-mode .mini { border-color: rgba(255,255,255,.55); letter-spacing: 0; text-transform: none; }
 .test-mode .mini:hover { border-color: var(--white); }
+
+/* ============================================================
+   ACCOUNTS, SIGN-IN, PASSWORDS
+   The sign-in form is one for the board and for the pages that show it where
+   they are (sign-in.js); the Accounts panel is settings.js.
+   ============================================================ */
+.sign-in { text-align: left; }
+.sign-in .field { margin-bottom: 16px; }
+.sign-in .field label {
+  display: block; font-size: 11px; font-weight: 700; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--text-dim); margin-bottom: 7px;
+}
+.sign-in .field input { width: 100%; }
+/* In a page's own message, at the width the board's has. */
+.state .sign-in { max-width: 332px; margin: 22px auto 0; }
+/* The line under the form says a failure in red; news is only dimmed. */
+#loginErr.is-news { color: var(--text-dim); }
+
+/* The panel while it has no lists to draw. */
+.acct-line { font-size: 13.5px; line-height: 1.5; color: var(--text-dim); }
+.acct-line.bad { color: var(--red-bright); margin-bottom: 10px; }
+
+/* A row keeps its address whole, and Remove to itself at the end of it. */
+.acct-row { grid-template-columns: minmax(0, 1fr) 108px 52px 104px 92px; }
+.acct-row .acct-email { overflow: visible; white-space: normal; overflow-wrap: anywhere; }
+.acct-master-cell { display: flex; justify-content: center; }
+.acct-master-cell span { display: none; }        /* the column is headed Master */
+.acct-row .acct-remove { justify-self: end; }
+.acct-row button:disabled, .acct-add button:disabled { opacity: .5; cursor: default; border-color: var(--line); }
+/* Under a row: a change on its way, why one was not made, why a control is off. */
+.acct-note { grid-column: 1 / -1; font-size: 12.5px; line-height: 1.5; color: var(--text-dim); }
+.acct-note.bad { color: var(--red-bright); }
+.acct-add-form .field-err { margin-top: 8px; }
+.acct-add-form .acct-note { margin-top: 8px; }
+.acct-add button { min-width: 98px; }
+
+@media screen and (pointer: coarse), screen and (max-width: 760px) {
+  button.linkish { min-height: var(--touch-min); }
+  .acct-master-cell { align-items: center; min-height: var(--touch-min); }
+}
+/* A phone: the address on its own line, what it is under that, what can be done
+   with it under that, Make sign-in and Remove at opposite ends. */
+@media screen and (max-width: 760px) {
+  .settings-acts { margin-left: 0; flex-wrap: wrap; }
+  .acct-head-row { display: none; }
+  .acct-row { grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; padding: 12px 0; }
+  .acct-row .acct-email { grid-column: 1 / -1; font-size: 15px; }
+  .acct-master-cell { gap: 8px; font-size: 13.5px; }
+  .acct-master-cell span { display: inline; }
+  .acct-master { width: 20px; height: 20px; }
+  .acct-row .acct-make { justify-self: start; }
+}

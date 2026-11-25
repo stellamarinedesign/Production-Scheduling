@@ -9,7 +9,9 @@ import { CATEGORY_ORDER, PRINT_LAYOUT, EXCLUSION_ORDER, EXCLUSION_GROUP_LABEL,
          SETTABLE_STATUSES, ERP_CLOSER, isPartOrder } from './rules.js';
 import { stellaCode, labelFor, existingBoats, acceptNewCode, applyTemplate,
   setBuilders, buildersConfigured } from './vessel-codes.js';
-import { Auth, ROLE, friendlyAuthError, setManagers, setEngineers, setMasters, setTesters, managerCount, tidyEmail } from './auth.js';
+import { Auth, ROLE, setManagers, setEngineers, setMasters, setTesters, tidyEmail } from './auth.js';
+import { standing } from './access.js';
+import { signInForm, focusSignIn, readAccess, notListed, offerManager } from './sign-in.js';
 import { prefs, showTestMode, isNotAvailable, NOT_AVAILABLE, isTestMode } from './test-mode.js';
 import { VERSION } from './version.js';
 import { wireHelp } from './help.js';
@@ -243,73 +245,53 @@ function present(st) {
   who.append(chip);
 }
 
+// Whose page this is: the account it was first started for.
+let pageFor = null;
+
+/**
+ * A PAGE IS ONE ACCOUNT'S. Its board, its listeners and what is in its memory
+ * are whoever's it was started for, so signing out, or in as somebody else,
+ * loads it afresh, with nothing left on the device either. It used to be
+ * handed on: the next account went on in the last one's board.
+ */
+async function afresh() {
+  $('appShell').hidden = true;
+  await forgetDevice();
+  Store.clearCache();
+  location.reload();
+}
+
 function showAuth() {
+  if (pageFor !== null) { afresh(); return; }
   $('authView').classList.add('show');
   $('appShell').hidden = true;
+  focusSignIn();
+}
+
+/** The access lists, as the server gave them, wherever they are asked about. */
+function takeAccess(access) {
+  setManagers(access.managers);
+  setEngineers(access.engineers);
+  setMasters(access.masters);
+  setTesters(access.testers);
+  state.access = access;
 }
 
 let started = false;
-/**
- * First run: nobody is a manager yet, so offer to make this account one.
- *
- * The list decides what is DRAWN. The Firestore rules decide what is ALLOWED,
- * and they name the manager accounts independently of this document — so this
- * button is not self-service access. A real manager's write is permitted by the
- * rules and succeeds; anyone else is refused by the server, which is the
- * intended answer rather than a failure to work around.
- *
- * Offered only when the document is MISSING. A list that exists and is empty is
- * somebody's deliberate decision and is left alone.
- *
- * @returns {Promise<boolean>} true when the role changed and start() re-ran.
- */
-async function offerBootstrap(email) {
-  const host = $('floorEmpty');
-  host.hidden = false;
-  host.textContent = '';
-  host.append(el('strong', null, 'No manager list yet'));
-  host.append(el('div', null,
-    'Nobody has been given the manager view, so every signed-in account sees '
-    + 'the read-only board. Whoever is setting this up can claim it here.'));
-
-  const act = el('div', 'boot-actions');
-  const btn = el('button', 'primary', `Make ${email} a manager`);
-  const note = el('div', 'hint');
-  act.append(btn, note);
-  host.append(act);
-
-  return new Promise((resolve) => {
-    btn.addEventListener('click', async () => {
-      btn.disabled = true;
-      note.textContent = 'Saving…';
-      try {
-        await Store.saveManagers([String(email).trim().toLowerCase()]);
-        setManagers(await Store.loadManagers());
-        if (!managerCount()) throw new Error('The list saved but came back empty.');
-        host.hidden = true;
-        started = false;                     // let start() run its manager path
-        await start({ role: Auth.refreshRole(), email, mode: 'firebase' });
-        toast('You are now a manager on this board.');
-        resolve(true);
-      } catch (e) {
-        btn.disabled = false;
-        // A refusal here is the rules doing their job. Say so, and give the
-        // console route, rather than implying the app is broken.
-        note.innerHTML = /permission|insufficient/i.test(e.message)
-          ? 'Firestore refused that write, which means this account is not a '
-            + 'manager in the security rules either. Add it there first, or create '
-            + '<code>settings/access</code> in the Firebase console with a '
-            + '<code>managers</code> array.'
-          : `Could not save — ${e.message}`;
-        resolve(false);
-      }
-    });
+/** First run: nobody is a manager yet, so this account may become one. See sign-in.js. */
+function offerBootstrap(email) {
+  offerManager($('floorEmpty'), email, async (access) => {
+    takeAccess(access);
+    await start({ role: Auth.refreshRole(), email, mode: 'firebase' });
+    toast('You are now a manager on this board.');
   });
 }
 
 let storeReady = false;
 
 async function start(st) {
+  if (pageFor !== null && pageFor !== tidyEmail(st.email)) { await afresh(); return; }
+  pageFor = tidyEmail(st.email);
   $('authView').classList.remove('show');
   $('appShell').hidden = false;
 
@@ -324,14 +306,33 @@ async function start(st) {
     await Store.init();
     booting('Checking your access');
     watch.step('access', 'firestore');
-    const access = await Store.loadAccess();
-    setManagers(access.managers);
-    setEngineers(access.engineers);
-    setMasters(access.masters);
-    setTesters(access.testers);
-    state.access = access;
+    takeAccess(await readAccess(watch));
   }
+  // Called again while the lists are still being read: that call goes on.
+  if (!state.access) return;
   st = { ...st, role: Auth.refreshRole() };
+
+  // ON NO LIST, OR NO LISTS. Neither goes any further, and nothing of a board
+  // stays on the screen or on the device. The two used to look alike, and so
+  // did a read that had failed (see Store.loadAccess): an account nobody had
+  // listed was offered the board.
+  const stands = Auth.mode === 'firebase' ? standing(state.access, st.email) : 'listed';
+  if (stands !== 'listed') {
+    if (await startAgain(savedFor)) return;
+    releaseHold?.();
+    releaseHold = null;
+    state.rows = null;
+    state.source = null;
+    hideBoard();
+    $('engineerHome').hidden = true;
+    present(st);
+    $('whoami').textContent = st.email ?? '';      // without the chip: it has no role
+    booting(false);
+    watch.done();
+    if (stands === 'missing') offerBootstrap(st.email);
+    else notListed($('floorEmpty'), tidyEmail(st.email));
+    return;
+  }
   // The saved copy was drawn for a role. Another answer starts the page again
   // rather than rewiring it under the person holding it.
   if (savedFor && savedFor.role !== st.role) {
@@ -356,15 +357,6 @@ async function start(st) {
   // Floor accounts read the last published board and render the printed sheet.
   // No upload, no controls, no edit affordances — that is the whole point of
   // the role, and the rules deny those writes regardless.
-  // An empty list means every signed-in account gets the floor view. That is
-  // the right default, and it is also what a missing `settings/access` document
-  // looks like — so say which, rather than leaving a manager wondering why
-  // their own board has gone read-only.
-  if (st.role === ROLE.FLOOR && Auth.mode === 'firebase' && !managerCount()) {
-    watch.done();
-    if (await offerBootstrap(st.email)) return;   // claimed; start() re-ran
-  }
-
   if (st.role === ROLE.FLOOR) { await startFloor(); booting(false); return; }
   if (st.role === ROLE.ENGINEER) { $('engineerHome').hidden = false; booting(false); watch.done(); return; }
 
@@ -697,20 +689,6 @@ async function loadLastBoard(published) {
 }
 
 async function startFloor() {
-  // An account on no list reads nothing - the rules see to that - so say so
-  // here rather than letting the first read fail as if the board were empty.
-  const email = tidyEmail(Auth.user?.email);
-  if (Auth.mode === 'firebase' && state.access && !state.access.floor.includes(email)) {
-    hideBoard();
-    const host = $('floorEmpty');
-    host.textContent = '';
-    host.append(el('strong', null, 'This account is not on the access list yet'));
-    host.append(el('div', null, `Signed in as ${email}, but nobody has given it a role. `
-      + 'Ask a master user to add it under their cog; it works from your next page load.'));
-    host.hidden = false;
-    watch.done();
-    return;
-  }
   watch.step('board', 'firestore');
   let published;
   try {
@@ -781,46 +759,7 @@ function showFloor(published) {
 }
 
 function wireAuth() {
-  const submit = async () => {
-    $('loginErr').textContent = '';
-    $('loginBtn').disabled = true;
-    try {
-      await Auth.signIn($('loginEmail').value, $('loginPass').value);
-      $('loginPass').value = '';
-    } catch (e) {
-      $('loginErr').textContent = friendlyAuthError(e);
-    } finally {
-      $('loginBtn').disabled = false;
-    }
-  };
-  $('loginBtn').addEventListener('click', submit);
-
-  // Lets somebody set a password nobody else has seen — including whoever
-  // created their account. The account itself still comes from the console.
-  $('resetBtn').addEventListener('click', async () => {
-    const email = $('loginEmail').value.trim();
-    const err = $('loginErr');
-    if (!email) { err.textContent = 'Type your email address above first.'; return; }
-    $('resetBtn').disabled = true;
-    try {
-      await Auth.sendPasswordReset(email);
-      err.style.color = 'var(--text-dim)';
-      // Firebase answers identically for an address that has no account, so
-      // promising "it has been sent" would be a lie for a typo. Say what was
-      // actually done, and where to look.
-      err.textContent = `If ${email} has an account, a link to set a password is on its `
-        + `way. It can take a minute, and it may land in junk mail.`;
-    } catch (e) {
-      if (isNotAvailable(e)) { toast(NOT_AVAILABLE); return; }
-      err.style.color = '';
-      err.textContent = friendlyAuthError(e);
-    } finally {
-      $('resetBtn').disabled = false;
-    }
-  });
-  for (const id of ['loginEmail', 'loginPass']) {
-    $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
-  }
+  $('signIn').append(signInForm());
   wireSettings($('settingsBtn'));
 }
 

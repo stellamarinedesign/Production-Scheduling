@@ -161,6 +161,7 @@
     "./js/rules.js": "./js/rules.js?v=2026-11-25.1",
     "./js/search-core.js": "./js/search-core.js?v=2026-11-25.1",
     "./js/settings.js": "./js/settings.js?v=2026-11-25.1",
+    "./js/sign-in.js": "./js/sign-in.js?v=2026-11-25.1",
     "./js/stella-folder.js": "./js/stella-folder.js?v=2026-11-25.1",
     "./js/store.js": "./js/store.js?v=2026-11-25.1",
     "./js/test-mode.js": "./js/test-mode.js?v=2026-11-25.1",
@@ -182,6 +183,8 @@
 <link rel="modulepreload" href="js/rules.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/vessel-codes.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/auth.js?v=2026-11-25.1">
+<link rel="modulepreload" href="js/access.js?v=2026-11-25.1">
+<link rel="modulepreload" href="js/sign-in.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/test-mode.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/version.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/help.js?v=2026-11-25.1">
@@ -205,8 +208,11 @@
 <link rel="modulepreload" href="js/board-columns.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/collapse.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/adapters/xlsx.js?v=2026-11-25.1">
+<link rel="modulepreload" href="js/words.js?v=2026-11-25.1">
+<link rel="modulepreload" href="js/busy.js?v=2026-11-25.1">
+<link rel="modulepreload" href="js/field.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/password.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/access.js?v=2026-11-25.1">
+<link rel="modulepreload" href="js/ask.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/packages.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/stella-folder.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/adapters/package-files.js?v=2026-11-25.1">
@@ -217,22 +223,13 @@
 <!-- ============ SIGN IN ============
      Same model as the Drawings app: Firebase email/password, no self-signup.
      Manager accounts get this page; workshop accounts get the floor view only.
-     The rules are the real enforcement — this only decides what is drawn. -->
+     The rules are the real enforcement — this only decides what is drawn. The
+     form itself is js/sign-in.js, the one the parts page shows too. -->
 <div id="authView">
   <img src="assets/logo.svg" alt="Stella Marine" class="auth-logo">
   <h2 class="brand-head">Sign in</h2>
   <p>Production board for Stella Marine staff. Use the account set up for this device.</p>
-  <div class="field">
-    <label for="loginEmail">Email</label>
-    <input id="loginEmail" type="email" autocomplete="username" autocapitalize="off" spellcheck="false">
-  </div>
-  <div class="field">
-    <label for="loginPass">Password</label>
-    <input id="loginPass" type="password" autocomplete="current-password">
-  </div>
-  <button class="primary" id="loginBtn">Sign in</button>
-  <button class="linkish" id="resetBtn">Email me a password reset link</button>
-  <div id="loginErr"></div>
+  <div id="signIn"></div>
   <div id="localNote"></div>
 </div>
 
