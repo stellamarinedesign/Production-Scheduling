@@ -48,6 +48,9 @@ export const PART_COLUMNS = ['Inventory ID', 'Description', 'Type', 'Base Unit',
 /** The fields beside code, description and bin. Shown on a desktop; never searched. */
 export const META_FIELDS = ['type', 'unit', 'source'];
 
+/** Their columns. An export without one is a list with that column blank, not a wrong file. */
+export const DISPLAY_COLUMNS = ['Type', 'Base Unit', 'Source'];
+
 /** The Parameters sheet's title on a genuine stock export. */
 export const REQUIRED_TITLE = 'Stock Items';
 
@@ -79,6 +82,12 @@ export function familyOf(id) {
 export const hasBin = (bin) => Boolean(bin) && String(bin).trim().toUpperCase() !== 'MAIN';
 
 /**
+ * A field's value as it is stored and compared. The ERP writes a bin in
+ * capitals and a person need not: `b2s1` is the bin B2S1, not a change to it.
+ */
+export const tidyValue = (field, v) => (field === 'bin' ? clean(v).toUpperCase() : clean(v));
+
+/**
  * Rows in, parts out.
  *
  * @param {Array<Object>} rows  keyed by the export's column captions
@@ -96,7 +105,7 @@ export function transformParts(rows) {
     if (PART_ID_RE.test(id)) {
       seen.add(id);
       parts.push({
-        id, desc: clean(r['Description']), bin: clean(r['Default Issue From']),
+        id, desc: clean(r['Description']), bin: tidyValue('bin', r['Default Issue From']),
         type: clean(r['Type']), unit: clean(r['Base Unit']), source: clean(r['Source']),
       });
     } else if (id.startsWith('S')) {
@@ -161,13 +170,18 @@ export function validateStockExport({
       + '— this looks like a different export. The production orders file goes on the board, not here.');
   }
   const missing = PART_COLUMNS.filter((c) => !headings.includes(c));
-  if (missing.length) errors.push(`Missing column${missing.length > 1 ? 's' : ''}: ${missing.join(', ')}.`);
+  const missingWords = (list) => `Missing column${list.length > 1 ? 's' : ''}: ${list.join(', ')}.`;
+  const needed = missing.filter((c) => !DISPLAY_COLUMNS.includes(c));
+  if (needed.length) errors.push(missingWords(needed));
   if (errors.length) return { errors, warnings };
 
+  if (missing.length) {
+    warnings.push(`${missingWords(missing)} ${missing.length > 1 ? 'They' : 'It'} will be blank on this page.`);
+  }
   if (!exportDate) warnings.push('Could not read the export date from the Parameters sheet.');
   if (current?.exportDate && exportDate && exportDate < current.exportDate) {
-    warnings.push(`This export is dated ${exportDate.slice(0, 10)}, older than the one already loaded `
-      + `(${current.exportDate.slice(0, 10)}). Importing it would move the list backwards.`);
+    warnings.push(`This export is dated ${dayOf(exportDate)}, older than the one already loaded `
+      + `(${dayOf(current.exportDate)}). Importing it would move the list backwards.`);
   }
   // \bactive\b, not /active/: "Equals Inactive" contains the word and is the
   // exact case this warning exists for.
@@ -235,6 +249,10 @@ export const overrideKey = (id, field) => `${encodePartId(id)}${OVERRIDE_SEP}${f
 /** Status pending or review shows in the app; resolved is history. */
 export const isActive = (o) => o && (o.status === 'pending' || o.status === 'review');
 
+/** What a field and a status are called wherever anybody reads them. */
+export const FIELD_NAME = { desc: 'Description', bin: 'Bin' };
+export const STATUS_NAME = { pending: 'Pending', review: 'Awaiting a decision' };
+
 /**
  * What a part shows, once corrections are applied.
  * @returns {{desc, bin, descOv, binOv}} the override objects where active
@@ -250,20 +268,29 @@ export function effective(part, overrides) {
   };
 }
 
+/** A refusal in plain words, and which box it is about: 'value', 'reason' or neither. */
+const refusal = (words, on = null) => Object.assign(new Error(words), { words, on });
+
 /**
- * Make a correction. Throws with a plain reason rather than making a bad one.
+ * Make a correction. Throws with a plain reason rather than making a bad one;
+ * the error's `on` says which of the two things typed is refused.
  *
- * @param {{partId, field, value, reason, by, part}} args
+ * @param {{partId, field, value, reason, by, part, existing}} args
  *   `part` is the current ERP record — the baseline is what the ERP says NOW,
  *   which is what makes reconciliation possible later.
+ *   `existing` is the live correction being changed, if there is one: saving
+ *   it again as it was is refused too.
  */
-export function createOverride({ partId, field, value, reason, by, part, now = new Date() }) {
+export function createOverride({ partId, field, value, reason, by, part, existing = null, now = new Date() }) {
   if (!OVERRIDE_FIELDS.includes(field)) throw new Error(`Unknown field '${field}'.`);
-  if (!part) throw new Error('That code is not in the current export.');
-  const v = clean(value);
-  const baseline = clean(part[field]);
-  if (!clean(reason)) throw new Error('A reason is required — it is what the person fixing the ERP will read.');
-  if (v === baseline) throw new Error('The ERP already says exactly that.');
+  if (!part) throw refusal('That code is not in the current export.');
+  const v = tidyValue(field, value);
+  const baseline = tidyValue(field, part[field]);
+  if (v === baseline) throw refusal('The ERP already says exactly that.', 'value');
+  if (isActive(existing) && v === tidyValue(field, existing.value) && clean(reason) === clean(existing.reason)) {
+    throw refusal('The correction already says exactly that.', 'value');
+  }
+  if (!clean(reason)) throw refusal('A reason is required — it is what the person fixing the ERP will read.', 'reason');
   return {
     partId, field, value: v, baseline, reason: clean(reason),
     status: 'pending', reviewReason: null, resolution: null,
@@ -304,14 +331,14 @@ export function reconcile(overrides, partsById, exportDate, now = new Date()) {
       next.reviewReason = 'missing_from_export';
       notices.review.push(next);
     } else {
-      const N = clean(part[o.field]);
-      if (N === clean(o.value)) {
+      const N = tidyValue(o.field, part[o.field]);
+      if (N === tidyValue(o.field, o.value)) {
         next.status = 'resolved';
         next.resolution = 'myob_fixed';
         next.resolvedAt = stamp;
         next.resolvedBy = 'export';
         notices.resolved.push(next);
-      } else if (N === clean(o.baseline)) {
+      } else if (N === tidyValue(o.field, o.baseline)) {
         next.status = 'pending';
         next.reviewReason = null;
         next.importsPending = (o.importsPending ?? 0) + 1;
@@ -336,7 +363,7 @@ export function reconcile(overrides, partsById, exportDate, now = new Date()) {
  */
 export function resolveReview(o, action, { value = null, by = null, part = null, now = new Date() } = {}) {
   const stamp = now.toISOString();
-  const N = part ? clean(part[o.field]) : (o.observed ?? o.baseline);
+  const N = part ? tidyValue(o.field, part[o.field]) : (o.observed ?? o.baseline);
   if (action === 'keep') {
     return { ...o, baseline: N, status: 'pending', reviewReason: null, observed: null, updatedAt: stamp };
   }
@@ -345,7 +372,7 @@ export function resolveReview(o, action, { value = null, by = null, part = null,
       resolvedAt: stamp, resolvedBy: by ?? null, updatedAt: stamp };
   }
   if (action === 'edit') {
-    const v = clean(value);
+    const v = tidyValue(o.field, value);
     if (!v) throw new Error('A value is required.');
     if (v === N) throw new Error('The ERP already says exactly that — accept it instead.');
     return { ...o, value: v, baseline: N, status: 'pending', reviewReason: null, observed: null, updatedAt: stamp };
@@ -847,8 +874,8 @@ export function fixList(overrides, partsById) {
 export function fixListCsv(list) {
   const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const head = ['Code', 'Field', 'ERP currently says', 'Should be', 'Reason', 'Status', 'Since', 'Exports survived'];
-  const rows = list.map((o) => [o.partId, o.field === 'desc' ? 'Description' : 'Bin',
-    o.current ?? o.baseline, o.value, o.reason, o.status, String(o.createdAt ?? '').slice(0, 10),
+  const rows = list.map((o) => [o.partId, FIELD_NAME[o.field] ?? o.field,
+    o.current ?? o.baseline, o.value, o.reason, STATUS_NAME[o.status] ?? o.status, dayOf(o.createdAt),
     o.importsPending ?? 0]);
   return [head, ...rows].map((r) => r.map(esc).join(',')).join('\r\n');
 }
@@ -866,6 +893,21 @@ export const SHEET_COLUMNS = ['Inventory ID', 'Description', 'Type', 'Base Unit'
 /** A calendar date from LOCAL parts. toISOString is UTC and Brisbane loses a day. */
 export const localDate = (d = new Date()) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+/**
+ * The calendar day a timestamp fell on. One in UTC is the day it was here: a
+ * correction made before ten in Brisbane is still yesterday in UTC, and
+ * slicing the front off it said so. One that carries its own offset, as the
+ * ERP's export date does, or is a bare date, is the day it says. '' for what
+ * is not a date.
+ */
+export function dayOf(iso) {
+  const s = String(iso ?? '');
+  const said = /^(\d{4}-\d{2}-\d{2})(?:$|T.*[+-]\d{2}:?\d{2}$)/.exec(s);
+  if (said) return said[1];
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? '' : localDate(d);
+}
 
 /** What the old sheet was called, dated the way it was dated. */
 export const workbookName = (d = new Date()) => {
@@ -888,7 +930,7 @@ export function draftingSheets(parts, overrides = {}, { exportDate = null, now =
     const notes = [];
     for (const [ov, label] of [[eff.descOv, 'Description'], [eff.binOv, 'Bin']]) {
       if (!ov) continue;
-      notes.push(`${label} corrected here${ov.status === 'review' ? ' (needs review)' : ''} — `
+      notes.push(`${label} corrected here${ov.status === 'review' ? ' (awaiting a decision)' : ''} — `
         + `ERP says "${ov.observed ?? ov.baseline ?? ''}". ${ov.reason}`);
     }
     return [p.id, eff.desc, p.type ?? '', p.unit ?? '', eff.bin, p.source ?? '', notes.join(' | ')];
@@ -904,7 +946,7 @@ export function draftingSheets(parts, overrides = {}, { exportDate = null, now =
     name: 'About',
     plain: true,
     rows: [
-      ['ERP data exported', exportDate ? String(exportDate).slice(0, 10) : 'unknown'],
+      ['ERP data exported', dayOf(exportDate) || 'unknown'],
       ['Downloaded', localDate(now)],
       ['Parts', sorted.length],
       ['Corrections applied', live],
