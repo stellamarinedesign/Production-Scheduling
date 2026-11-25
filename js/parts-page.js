@@ -13,7 +13,8 @@ import { VERSION } from './version.js';
 import { wireHelp } from './help.js';
 import { readStockExport } from './adapters/stock.js';
 import { downloadWorkbook } from './adapters/drafting-xlsx.js';
-import { closeOnBackdrop } from './dialog.js';
+import { closeOnBackdrop, watchDialogs } from './dialog.js';
+import { toast } from './toast.js';
 import { wireSettings } from './settings.js';
 import { showTestMode, carryFlag, isTestMode } from './test-mode.js';
 import { createReview } from './import-review.js';
@@ -27,7 +28,7 @@ import {
   parseMaterialsCsv, buildMaterialsIndex, materialGroups, browseMaterials,
   copyApart, partFileName, copyFailure, COPY_FAILED,
 } from './parts.js';
-import { startup, deviceCache, recallSession, rememberSession, forgetDevice, hold, isHeld } from './boot.js';
+import { startup, keepWatch, deviceCache, recallSession, rememberSession, forgetDevice, hold, isHeld } from './boot.js';
 import { isConfigured } from './firebase.js';
 import './press.js';
 
@@ -81,6 +82,7 @@ let savedFor = null;
 // ---------------------------------------------------------------------------
 (async function boot() {
   $('pageVersion').textContent = `v${VERSION}`;
+  watchDialogs();
 
   // THE DEVICE FIRST: the list this device last loaded, drawn while sign-in
   // is restored. Then the same shape as the codes page: the store comes up
@@ -158,6 +160,7 @@ let savedFor = null;
   if (changed) renderAll();
   if (shown && (fresh.record?.importedAt ?? '') > (shown.importedAt ?? '')) toast('Part list updated from a newer export.', 5000);
   watch.done();
+  keepWatch({ what: 'Part list' });
   confirmed = true;
   saveCopy();
 })();
@@ -1406,10 +1409,3 @@ function flash(btn, label, text, cls, ms = 1600) {
   }, ms);
 }
 
-function toast(msg, ms = 3200) {
-  const t = $('toast');
-  t.textContent = msg;
-  t.hidden = false;
-  clearTimeout(toast._t);
-  toast._t = setTimeout(() => { t.hidden = true; }, ms);
-}

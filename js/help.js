@@ -591,7 +591,4 @@ export function wireHelp() {
   document.getElementById('helpBtn')?.addEventListener('click', openHelp);
   document.getElementById('helpClose')?.addEventListener('click', close);
   closeOnBackdrop(document.getElementById('helpOverlay'), close);
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') close();
-  });
 }

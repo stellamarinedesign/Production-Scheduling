@@ -56,15 +56,15 @@
     return n;
   }
 
-  /** 'offline', 'failing', or null to take the line away. */
-  function say(kind) {
+  /** 'offline', 'failing', or null to take the line away; after start-up, boot.js's own words. */
+  function say(kind, words) {
     shown = kind || null;
     var n = line();
     if (!n) {
-      if (shown) document.addEventListener('DOMContentLoaded', function () { say(shown); }, { once: true });
+      if (shown) document.addEventListener('DOMContentLoaded', function () { say(shown, words); }, { once: true });
       return;
     }
-    var text = shown === 'offline' ? (B.saved ? WORDS.offlineSaved : WORDS.offline)
+    var text = words ? words : shown === 'offline' ? (B.saved ? WORDS.offlineSaved : WORDS.offline)
       : shown === 'failing' ? WORDS.failing : '';
     n.textContent = text;
     n.hidden = !text;
@@ -130,14 +130,17 @@
     "./js/adapters/stock.js": "./js/adapters/stock.js?v=2026-11-25.1",
     "./js/adapters/xlsx.js": "./js/adapters/xlsx.js?v=2026-11-25.1",
     "./js/app.js": "./js/app.js?v=2026-11-25.1",
+    "./js/ask.js": "./js/ask.js?v=2026-11-25.1",
     "./js/auth.js": "./js/auth.js?v=2026-11-25.1",
     "./js/board-columns.js": "./js/board-columns.js?v=2026-11-25.1",
     "./js/boot.js": "./js/boot.js?v=2026-11-25.1",
+    "./js/busy.js": "./js/busy.js?v=2026-11-25.1",
     "./js/codes-page.js": "./js/codes-page.js?v=2026-11-25.1",
     "./js/codes-print.js": "./js/codes-print.js?v=2026-11-25.1",
     "./js/collapse.js": "./js/collapse.js?v=2026-11-25.1",
     "./js/davits.js": "./js/davits.js?v=2026-11-25.1",
     "./js/dialog.js": "./js/dialog.js?v=2026-11-25.1",
+    "./js/field.js": "./js/field.js?v=2026-11-25.1",
     "./js/firebase.js": "./js/firebase.js?v=2026-11-25.1",
     "./js/gantt.js": "./js/gantt.js?v=2026-11-25.1",
     "./js/help.js": "./js/help.js?v=2026-11-25.1",
@@ -159,10 +162,12 @@
     "./js/stella-folder.js": "./js/stella-folder.js?v=2026-11-25.1",
     "./js/store.js": "./js/store.js?v=2026-11-25.1",
     "./js/test-mode.js": "./js/test-mode.js?v=2026-11-25.1",
+    "./js/toast.js": "./js/toast.js?v=2026-11-25.1",
     "./js/transform.js": "./js/transform.js?v=2026-11-25.1",
     "./js/version.js": "./js/version.js?v=2026-11-25.1",
     "./js/vessel-codes.js": "./js/vessel-codes.js?v=2026-11-25.1",
-    "./js/watchdog.js": "./js/watchdog.js?v=2026-11-25.1"
+    "./js/watchdog.js": "./js/watchdog.js?v=2026-11-25.1",
+    "./js/words.js": "./js/words.js?v=2026-11-25.1"
   }
 }
 </script>
@@ -177,6 +182,7 @@
 <link rel="modulepreload" href="js/adapters/stock.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/adapters/drafting-xlsx.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/dialog.js?v=2026-11-25.1">
+<link rel="modulepreload" href="js/toast.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/settings.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/test-mode.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/import-review.js?v=2026-11-25.1">
@@ -395,8 +401,9 @@
     </div>
   </div>
 
-  <div id="toast" hidden></div>
 </main>
+
+<div id="toast"></div>
 
 <script type="module" src="js/parts-page.js?v=2026-11-25.1"></script>
 </body>

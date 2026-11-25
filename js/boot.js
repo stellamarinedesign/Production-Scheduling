@@ -16,6 +16,10 @@
 //   restarted, then the page reloads once on fresh connections, and only then
 //   does the page say it has no answer. Offline is said at once.
 //
+//   THE CONNECTION, AFTER START-UP. The line stays in service: a connection
+//   that goes later, or a live listener that stops, is said too, with the time
+//   what is on screen was last confirmed.
+//
 //   THE HOLD. While the screen is the saved copy, the controls that change
 //   anything are disabled - Pete's call, 23 Nov 2026 - with the reason beside
 //   them (`.held-note`, shown while the page carries `is-held`).
@@ -213,6 +217,69 @@ export function startup({ canReload = nothingOpen, limit = LIMIT, online = () =>
       B.say(null);
     },
   };
+}
+
+// ---- the connection, after start-up -------------------------------------------
+
+/** How long Firestore may be without an answer before the page says so: a phone waking up is not news. */
+export const LOST_FOR = 4000;
+
+const clock = (t) => new Date(t).toLocaleTimeString('en-AU', { hour: 'numeric', minute: '2-digit' }).replace(/\s/g, ' ').toLowerCase();
+
+/** The words for a connection, or null while there is nothing to say. */
+export function connectionWords({ offline = false, stopped = false, unsent = false, what = 'Board', since = null } = {}) {
+  if (stopped) return `${what} no longer updating \u2013 reload the page`;
+  if (!offline) return null;
+  const at = since ? ` as at ${clock(since)}` : '';
+  return `Offline \u2013 ${what.toLowerCase()}${at}${unsent ? ', changes not yet sent' : ''}`;
+}
+
+/**
+ * Watch the connection once the page has loaded, and say when it goes.
+ *
+ * The browser's own offline is said at once. Firestore's - a link that is up
+ * and answers nothing - is said once it has lasted LOST_FOR. A listener the
+ * server stopped (the role was taken away) stays said: nothing brings it back
+ * but a reload.
+ *
+ * @param {object} opts
+ * @param {string} opts.what       what is on the page: 'Board', 'Part list', 'Vessel codes'
+ * @param {(cb) => void} [opts.onLink]  Store.onLink: calls back with { lost, stopped, unsent }
+ * @param {() => boolean} [opts.online]
+ * @param {object} [opts.boot]     watchdog.js's `window.__boot`
+ * @param {number} [opts.lostFor]
+ */
+export function keepWatch({ what = 'Board', onLink = null, online = () => navigator.onLine !== false,
+  boot = window.__boot, lostFor = LOST_FOR } = {}) {
+  const B = boot ?? { say() {} };
+  let link = { lost: false, stopped: false, unsent: false };
+  let lost = false;              // lost for long enough to say
+  let timer = null;
+  let since = null;              // when the screen was last known to be live
+
+  const show = () => {
+    const offline = !online() || lost;
+    if (!offline) since = null;
+    else if (!since) since = Date.now();
+    const words = connectionWords({ offline, stopped: link.stopped, unsent: link.unsent, what, since });
+    B.say(words ? 'after' : null, words);
+  };
+  window.addEventListener('offline', show);
+  window.addEventListener('online', (e) => { if (e.isTrusted || e.detail === 'test') show(); });
+  onLink?.((next) => {
+    link = next;
+    if (!next.lost) {
+      clearTimeout(timer);
+      timer = null;
+      lost = false;
+    } else if (!timer && !lost) {
+      // As at the moment it went, not the moment it was said.
+      since = since ?? Date.now();
+      timer = setTimeout(() => { timer = null; lost = true; show(); }, lostFor);
+    }
+    if (!timer) show();
+  });
+  show();
 }
 
 // ---- the hold -------------------------------------------------------------------

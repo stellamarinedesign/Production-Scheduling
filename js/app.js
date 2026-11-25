@@ -15,7 +15,8 @@ import { VERSION } from './version.js';
 import { wireHelp } from './help.js';
 import { davitsByBoat, mergeDavits } from './davits.js';
 import { itemFacts, mergeItemFacts } from './vessel-codes.js';
-import { closeOnBackdrop } from './dialog.js';
+import { closeOnBackdrop, closeOnEscape, keepFocus, watchDialogs } from './dialog.js';
+import { toast, toastFailed } from './toast.js';
 import { wireSettings } from './settings.js';
 import { openPackageDialog } from './package-dialog.js';
 import { plinthControl } from './plinth-control.js';
@@ -29,7 +30,7 @@ import { renderGantt } from './gantt.js';
 import { balanceColumns } from './print.js';
 import { openItemHistory, logImportChanges, wireChangeRow } from './item-history.js';
 import { createReview } from './import-review.js';
-import { startup, deviceCache, recallSession, rememberSession, forgetDevice, hold, isHeld } from './boot.js';
+import { startup, keepWatch, deviceCache, recallSession, rememberSession, forgetDevice, hold, isHeld } from './boot.js';
 import { isConfigured } from './firebase.js';
 import './press.js';
 import { boardHead, createdCell, createdNote, historyColumns, historyHead, historyRowClass } from './board-columns.js';
@@ -140,6 +141,7 @@ let savedFor = null;
 
 (async function boot() {
   wireAuth();
+  watchDialogs();
   showTestMode();
 
   // THE DEVICE FIRST. The copy this device last loaded is drawn while sign-in
@@ -394,6 +396,7 @@ async function start(st) {
   // only way to see the app was to already have data in it.
   showImportPage(!state.rows);
   watch.done();
+  keepWatch({ what: 'Board', onLink: (cb) => Store.onLink(cb) });
   boardConfirmed = true;
   saveBoardCopy();
   await settled;
@@ -1340,7 +1343,10 @@ function showImportPage(on) {
 // build + render
 // ---------------------------------------------------------------------------
 
-function rebuild() {
+/** Build the board and draw it all; whatever had the focus keeps it. */
+function rebuild() { keepFocus(redraw); }
+
+function redraw() {
   // A vessel code resolved or a job named from the import review changes what
   // that import would produce, so the staged board is rebuilt from the same
   // rows. Ahead of the early return: staging works with no board loaded at all.
@@ -1722,6 +1728,7 @@ function categoryBlock(cat, jobs, { full = false } = {}) {
   const block = el('div', `cat-block${isShut ? ' is-collapsed' : ''}`);
 
   const head = el('button', 'cat-head');
+  head.dataset.focus = `cat:${cat}`;
   head.setAttribute('aria-expanded', String(!isShut));
   head.append(el('span', 'cat-caret', isShut ? '\u25b8' : '\u25be'));
   head.append(el('h2', null, cat));
@@ -1730,7 +1737,7 @@ function categoryBlock(cat, jobs, { full = false } = {}) {
   head.addEventListener('click', () => {
     if (collapsed.has(cat)) collapsed.delete(cat); else collapsed.add(cat);
     saveCollapsed(collapsed);
-    renderBoard();
+    keepFocus(renderBoard);
   });
   block.append(head);
 
@@ -2026,6 +2033,7 @@ function renderHistory(lane = 'production') {
     const block = el('div', `hist-cat${shut ? ' is-collapsed' : ''}`);
 
     const head = el('button', 'hist-cat-head');
+    head.dataset.focus = key;
     head.setAttribute('aria-expanded', String(!shut));
     head.append(el('span', 'cat-caret', shut ? '\u25b8' : '\u25be'));
     head.append(el('h2', null, cat));
@@ -2033,7 +2041,7 @@ function renderHistory(lane = 'production') {
     head.addEventListener('click', () => {
       if (collapsed.has(key)) collapsed.delete(key); else collapsed.add(key);
       saveCollapsed(collapsed);
-      renderHistory(lane);
+      keepFocus(() => renderHistory(lane));
     });
     block.append(head);
 
@@ -2515,6 +2523,7 @@ function renderLane(lane) {
     const blk = el('div', `cat${shut ? ' is-collapsed' : ''}`);
 
     const head = el('button', 'cat-head');
+    head.dataset.focus = key;
     head.setAttribute('aria-expanded', String(!shut));
     head.append(el('span', 'cat-caret', shut ? '\u25b8' : '\u25be'));
     head.append(el('h2', null, cat));
@@ -2522,7 +2531,7 @@ function renderLane(lane) {
     head.addEventListener('click', () => {
       if (collapsed.has(key)) collapsed.delete(key); else collapsed.add(key);
       saveCollapsed(collapsed);
-      renderLane(lane);
+      keepFocus(() => renderLane(lane));
     });
     blk.append(head);
 
@@ -3176,19 +3185,16 @@ function wireOverlays() {
   $('hullClear').addEventListener('click', () => saveHull(''));
   $('hullInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveHull($('hullInput').value); });
 
-  // Pressed AND released on the backdrop - see dialog.js. Highlighting the
-  // text in a field and letting go outside the box used to close these.
+  // Pressed AND released on the backdrop, or Escape - see dialog.js.
+  // Highlighting the text in a field and letting go outside the box used to
+  // close these.
   for (const id of ['labelOverlay', 'hideOverlay', 'hullOverlay', 'completeOverlay']) {
     closeOnBackdrop($(id), () => { $(id).classList.remove('show'); flushDeferredRebuild(); });
   }
-  document.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape') return;
-    $('labelOverlay').classList.remove('show');
-    $('hideOverlay').classList.remove('show');
-    $('hullOverlay').classList.remove('show');
-    $('completeOverlay').classList.remove('show');
-    flushDeferredRebuild();
-  });
+  // The two questions an import asks: Escape leaves the rest for later, and a
+  // stray click outside does nothing.
+  closeOnEscape($('newCodeOverlay'), () => endCodeRun({ chain: false }));
+  closeOnEscape($('customNameOverlay'), () => endNameRun());
 }
 
 async function saveLabel() {
@@ -3366,12 +3372,3 @@ const loadCollapsed = () => {
 };
 const saveCollapsed = (set) => prefs.set(COLLAPSE_KEY, JSON.stringify([...set]));
 let collapsed = loadCollapsed();
-
-let toastTimer;
-function toast(msg, ms = 3200) {
-  const t = $('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), ms);
-}

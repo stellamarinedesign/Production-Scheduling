@@ -838,17 +838,57 @@ export const Store = {
     let delivered = false;
     let confirmed = false;
     let last;
-    return onSnapshot(build(this._fs, this._db), { includeMetadataChanges: true }, (snap) => {
+    const id = Symbol('listener');
+    const stop = onSnapshot(build(this._fs, this._db), { includeMetadataChanges: true }, (snap) => {
       const fromCache = Boolean(snap.metadata?.fromCache);
       const first = !fromCache && !confirmed;
       if (first) confirmed = true;
+      // Once it has answered, whether it still does (onLink).
+      if (confirmed) this._setLink(id, { lost: fromCache, unsent: Boolean(snap.metadata?.hasPendingWrites) });
       const body = typeof snap.docChanges === 'function' ? null : JSON.stringify(snap.exists?.() ? snap.data() : null);
       const changed = body === null ? snap.docChanges().length > 0 : body !== last;
       last = body;
       if (delivered && !first && !changed) return;
       delivered = true;
       shape(snap, { fromSelf: Boolean(snap.metadata?.hasPendingWrites), fromCache, confirmed: first });
-    }, (err) => { console.warn('[live]', err.message); onError?.(err); });
+    }, (err) => {
+      console.warn('[live]', err.message);
+      // The server ended it; the SDK does not open it again.
+      if (confirmed) this._setLink(id, { lost: false, unsent: false, stopped: true });
+      onError?.(err);
+    });
+    return () => { this._links.delete(id); stop?.(); };
+  },
+
+  // ---- the connection ------------------------------------------------------
+  //
+  // What the live listeners know of it: `lost` while any is answering from the
+  // cache, `unsent` while an edit made here waits to reach the server,
+  // `stopped` once the server has ended one. In test mode the network is
+  // switched off on purpose, so there is nothing to say.
+
+  _links: new Map(),
+  _linkSubs: new Set(),
+
+  _setLink(id, patch) {
+    const was = this._links.get(id) ?? { lost: false, unsent: false, stopped: false };
+    const now = { ...was, ...patch };
+    this._links.set(id, now);
+    if (was.lost === now.lost && was.unsent === now.unsent && was.stopped === now.stopped) return;
+    const link = this.link();
+    for (const cb of this._linkSubs) cb(link);
+  },
+
+  link() {
+    const all = this._testing ? [] : [...this._links.values()];
+    return { lost: all.some((l) => l.lost), unsent: all.some((l) => l.unsent), stopped: all.some((l) => l.stopped) };
+  },
+
+  /** Called with the connection now, and each time it changes. */
+  onLink(cb) {
+    this._linkSubs.add(cb);
+    cb(this.link());
+    return () => this._linkSubs.delete(cb);
   },
 
   /**

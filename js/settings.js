@@ -18,6 +18,7 @@ import { openPasswordDialog } from './password.js';
 import { activityEntry, ACTION } from './activity.js';
 import { ROLES, ROLE_LABEL, ROLE_WORDS, normaliseAccess, accountRows, withRole, withoutAccount, withMaster, roleOf, tempPassword } from './access.js';
 import { isTestMode, isNotAvailable, NOT_AVAILABLE, openTestMode } from './test-mode.js';
+import { toast } from './toast.js';
 
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
@@ -92,7 +93,6 @@ function build() {
   overlay.append(box);
   document.body.append(overlay);
   closeOnBackdrop(overlay, close);
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && overlay.classList.contains('show')) close(); });
 }
 
 function renderAccount() {
@@ -241,7 +241,7 @@ async function addAccount(email, role, btn) {
       const code = e?.code ?? '';
       if (isNotAvailable(e)) {
         fresh = null;
-        notify(NOT_AVAILABLE);
+        toast(NOT_AVAILABLE);
       } else if (code.includes('email-already-in-use')) {
         fresh = { email, exists: true };
       } else {
@@ -265,7 +265,7 @@ async function makeUser(email, btn) {
     log(`${email}: Firebase user made.`);
   } catch (e) {
     const code = e?.code ?? '';
-    if (isNotAvailable(e)) { fresh = null; notify(NOT_AVAILABLE); }
+    if (isNotAvailable(e)) { fresh = null; toast(NOT_AVAILABLE); }
     else fresh = code.includes('email-already-in-use') ? { email, exists: true } : { email, failed: friendlyAuthError(e) };
   } finally {
     btn.disabled = false;
@@ -343,7 +343,7 @@ async function save(next, note) {
     setMasters(next.masters);
     setTesters(next.testers);
     renderAccounts();
-    notify(note);
+    toast(note, 4000);
     return true;
   } catch (e) {
     err.textContent = `Could not save — ${e.message}`;
@@ -354,14 +354,4 @@ async function save(next, note) {
 function log(text) {
   Store.logActivity(activityEntry({ action: ACTION.access, text, by: Auth.user?.email }))
     .catch((e) => console.warn('[activity]', e.message));
-}
-
-/** The page's toast if it has one, else a plain alert. */
-function notify(msg) {
-  const t = document.getElementById('toast');
-  if (!t) { window.alert(msg); return; }
-  t.textContent = msg;
-  t.hidden = false;
-  t.classList.add('show');
-  setTimeout(() => { t.classList.remove('show'); t.hidden = true; }, 4000);
 }

@@ -283,7 +283,4 @@ function build() {
   overlay.append(box);
   document.body.append(overlay);
   closeOnBackdrop(overlay, hide);
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && overlay.classList.contains('show')) hide();
-  });
 }

@@ -10,6 +10,7 @@
 import { Auth, friendlyAuthError } from './auth.js';
 import { closeOnBackdrop } from './dialog.js';
 import { isNotAvailable, NOT_AVAILABLE } from './test-mode.js';
+import { toast } from './toast.js';
 
 const MIN_LENGTH = 8;
 
@@ -62,7 +63,6 @@ function build() {
   for (const id of ['pwCurrent', 'pwNew', 'pwAgain']) {
     overlay.querySelector(`#${id}`).addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
   }
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && overlay.classList.contains('show')) close(); });
 }
 
 function open() {
@@ -94,23 +94,13 @@ async function submit() {
   try {
     await Auth.changePassword(current, next);
     close();
-    notify('Password changed. Use the new one from now on.');
+    toast('Password changed. Use the new one from now on.');
   } catch (e) {
-    if (isNotAvailable(e)) { close(); notify(NOT_AVAILABLE); }
+    if (isNotAvailable(e)) { close(); toast(NOT_AVAILABLE); }
     else err.textContent = friendlyAuthError(e);
   } finally {
     save.disabled = false;
   }
-}
-
-/** The page's toast if it has one, else a plain alert. */
-function notify(msg) {
-  const t = document.getElementById('toast');
-  if (!t) { window.alert(msg); return; }
-  t.textContent = msg;
-  t.hidden = false;
-  t.classList.add('show');
-  setTimeout(() => { t.classList.remove('show'); t.hidden = true; }, 3200);
 }
 
 /** Open the dialog - from the Settings cog. Nothing to do in local mode. */

@@ -20,7 +20,9 @@ import { VERSION } from './version.js';
 import { fitCodesSheet, TYPE_STEPS } from './codes-print.js';
 import { davitsByBoat } from './davits.js';
 import { wireHelp } from './help.js';
-import { startup } from './boot.js';
+import { startup, keepWatch } from './boot.js';
+import { watchDialogs } from './dialog.js';
+import { toast } from './toast.js';
 import './press.js';
 
 const $ = (id) => document.getElementById(id);
@@ -40,6 +42,7 @@ let davits = [];    // boat -> davits, straight from the export
 
 (async function boot() {
   $('pageVersion').textContent = `v${VERSION}`;
+  watchDialogs();
   // Start-up, watched: a time limit on each step and the offline line. See boot.js.
   const watch = startup();
   watch.step('sign-in');
@@ -152,6 +155,7 @@ let davits = [];    // boat -> davits, straight from the export
   render();
   rendered = true;
   watch.done();
+  keepWatch({ what: 'Vessel codes', onLink: (cb) => Store.onLink(cb) });
 })();
 
 /**
@@ -530,14 +534,6 @@ async function split(r) {
   toast(`${code} now reads "${value}".`);
 }
 
-let toastTimer;
-function toast(msg, ms = 3200) {
-  const t = $('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), ms);
-}
 
 // ---------------------------------------------------------------------------
 // the code map as a file
