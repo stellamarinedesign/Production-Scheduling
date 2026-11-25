@@ -73,38 +73,41 @@ export function renderActivityLog(host, { master = false } = {}) {
   block.append(box);
   host.append(block);
 
-  let again = null;          // what Retry does
+  let retryIt = null;        // what Retry does
   const feet = () => {
-    retry.hidden = trouble.hidden = !again;
+    retry.hidden = trouble.hidden = !retryIt;
     older.hidden = !next;
-    foot.hidden = !again && !next;
+    foot.hidden = !retryIt && !next;
   };
   const draw = () => {
     for (const [key, b] of buttons) b.setAttribute('aria-pressed', String(key === filter));
     // The line being read stays under the eye: what arrives goes in above it.
-    const below = box.scrollHeight - box.scrollTop;
-    const down = box.scrollTop > 0;
+    const top = box.getBoundingClientRect().top;
+    const reading = box.scrollTop > 0
+      ? [...list.children].find((n) => n.dataset.key && n.getBoundingClientRect().bottom > top) : null;
+    const from = reading ? { key: reading.dataset.key, at: reading.getBoundingClientRect().top } : null;
     list.textContent = '';
     const rows = visibleEntries(loaded, { master, filter });
     if (!rows.length) list.append(el('div', 'state', emptyWords()));
     for (const r of rows) list.append(line(r));
     feet();
-    if (down) box.scrollTop = box.scrollHeight - below;
+    const again = from && [...list.children].find((n) => n.dataset.key === from.key);
+    if (again) box.scrollTop += again.getBoundingClientRect().top - from.at;
   };
   // The filters look through what has been fetched, so that is all an empty one can speak for.
   const emptyWords = () => {
-    if (!loaded.length) return again ? '' : 'Nothing logged yet.';
+    if (!loaded.length) return retryIt ? '' : 'Nothing logged yet.';
     const f = FILTERS.find((x) => x.key === filter);
     return next && f && f.key !== 'all'
       ? `No ${f.label.toLowerCase()} in the newest ${loaded.length} entries.` : 'No entries.';
   };
-  const failed = (e, retryIt) => {
-    again = retryIt;
+  const failed = (e, how) => {
+    retryIt = how;
     trouble.textContent = failure('Log not loaded', e);
     list.querySelector('.state')?.remove();
     feet();
   };
-  const ok = () => { again = null; trouble.textContent = ''; };
+  const ok = () => { retryIt = null; trouble.textContent = ''; };
 
   const showOlder = async () => {
     if (!next) return;
@@ -119,7 +122,7 @@ export function renderActivityLog(host, { master = false } = {}) {
     } catch (e) { failed(e, showOlder); } finally { older.disabled = false; }
   };
   older.addEventListener('click', showOlder);
-  retry.addEventListener('click', () => again?.());
+  retry.addEventListener('click', () => retryIt?.());
 
   // As many as were on screen, so a reader three pages down is not thrown back
   // to the top by somebody else's edit.
@@ -150,6 +153,7 @@ export function renderActivityLog(host, { master = false } = {}) {
 /** One line: when, who, which, what. Any action; the sentence is the entry's own. */
 function line(r) {
   const row = el('div', 'act-row');
+  row.dataset.key = r._id ?? `${r.at}|${r.prodNo ?? r.inventoryId ?? ''}|${entryText(r)}`;
   row.append(el('span', 'act-when', whenShort(r.at)));
   row.append(el('span', 'act-who', whoShort(r.by)));
   const what = el('span', 'act-text');

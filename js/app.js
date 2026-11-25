@@ -154,7 +154,8 @@ const watch = startup();
 // can be changed (Pete, 23 Nov 2026): every control that writes, Print board
 // included, with "Latest board not yet loaded" beside them.
 const BOARD_EDITS = [
-  '#importNav', '#completePastDue', '#horizon', '#maxStock', '#autoFit', '#printBtn', '#warnings button',
+  '#importNav', '#completePastDue', '#horizon', '#maxStock', '#autoFit', '#printBtn',
+  '#warnings button', '#warnings select', '#provShare button', '.fault button',
   '.acts button:not(.more)', '.acts select', '.acts input', '.acts-more button', '.acts-more select', '.acts-more input',
 ].join(', ');
 let releaseHold = null;
