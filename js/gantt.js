@@ -9,6 +9,11 @@
 
 import { CATEGORY_ORDER } from './rules.js';
 import { toDateOnly, toISO, toAU, today as todayDate, jobTitle } from './transform.js';
+import { count } from './words.js';
+
+// How far across the chart, in per cent, a bar may end and still have room for
+// its dates on the right.
+const DATES_FIT = 80;
 
 const DAY = 86400000;
 const utc = (d) => Date.UTC(d.y, d.m - 1, d.d);
@@ -230,8 +235,11 @@ export function renderGantt(host, jobs, opts = {}) {
   // rest of the collapsed state already lives. This module still only draws.
   const {
     mode = 'rows', pxPerDay = null, onBarClick = null,
-    isCollapsed = () => false, onToggleCategory = null,
+    isCollapsed = () => false, onToggleCategory = null, toToday = true,
   } = opts;
+  // A redraw - every edit is one - leaves a scrolled chart where it was.
+  const was = host.querySelector('.gantt.is-wide');
+  const kept = was && !toToday ? { chart: was.scrollLeft, host: host.scrollLeft } : null;
   host.textContent = '';
   // A scrolling chart has no reason to narrow its window.
   const g = ganttLayout(jobs, { ...opts, scaleFromAll: opts.scaleFromAll ?? Boolean(pxPerDay) });
@@ -242,12 +250,12 @@ export function renderGantt(host, jobs, opts = {}) {
   }
 
   const summary = el('div', 'g-summary');
-  summary.append(el('span', null, `${g.rowCount} jobs`));
+  summary.append(el('span', null, count(g.rowCount, 'job')));
   summary.append(el('span', 'sep', '·'));
   summary.append(el('span', null, `${g.startDisplay} — ${g.endDisplay}`));
   if (g.overdue) {
     summary.append(el('span', 'sep', '·'));
-    const od = el('span', 'g-overdue-count', `${g.overdue} past its end date`);
+    const od = el('span', 'g-overdue-count', `${g.overdue} past ${g.overdue === 1 ? 'its' : 'their'} end date`);
     summary.append(od);
   }
   if (g.undated) {
@@ -306,14 +314,15 @@ export function renderGantt(host, jobs, opts = {}) {
   for (const group of g.groups) {
     const shut = isCollapsed(group.category);
     const banner = el('div', `g-row g-banner${shut ? ' is-collapsed' : ''}`);
+    // Press anywhere on it, not only the name.
+    if (onToggleCategory) banner.addEventListener('click', () => onToggleCategory(group.category));
 
     // The whole banner is the hit target, not a caret: it spans the chart and
     // there is nothing else on that line to click by accident.
     const label = el(onToggleCategory ? 'button' : 'div', 'g-label');
     if (onToggleCategory) {
+      label.dataset.focus = `gantt:${group.category}`;
       label.setAttribute('aria-expanded', String(!shut));
-      label.title = shut ? `Show ${group.category}` : `Hide ${group.category}`;
-      label.addEventListener('click', () => onToggleCategory(group.category));
       label.append(el('span', 'g-caret', shut ? '\u25b8' : '\u25be'));
     }
     label.append(el('span', 'g-band-name', group.category));
@@ -328,6 +337,8 @@ export function renderGantt(host, jobs, opts = {}) {
     if (shut) continue;
 
     const makeBar = (r, { showLabel }) => {
+      // Finished work is not finished again: that would move its date.
+      const press = onBarClick && !r.completed ? onBarClick : null;
       const bar = el('div', `g-bar${r.overdue ? ' is-overdue' : ''}${r.is_stock ? ' is-stock' : ''}`
         + `${r.completed ? ' is-done' : ''}`
         + `${r.clippedStart ? ' clip-start' : ''}${r.clippedEnd ? ' clip-end' : ''}`);
@@ -340,7 +351,7 @@ export function renderGantt(host, jobs, opts = {}) {
         + `${r.overdue ? '\nEnd date has passed' : ''}`
         + `${r.clippedStart ? '\nStarts before this chart begins' : ''}`
         + `${r.clippedEnd ? '\nRuns past the end of this chart' : ''}`
-        + (onBarClick ? '\n\nClick to mark complete' : '');
+        + (press ? '\n\nClick to mark complete' : '');
 
       // Progress fill. Nothing sets this yet beyond completion, but a done job
       // reads as full immediately rather than waiting on floor tracking.
@@ -350,9 +361,18 @@ export function renderGantt(host, jobs, opts = {}) {
         bar.append(fill);
       }
       if (showLabel) bar.append(el('span', 'g-bar-text', r.days >= 8 ? jobTitle(r) : ''));
-      if (onBarClick) {
+      if (press) {
         bar.classList.add('is-clickable');
-        bar.addEventListener('click', () => onBarClick(r));
+        bar.tabIndex = 0;
+        bar.setAttribute('role', 'button');
+        bar.setAttribute('aria-label', `${r.prod_no}, ${jobTitle(r)}, ${r.startDisplay} to ${r.endDisplay}`);
+        bar.dataset.focus = `bar:${r.prod_no}`;
+        bar.addEventListener('click', () => press(r));
+        bar.addEventListener('keydown', (e) => {
+          if (e.key !== 'Enter' && e.key !== ' ') return;
+          e.preventDefault();
+          press(r);
+        });
       }
       return bar;
     };
@@ -387,9 +407,12 @@ export function renderGantt(host, jobs, opts = {}) {
         gridlines(track);
         track.append(makeBar(r, { showLabel: true }));
 
-        // The dates sit outside the bar so a short job is still readable.
+        // The dates sit outside the bar so a short job is still readable, on
+        // whichever side has room: past the right edge they widened the page.
         const tag = el('div', 'g-dates', `${r.startDisplay} – ${r.endDisplay}`);
-        tag.style.left = `calc(${r.leftPct + r.widthPct}% + 8px)`;
+        if (r.leftPct + r.widthPct > DATES_FIT && r.leftPct > 100 - DATES_FIT) tag.style.right = `calc(${100 - r.leftPct}% + 8px)`;
+        else if (r.leftPct + r.widthPct > DATES_FIT) tag.hidden = true;
+        else tag.style.left = `calc(${r.leftPct + r.widthPct}% + 8px)`;
         track.append(tag);
 
         row.append(track);
@@ -403,7 +426,10 @@ export function renderGantt(host, jobs, opts = {}) {
   // A scrolling chart opens on today, not on the oldest job. The history is
   // there to scroll back to; what the manager wants first is now and next.
   // A little context to the left, so today is not jammed against the edge.
-  if (pxPerDay && g.todayPct != null) {
+  if (kept) {
+    chart.scrollLeft = kept.chart;
+    host.scrollLeft = kept.host;
+  } else if (pxPerDay && g.todayPct != null) {
     const scrollToToday = () => {
       // Reading geometry forces layout, so the element really is scrollable by
       // the time scrollLeft is assigned. Setting it inside a bare rAF ran
@@ -432,7 +458,7 @@ export function renderGantt(host, jobs, opts = {}) {
   if (g.unscheduled.length) {
     const box = el('div', 'g-unscheduled');
     const h = el('div', 'g-unsched-head');
-    h.append(el('strong', null, `${g.unscheduled.length} jobs are not on the chart`));
+    h.append(el('strong', null, `${count(g.unscheduled.length, 'job is', 'jobs are')} not on the chart`));
     h.append(el('span', null,
       'Their start and end dates fall entirely outside it, so a bar would say nothing. '
       + 'Stock builds sit on the board indefinitely and their ERP dates are set once and '

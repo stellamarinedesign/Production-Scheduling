@@ -142,8 +142,10 @@
     "./js/collapse.js": "./js/collapse.js?v=2026-11-25.1",
     "./js/davits.js": "./js/davits.js?v=2026-11-25.1",
     "./js/dialog.js": "./js/dialog.js?v=2026-11-25.1",
+    "./js/faults.js": "./js/faults.js?v=2026-11-25.1",
     "./js/field.js": "./js/field.js?v=2026-11-25.1",
     "./js/firebase.js": "./js/firebase.js?v=2026-11-25.1",
+    "./js/floor-board.js": "./js/floor-board.js?v=2026-11-25.1",
     "./js/gantt.js": "./js/gantt.js?v=2026-11-25.1",
     "./js/help.js": "./js/help.js?v=2026-11-25.1",
     "./js/import-review.js": "./js/import-review.js?v=2026-11-25.1",
@@ -188,6 +190,10 @@
 <link rel="modulepreload" href="js/davits.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/dialog.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/toast.js?v=2026-11-25.1">
+<link rel="modulepreload" href="js/words.js?v=2026-11-25.1">
+<link rel="modulepreload" href="js/busy.js?v=2026-11-25.1">
+<link rel="modulepreload" href="js/field.js?v=2026-11-25.1">
+<link rel="modulepreload" href="js/faults.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/settings.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/package-dialog.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/plinth-control.js?v=2026-11-25.1">
@@ -204,13 +210,13 @@
 <link rel="modulepreload" href="js/press.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/board-columns.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/collapse.js?v=2026-11-25.1">
+<link rel="modulepreload" href="js/floor-board.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/adapters/xlsx.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/password.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/access.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/packages.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/stella-folder.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/adapters/package-files.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/busy.js?v=2026-11-25.1">
 <!-- importmap:end -->
 </head>
 <body>
@@ -294,6 +300,7 @@
     <span>Source <b class="src" id="provSource">—</b></span>
     <span>Retrieved <b id="provWhen">—</b></span>
     <span class="age" id="provAge"></span>
+    <span class="prov-share" id="provShare" role="status" hidden></span>
     <span class="spacer" style="margin-left:auto"></span>
     <span id="provStore" title="Where manager edits are saved"></span>
     <span id="provVersion" title="Which build is on screen. If this is not the version you were told to expect, the browser is holding an old copy — reload with Ctrl+Shift+R."></span>
@@ -302,14 +309,15 @@
 
   <!-- ============ IMPORT ============ -->
     <section id="importPage" hidden>
-    <div id="dropZone">
+    <div id="dropZone" role="button" tabindex="0">
       <strong>Drop the ERP export here</strong>
       <div class="hint">
         <code>Production Order Maintenance YYYYMMDD.xlsx</code> — or click to choose a file.<br>
-        Everything is parsed in this browser; the spreadsheet is not uploaded anywhere.
+        The spreadsheet is read in this browser. Its open rows are stored with the import.
       </div>
       <input type="file" id="fileInput" accept=".xlsx,.xls" hidden>
     </div>
+      <div id="importState" class="import-state" role="status" hidden></div>
       <div id="importHost"></div>
     </section>
 
@@ -341,7 +349,7 @@
         <button class="mini on" id="partOrders" aria-pressed="true" title="Orders for numbered parts - glands, rope kits, a head rest - on the board, the Gantt and the sheet, or held back. Units are never touched.">Part orders</button>
         <span class="spacer"></span>
         <span class="hint" id="boardCount"></span>
-        <button class="mini quiet manager-only" id="recentChanges">Recent changes</button>
+        <button class="mini quiet manager-only" id="recentChanges">Activity log</button>
         <button class="mini quiet manager-only" id="historyEdit" data-lane="production">History</button>
       </div>
       <div id="board"></div>
@@ -395,6 +403,7 @@
           <input type="range" id="horizon" min="1" max="26" step="1" value="12">
           <span class="val" id="horizonVal">12 weeks</span>
         </div>
+        <div class="ctrl-err" role="alert" hidden></div>
       </div>
 
       <div class="ctrl">
@@ -403,18 +412,20 @@
           <input type="number" id="maxStock" min="0" max="20" placeholder="off">
           <span class="val" id="stockNote"></span>
         </div>
+        <div class="ctrl-err" role="alert" hidden></div>
       </div>
 
       <div class="ctrl">
-        <label for="autoFit">Fit to one page</label>
-        <div class="ctrl-row">
+        <span class="ctrl-cap" id="capFit">Fit to one page</span>
+        <div class="ctrl-row" role="group" aria-labelledby="capFit">
           <button class="mini" id="autoFit" aria-pressed="true">Auto-fit on</button>
         </div>
+        <div class="ctrl-err" role="alert" hidden></div>
       </div>
 
       <div class="ctrl">
-        <label for="sheetBoard">Which sheet</label>
-        <div class="ctrl-row" id="sheetPick">
+        <span class="ctrl-cap" id="capSheet">Which sheet</span>
+        <div class="ctrl-row" id="sheetPick" role="group" aria-labelledby="capSheet">
           <button class="mini on" id="sheetBoard" aria-pressed="true">Board</button>
           <button class="mini" id="sheetWarehouse" aria-pressed="false" title="The board for the pickers: tick boxes down the left of every row">Warehouse</button>
           <button class="mini" id="sheetInternal" aria-pressed="false">Internal</button>
@@ -423,16 +434,16 @@
       </div>
 
       <div class="ctrl" hidden>
-        <label for="paperA4">Paper</label>
-        <div class="ctrl-row" id="paperPick">
+        <span class="ctrl-cap" id="capPaper">Paper</span>
+        <div class="ctrl-row" id="paperPick" role="group" aria-labelledby="capPaper">
           <button class="mini on" id="paperA4" aria-pressed="true">A4</button>
           <button class="mini" id="paperA3" aria-pressed="false">A3</button>
         </div>
       </div>
 
       <div class="ctrl">
-        <label for="waterSheet">Second page</label>
-        <div class="ctrl-row">
+        <span class="ctrl-cap" id="capWater">Second page</span>
+        <div class="ctrl-row" role="group" aria-labelledby="capWater">
           <button class="mini" id="waterSheet" aria-pressed="false">Watermakers off</button>
         </div>
       </div>
@@ -545,7 +556,7 @@
         <span>Same vessel under another code — it will print whatever that boat
               already prints.</span>
         <div class="inline">
-          <select id="ncExisting"></select>
+          <select id="ncExisting" aria-label="Existing boat"></select>
           <button class="mini" data-mode="existing">Add</button>
         </div>
       </div>
@@ -554,7 +565,7 @@
         <b>Enter the code to display</b>
         <span>Anything else — a code the floor uses that neither field carries.</span>
         <div class="inline">
-          <input type="text" id="ncCustom" placeholder="code to display" autocomplete="off" spellcheck="false">
+          <input type="text" id="ncCustom" aria-label="Code to display" placeholder="code to display" autocomplete="off" spellcheck="false">
           <button class="mini" data-mode="custom">Use this</button>
         </div>
       </div>
@@ -600,7 +611,7 @@
         <b>Type what the floor should read</b>
         <span>Neither column says it — a boat, a hull, a job name.</span>
         <div class="inline">
-          <input type="text" id="cnCustom" autocomplete="off" spellcheck="false">
+          <input type="text" id="cnCustom" aria-label="Name to display" autocomplete="off" spellcheck="false">
           <button class="mini" data-mode="custom">Use this</button>
         </div>
       </div>
@@ -634,10 +645,10 @@
     </div>
     <div id="completeList" class="c-list"></div>
     <div class="actions">
-      <button class="primary" id="completeConfirm">Mark ticked as complete</button>
-      <button class="ghost" id="completeCancel">Cancel</button>
+      <button class="primary" id="completeConfirm">Complete job</button>
+      <button class="ghost" id="completeCancel">Keep on board</button>
     </div>
-    <div class="hint">Reversible — anything marked here can be reopened from the History tab.</div>
+    <div class="hint">Reversible — anything marked here can be reopened from History.</div>
   </div>
 </div>
 

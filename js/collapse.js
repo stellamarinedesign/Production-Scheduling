@@ -15,14 +15,16 @@ export const historyKey = (lane, cat) => `hist:${lane}:${cat}`;
  * @param {string[]} view.order    the categories, in order
  * @param {(cat: string) => number} view.count         the board's jobs in a category
  * @param {(cat: string) => number} view.historyCount  History's
+ * @param {string[]} [view.extra]  categories on screen that are not in `order`
  * @returns {{keys: string[], shown: string[]}} every fold of the view, and those
  *          with something under them
  */
-export function collapseScope({ recent, history, order, count, historyCount }) {
+export function collapseScope({ recent, history, order, count, historyCount, extra = [] }) {
   if (recent) return { keys: [], shown: [] };
   const key = history ? (c) => historyKey('production', c) : (c) => c;
   const n = history ? historyCount : count;
-  return { keys: order.map(key), shown: order.filter((c) => n(c) > 0).map(key) };
+  const all = [...order, ...extra];
+  return { keys: all.map(key), shown: all.filter((c) => n(c) > 0).map(key) };
 }
 
 /** Is any fold on the screen shut? Then the button opens them all. */

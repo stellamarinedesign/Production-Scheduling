@@ -6,6 +6,7 @@
 
 import { PRINT_LAYOUT, ANCHOR_CATEGORY, CATEGORY_ORDER, WATERMAKER_CATEGORIES } from './rules.js';
 import { byCategory, toAU, toDateOnly, jobTitle, printJobs, watermakerJobs } from './transform.js';
+import { count } from './words.js';
 
 // A4 at 96dpi, less the margins in the @page rule.
 const PAGE_H = 1123;
@@ -29,6 +30,8 @@ const CONTENT_H = PAGE_H - Math.round(0.625 * 96) - Math.round(0.49 * 96);   // 
 // of A4 has a few pixels in hand on A3: the margins, scaled by root two and
 // rounded down, leave a printable box 1437px tall against 1016 * 1.41 = 1433.
 // ---------------------------------------------------------------------------
+const holdNote = (n) => `${count(n, 'job')} marked ON HOLD \u2014 confirm before starting.`;
+
 export const DRAWN = {
   a4: { margin: '0.88in 0.83in 0.68in' },   // 0.625in 0.59in 0.49in, times root two
   a3: { margin: null },                      // the stylesheet's own, 1:1
@@ -345,7 +348,7 @@ function packWarehouse(host, board, { onePage }) {
 
   const held = all.filter((j) => j.on_hold).length;
   if (held) {
-    const note = el('div', 'hold-note', `${held} job(s) marked ON HOLD \u2014 confirm before starting.`);
+    const note = el('div', 'hold-note', holdNote(held));
     p.sheet.append(note);
     if (spills(p)) {
       if (onePage) overrun = true;
@@ -381,7 +384,7 @@ export function appendWarehouseWater(host, board, { onePage = false } = {}) {
     sheet.append(wrap);
   }
   const held = jobs.filter((j) => j.on_hold).length;
-  if (held) sheet.append(el('div', 'hold-note', `${held} job(s) marked ON HOLD — confirm before starting.`));
+  if (held) sheet.append(el('div', 'hold-note', holdNote(held)));
 
   numberPages(host);
   const measured = host.getClientRects().length > 0;
@@ -621,8 +624,7 @@ export function renderPrint(host, board) {
 
   const held = printJobs(board).filter((j) => j.on_hold).length;
   if (held) {
-    host.append(el('div', 'hold-note',
-      `${held} job(s) marked ON HOLD — confirm before starting.`));
+    host.append(el('div', 'hold-note', holdNote(held)));
   }
   return host;
 }
@@ -670,8 +672,7 @@ export function renderWatermakers(host, board, { horizon = true } = {}) {
 
   const held = jobs.filter((j) => j.on_hold).length;
   if (held) {
-    host.append(el('div', 'hold-note',
-      `${held} job(s) marked ON HOLD — confirm before starting.`));
+    host.append(el('div', 'hold-note', holdNote(held)));
   }
   return jobs.length;
 }

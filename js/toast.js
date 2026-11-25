@@ -59,6 +59,12 @@ export function toast(msg, ms = SHOWN, { bad = false } = {}) {
 /** Say that something failed. */
 export const toastFailed = (msg, ms = SHOWN_FAILED) => toast(msg, ms, { bad: true });
 
+/** Take a failure away before its time: it has been put right. */
+export function unsay(msg) {
+  waiting = waiting.filter((w) => w.msg !== msg);
+  if (showing && showing.msg === msg) { clearTimeout(timer); next(); }
+}
+
 /** For the test suite: as a fresh page has it. */
 export function _resetToast() {
   clearTimeout(timer);

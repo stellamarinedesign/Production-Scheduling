@@ -1,15 +1,17 @@
-// activity-log.js - the Activity log, behind Recent changes: a box that
-// scrolls, the newest entries at the top, older ones fetched a page at a
+// activity-log.js - the Activity log, behind its button beside History: a box
+// that scrolls, the newest entries at the top, older ones fetched a page at a
 // time, a filter row above.
 //
 // The store hands back pages; this keeps what has been fetched so a redraw -
 // every edit redraws, and so does a colleague's - refreshes what is on screen
-// without throwing away the pages a reader scrolled down to. A Firestore read
-// costs per document, so the first page is fifty and nothing is fetched twice
-// unless the reader asks for it.
+// where it stands, without emptying it or losing the reader's place. A
+// Firestore read costs per document, so the first page is fifty, a refresh
+// waits for the edits to settle, and nothing is fetched twice unless the
+// reader asks for it.
 
 import { Store } from './store.js';
 import { FILTERS, PAGE, visibleEntries, entryText, whoShort, whenShort, lastChanged } from './activity.js';
+import { failure } from './words.js';
 
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
@@ -22,6 +24,10 @@ let filter = 'all';   // outlives a redraw: it is how the reader is reading, not
 let loaded = [];      // fetched this session, newest first
 let next = null;      // the store's cursor for the page after `loaded`; null at the end
 let seq = 0;          // a load that finishes after a newer one began is dropped
+let live = null;      // the block on screen: { block, master, refresh }
+
+/** A burst of edits is one refresh, after the last of them has been logged. */
+const SETTLE = 1500;
 
 /** What the log has fetched so far. History's Last changed column falls back on it. */
 export const loadedEntries = () => loaded;
@@ -34,6 +40,11 @@ export function forgetActivityLog() { loaded = []; next = null; }
  * drawn for a master only; everyone else never sees them.
  */
 export function renderActivityLog(host, { master = false } = {}) {
+  if (live && live.master === master && live.block.parentElement === host) {
+    live.refresh();
+    return live.block;
+  }
+  host.textContent = '';
   const block = el('div', 'hist-cat act-block');
   const head = el('div', 'hist-cat-head is-static');
   head.append(el('h2', null, 'Activity log'));
@@ -53,52 +64,86 @@ export function renderActivityLog(host, { master = false } = {}) {
   const list = el('div', 'act-list');
   const foot = el('div', 'act-foot');
   const older = el('button', 'mini quiet', 'Show older');
-  foot.append(older);
+  // Why the last read did not arrive, with its Retry; what had arrived stays.
+  const trouble = el('span', 'act-trouble');
+  trouble.setAttribute('role', 'alert');
+  const retry = el('button', 'mini', 'Retry');
+  foot.append(trouble, retry, older);
   box.append(list, foot);
   block.append(box);
   host.append(block);
 
+  let again = null;          // what Retry does
+  const feet = () => {
+    retry.hidden = trouble.hidden = !again;
+    older.hidden = !next;
+    foot.hidden = !again && !next;
+  };
   const draw = () => {
     for (const [key, b] of buttons) b.setAttribute('aria-pressed', String(key === filter));
+    // The line being read stays under the eye: what arrives goes in above it.
+    const below = box.scrollHeight - box.scrollTop;
+    const down = box.scrollTop > 0;
     list.textContent = '';
     const rows = visibleEntries(loaded, { master, filter });
-    if (!rows.length) {
-      list.append(el('div', 'state', loaded.length ? 'No entries.'
-        : 'Nothing logged yet.'));
-    }
+    if (!rows.length) list.append(el('div', 'state', emptyWords()));
     for (const r of rows) list.append(line(r));
-    foot.hidden = !next;
+    feet();
+    if (down) box.scrollTop = box.scrollHeight - below;
   };
-  const fail = (e) => {
-    list.textContent = '';
-    list.append(el('div', 'state', `Could not load the log — ${e.message}`));
-    foot.hidden = true;
+  // The filters look through what has been fetched, so that is all an empty one can speak for.
+  const emptyWords = () => {
+    if (!loaded.length) return again ? '' : 'Nothing logged yet.';
+    const f = FILTERS.find((x) => x.key === filter);
+    return next && f && f.key !== 'all'
+      ? `No ${f.label.toLowerCase()} in the newest ${loaded.length} entries.` : 'No entries.';
   };
+  const failed = (e, retryIt) => {
+    again = retryIt;
+    trouble.textContent = failure('Log not loaded', e);
+    list.querySelector('.state')?.remove();
+    feet();
+  };
+  const ok = () => { again = null; trouble.textContent = ''; };
 
-  older.addEventListener('click', async () => {
+  const showOlder = async () => {
     if (!next) return;
     older.disabled = true;
     try {
       const page = await Store.listActivityPage({ max: PAGE, after: next });
+      ok();
       loaded = loaded.concat(page.rows);
       next = page.next;
       draw();
       fillLastChanged(document.body, loaded);
-    } catch (e) { fail(e); } finally { older.disabled = false; }
-  });
+    } catch (e) { failed(e, showOlder); } finally { older.disabled = false; }
+  };
+  older.addEventListener('click', showOlder);
+  retry.addEventListener('click', () => again?.());
 
-  // Refresh as many as were on screen, so a reader three pages down is not
-  // thrown back to the top by somebody else's edit.
-  const mine = ++seq;
-  list.append(el('div', 'state', 'Loading…'));
-  foot.hidden = true;
-  Store.listActivityPage({ max: Math.max(PAGE, loaded.length) }).then((page) => {
-    if (mine !== seq) return;
-    loaded = page.rows;
-    next = page.next;
-    draw();
-    fillLastChanged(document.body, loaded);
-  }).catch((e) => { if (mine === seq) fail(e); });
+  // As many as were on screen, so a reader three pages down is not thrown back
+  // to the top by somebody else's edit.
+  const load = async () => {
+    const mine = ++seq;
+    try {
+      const page = await Store.listActivityPage({ max: Math.max(PAGE, loaded.length) });
+      if (mine !== seq) return;
+      ok();
+      loaded = page.rows;
+      next = page.next;
+      draw();
+      fillLastChanged(document.body, loaded);
+    } catch (e) { if (mine === seq) failed(e, load); }
+  };
+  let timer = null;
+  live = {
+    block,
+    master,
+    refresh: () => { clearTimeout(timer); timer = setTimeout(() => { if (block.isConnected) load(); }, SETTLE); },
+  };
+  if (loaded.length) draw();
+  else { list.append(el('div', 'state', 'Loading…')); feet(); }
+  load();
   return block;
 }
 
