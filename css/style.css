@@ -1205,9 +1205,11 @@ header .who .role.manager { border-color: var(--red-deep); color: var(--red-brig
 /* ---------- role: floor ----------
    The floor sees the current orders as the manager's table, cut to the printed
    columns, and nothing else. This is presentation, not security — the
-   Firestore rules deny floor accounts every write regardless. */
+   Firestore rules deny floor accounts every write regardless. The tab strip
+   is the board's: on the parts page the floor has Search and Materials, and
+   Corrections and Import go by their own classes. */
 body.role-floor .controls,
-body.role-floor .tabs,
+body.role-floor:not(.parts-page) .tabs,
 body.role-floor #warnings,
 body.role-floor #dropZone,
 body.role-floor .fit-status,
