@@ -112,6 +112,11 @@ function opened(overlay) {
   if (!overlay.contains(document.activeElement)) box.focus({ preventScroll: true });
 }
 
+const allClosed = new Set();
+
+/** Called each time the last dialog on screen closes. */
+export function whenClosed(cb) { allClosed.add(cb); }
+
 function closed(i) {
   const [d] = open.splice(i, 1);
   for (const n of d.shut) n.inert = false;
@@ -127,9 +132,11 @@ function sync() {
     const o = open[i].overlay;
     if (!o.isConnected || !o.classList.contains('show')) closed(i);
   }
+  const any = open.length > 0;
   for (const o of document.querySelectorAll('.overlay.show')) {
     if (!open.some((d) => d.overlay === o)) opened(o);
   }
+  if (!any && !open.length) for (const cb of allClosed) cb();
 }
 
 /** Once per page: every dialog on it now, and every one added to the body later. */

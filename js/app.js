@@ -15,7 +15,7 @@ import { VERSION } from './version.js';
 import { wireHelp } from './help.js';
 import { davitsByBoat, mergeDavits } from './davits.js';
 import { itemFacts, mergeItemFacts } from './vessel-codes.js';
-import { closeOnBackdrop, closeOnEscape, keepFocus, watchDialogs } from './dialog.js';
+import { closeOnBackdrop, closeOnEscape, keepFocus, watchDialogs, whenClosed } from './dialog.js';
 import { toast, toastFailed, unsay } from './toast.js';
 import { count, failure, reason } from './words.js';
 import { busy } from './busy.js';
@@ -165,6 +165,7 @@ let savedFor = null;
 (async function boot() {
   wireAuth();
   watchDialogs();
+  whenClosed(flushDeferredRebuild);
   showTestMode();
 
   // THE DEVICE FIRST. The copy this device last loaded is drawn while sign-in
