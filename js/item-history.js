@@ -205,6 +205,7 @@ export function wireChangeRow(row, prodNo, changes, generation = null) {
   let detail = null;
   const show = (on) => {
     row.classList.toggle('is-open', on);
+    row.setAttribute('aria-expanded', String(on));
     if (on && !detail) {
       detail = el('div', 'flag-row-changes');
       detail.append(renderChangeList(changes));
@@ -213,7 +214,16 @@ export function wireChangeRow(row, prodNo, changes, generation = null) {
     if (detail) detail.hidden = !on;
     if (on) openRows.add(prodNo); else openRows.delete(prodNo);
   };
+  // A button in all but name, so the keyboard opens it too.
+  row.tabIndex = 0;
+  row.setAttribute('role', 'button');
+  row.setAttribute('aria-expanded', 'false');
   row.addEventListener('click', () => show(!row.classList.contains('is-open')));
+  row.addEventListener('keydown', (e) => {
+    if (e.target !== row || (e.key !== 'Enter' && e.key !== ' ')) return;
+    e.preventDefault();
+    show(!row.classList.contains('is-open'));
+  });
   if (openRows.has(prodNo)) show(true);
 }
 
