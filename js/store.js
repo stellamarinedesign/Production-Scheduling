@@ -526,38 +526,43 @@ export const Store = {
   // `previous` is a copy of `current` from before the last import — the one
   // step of undo for a wrong file.
 
+  /**
+   * The list, or null when none has been loaded yet. A read that fails
+   * throws: both were once the same null, and a refused read put "No part
+   * list loaded yet" over the copy saved on the device.
+   */
   async loadParts() {
     if (this.mode === 'local') return lsGet('parts', null);
-    try {
-      const { doc } = this._fs;
-      const snap = await this._read(doc(this._db, 'parts', 'current'), 'doc');
-      return snap.exists() ? snap.data() : null;
-    } catch (e) { console.warn('[parts]', e.message); return null; }
+    const { doc } = this._fs;
+    const snap = await this._read(doc(this._db, 'parts', 'current'), 'doc');
+    return snap.exists() ? snap.data() : null;
   },
 
   async saveParts(record) {
+    // The same list again - an import tried a second time, or a file dropped
+    // twice - is not a step, and must not take the place of the one before it.
+    const stepsFrom = (cur) => cur.partsJson !== record.partsJson;
     if (this.mode === 'local') {
       const cur = lsGet('parts', null);
-      if (cur) lsSet('partsPrevious', cur);
+      if (cur && stepsFrom(cur)) lsSet('partsPrevious', cur);
       lsSet('parts', record);
       return;
     }
     const { doc, getDoc, setDoc } = this._fs;
     const cur = await getDoc(doc(this._db, 'parts', 'current'));
-    if (cur.exists()) await setDoc(doc(this._db, 'parts', 'previous'), cur.data());
+    if (cur.exists() && stepsFrom(cur.data())) await setDoc(doc(this._db, 'parts', 'previous'), cur.data());
     await setDoc(doc(this._db, 'parts', 'current'), record);
   },
 
   // The materials manifest: which parts are materials, and of what kind.
   // Loaded from the material ordering app's sheet; one document, like the
-  // list, under the same rule (everyone reads, the manager writes).
+  // list, under the same rule (everyone reads, the manager writes). Null when
+  // there is none; a read that fails throws, as the list's does.
   async loadMaterials() {
     if (this.mode === 'local') return lsGet('materials', null);
-    try {
-      const { doc } = this._fs;
-      const snap = await this._read(doc(this._db, 'parts', 'materials'), 'doc');
-      return snap.exists() ? snap.data() : null;
-    } catch (e) { console.warn('[materials]', e.message); return null; }
+    const { doc } = this._fs;
+    const snap = await this._read(doc(this._db, 'parts', 'materials'), 'doc');
+    return snap.exists() ? snap.data() : null;
   },
 
   async saveMaterials(record) {
@@ -586,9 +591,26 @@ export const Store = {
     await setDoc(doc(this._db, 'partOverrides', key), data, { merge: true });
   },
 
-  /** Several at once — an import touches every live correction. */
-  async setPartOverrides(map) {
-    for (const [key, data] of Object.entries(map ?? {})) await this.setPartOverride(key, data);
+  /**
+   * Several at once — an import touches every live correction. Up to
+   * BATCH_SIZE go as one request, so they are all saved or none is.
+   * @param {(done: number, total: number) => void} [onBatch]  as each request is answered
+   */
+  async setPartOverrides(map, onBatch) {
+    const entries = Object.entries(map ?? {});
+    if (this.mode === 'local') {
+      for (const [key, data] of entries) await this.setPartOverride(key, data);
+      return;
+    }
+    const { doc, writeBatch } = this._fs;
+    let done = 0;
+    for (const part of chunk(entries, BATCH_SIZE)) {
+      const batch = writeBatch(this._db);
+      for (const [key, data] of part) batch.set(doc(this._db, 'partOverrides', key), data, { merge: true });
+      await batch.commit();
+      done += part.length;
+      onBatch?.(done, entries.length);
+    }
   },
 
   async deletePartOverride(key) {
