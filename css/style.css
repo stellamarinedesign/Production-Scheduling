@@ -93,6 +93,9 @@ main { padding: 16px 22px 60px; max-width: 1720px; margin: 0 auto; }
 .provenance b { color: var(--white); font-weight: 600; }
 .provenance .age.stale { color: var(--red-bright); font-weight: 700; }
 .provenance .src { font-variant-numeric: tabular-nums; }
+/* A board that has not reached the others, said until it has. */
+.prov-share { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.prov-bad { color: var(--red-bright); font-weight: 600; }
 /* Which build is on screen. Pages serves everything with max-age=600, so a
    refresh soon after a deploy can legitimately show the old stylesheet — and
    without this that is indistinguishable from a fix that did not work. */
@@ -182,10 +185,11 @@ main { padding: 16px 22px 60px; max-width: 1720px; margin: 0 auto; }
   padding: 14px 16px; margin-bottom: 14px;
 }
 .ctrl { display: flex; flex-direction: column; gap: 6px; }
-.ctrl label {
+.ctrl label, .ctrl-cap {
   font-size: 11px; font-weight: 700; letter-spacing: .14em;
   text-transform: uppercase; color: var(--text-dim);
 }
+.ctrl-err { font-size: 12.5px; color: var(--red-bright); line-height: 1.5; max-width: 34ch; }
 .ctrl .val { font-size: 13px; color: var(--white); font-variant-numeric: tabular-nums; }
 .ctrl-row { display: flex; align-items: center; gap: 10px; }
 input[type=range] { width: 190px; accent-color: var(--red-bright); }
@@ -296,6 +300,17 @@ header nav a, header nav .navlink, header .cog {
   display: grid; grid-template-columns: 74px 150px 1.3fr 1.1fr; gap: 12px;
   padding: 5px 0; border-bottom: 1px solid var(--line); align-items: baseline;
 }
+/* A row with a control: the control keeps its own width, the words the rest. */
+.xrow.has-act { grid-template-columns: 74px minmax(0, 1fr) minmax(0, 1fr) auto; align-items: center; }
+.xrow .xacts { display: flex; align-items: center; gap: 8px; }
+.textlink { color: var(--white); text-underline-offset: 3px; }
+@media screen and (max-width: 760px) {
+  .xrow { grid-template-columns: 74px minmax(0, 1fr); gap: 2px 12px; }
+  .xrow > :nth-child(n + 3) { grid-column: 2; }
+  .xrow.has-act { grid-template-columns: 74px minmax(0, 1fr); padding: 8px 0; }
+  .xrow.has-act > .why:empty { display: none; }
+  .xrow.has-act > :is(.mini, .xacts) { grid-column: 2; justify-self: start; margin-top: 6px; }
+}
 .xrow .desc { color: var(--white); opacity: .8; }
 .xgroup {
   display: flex; align-items: baseline; gap: 10px;
@@ -363,6 +378,9 @@ button.hull.is-empty:hover::before { opacity: 1; }
 .job .created, .lane-row .created { color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .created-note { font-size: 12.5px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .job .acts-more .created-note, .lane-row .acts .created-note { display: none; }
+.hull-edit { display: none; }           /* a phone's way to it; a desk presses the hull itself */
+/* What the ERP says where a person has said otherwise. */
+.erp-note { font-size: 12.5px; color: var(--text-dim); }
 .job .part-chip {
   font-size: 10.5px; color: var(--text-dim); border: 1px solid var(--line);
   border-radius: 5px; padding: 0 5px; letter-spacing: .05em; margin-left: 6px;
@@ -379,6 +397,7 @@ button.hull.is-empty:hover::before { opacity: 1; }
    whole row, so the columns above never have to make room for them. */
 .job .acts-more {
   grid-column: 1 / -1; display: none; justify-content: flex-end; align-items: center;
+  flex-wrap: wrap;                       /* a two-up column on a laptop is narrower than the controls */
   gap: 8px; padding-top: 8px; margin-top: 2px; border-top: 1px dashed var(--line);
 }
 .job.is-open .acts-more { display: flex; }
@@ -816,6 +835,7 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
   background: none; border: none; color: inherit; font: inherit;
   text-align: left; cursor: pointer; padding: 0;
 }
+.g-banner:has(button.g-label) { cursor: pointer; }
 .g-banner .g-label:hover .g-band-name { color: var(--white); }
 .g-caret { color: var(--text-dim); font-size: 10px; }
 .g-banner.is-collapsed .g-band-name { color: var(--text-dim); }
@@ -851,6 +871,8 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 
 /* ---------- import review ---------- */
 .import-current { color: var(--text-dim); font-size: 13px; margin-top: 16px; }
+.import-state { color: var(--text-dim); font-size: 13.5px; line-height: 1.55; margin-top: 14px; }
+.import-state.bad { color: var(--red-bright); }
 .import-review { margin-top: 18px; }
 .import-review h2 {
   font-size: 15px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
@@ -1144,7 +1166,9 @@ header .cog:hover { border-color: var(--red-bright); color: var(--white); }
   padding: 6px 10px; border-top: 1px solid var(--line); font-size: 13px; align-items: baseline;
 }
 .act-row:first-child { border-top: 0; }
-.act-foot { display: flex; justify-content: center; padding: 8px; border-top: 1px solid var(--line); }
+.act-foot { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; padding: 8px; border-top: 1px solid var(--line); }
+.act-foot[hidden] { display: none; }
+.act-trouble { font-size: 12.5px; color: var(--red-bright); line-height: 1.5; }
 .act-when { color: var(--text-dim); font-variant-numeric: tabular-nums; font-size: 12px; }
 .act-who { color: var(--white); font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .act-text { overflow-wrap: anywhere; }
@@ -1306,14 +1330,14 @@ button.linkish:disabled { opacity: .5; cursor: default; }
 
 /* A bar that runs past the window edge. The chevron says the work continues
    rather than that it stops here. */
-.g-row.clip-start .g-bar { border-left-style: dashed; border-top-left-radius: 0; border-bottom-left-radius: 0; }
-.g-row.clip-end   .g-bar { border-right-style: dashed; border-top-right-radius: 0; border-bottom-right-radius: 0; }
-.g-row.clip-start .g-bar::before,
-.g-row.clip-end .g-bar::after {
+.g-bar.clip-start { border-left-style: dashed; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.g-bar.clip-end { border-right-style: dashed; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.g-bar.clip-start::before,
+.g-bar.clip-end::after {
   font-size: 10px; color: #fff; opacity: .9; flex-shrink: 0; padding: 0 2px;
 }
-.g-row.clip-start .g-bar::before { content: "‹"; }
-.g-row.clip-end .g-bar::after { content: "›"; margin-left: auto; }
+.g-bar.clip-start::before { content: "‹"; }
+.g-bar.clip-end::after { content: "›"; margin-left: auto; }
 
 /* Jobs the chart cannot place: their whole span sits outside the window.
    Listed rather than drawn, because a sliver pinned to an edge is noise. */
@@ -1373,6 +1397,12 @@ button.linkish:disabled { opacity: .5; cursor: default; }
   grid-template-columns: 66px 62px minmax(90px, 1fr) 78px 82px 82px 100px;
   gap: 10px; font-size: 13px; padding: 7px 8px;
 }
+/* An edit that did not save, said on its row until it is dealt with. */
+.fault {
+  grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding-top: 7px; margin-top: 2px; font-size: 12.5px; color: var(--red-bright);
+}
+.fault-words { flex: 1 1 260px; line-height: 1.5; }
 .board-col .job .acts { gap: 5px; }
 .board-col .job .acts .mini { padding: 4px 7px; font-size: 11px; }
 .job.is-full { grid-template-columns: 76px 74px minmax(200px, 1.8fr) 92px 92px 96px 88px 112px; }
@@ -1388,6 +1418,7 @@ button.linkish:disabled { opacity: .5; cursor: default; }
   .job .created { display: none; }
   .job .acts-more .created-note { display: inline; order: -2; margin-right: auto; }
   .job .acts-more:has(.plinth) .created-note { margin-right: 0; }
+  .job .acts-more .created-note.po-note { display: none; }
 }
 
 /* Below roughly a laptop a two-up column is about 450px, which is not room
@@ -1400,6 +1431,8 @@ button.linkish:disabled { opacity: .5; cursor: default; }
   }
   .job .po { display: none; }
   .job.is-full .status { display: none; }
+  /* Its place in the opened row, before the created date. */
+  .job .acts-more .created-note.po-note { display: inline; order: -3; margin-right: 14px; }
 }
 
 /* ---------- history ---------- */
@@ -1743,6 +1776,7 @@ button.linkish:disabled { opacity: .5; cursor: default; }
   .job .po, .lane-row .who {
     grid-column: 2; grid-row: 2; justify-self: end; font-size: 12px;
   }
+  .job .po { display: block; }
   /* A customer name can run long; it must not squeeze the job name. */
   .lane-row .who { max-width: 40vw; }
 
@@ -1754,9 +1788,11 @@ button.linkish:disabled { opacity: .5; cursor: default; }
      same page rotated fine. Two glyphs need no transform, cannot be defeated
      by a motion setting, and are what every other collapsible in this app
      already does - which is the consistency wanted here in the first place. */
+  .job:has(.acts button)::after { grid-row: 1 / span 3; }
+  .lane-row:has(.acts button)::after { grid-row: 1 / span 2; }
   .job:has(.acts button)::after, .lane-row:has(.acts button)::after {
     content: '\25b8';                      /* right, when shut */
-    grid-column: 3; grid-row: 1 / span 2;
+    grid-column: 3;
     align-self: center; justify-self: center;
     color: var(--text-dim); font-size: 16px; line-height: 1;
   }
@@ -1780,8 +1816,11 @@ button.linkish:disabled { opacity: .5; cursor: default; }
     gap: 8px; padding-top: 11px; margin-top: 9px;
     border-top: 1px solid var(--line);
   }
+  .job .acts { grid-row: 4; }
   .job.is-open .acts, .lane-row.is-open .acts { display: flex; }
-  .job .acts-more { grid-row: 4; padding-top: 8px; margin-top: 0; border-top: 0; flex-wrap: wrap; }
+  .job .acts-more { grid-row: 5; padding-top: 8px; margin-top: 0; border-top: 0; flex-wrap: wrap; }
+  .job .acts-more .created-note.po-note { display: none; }
+  .hull-edit { display: inline-block; }
   .job .more { display: none; }   /* the row's own caret does this job on a phone */
 
   /* Column headings label columns that no longer exist. */
@@ -1819,8 +1858,10 @@ button.linkish:disabled { opacity: .5; cursor: default; }
   .hist-row.is-open .acts { display: block; grid-column: 2 / -1; align-self: center; }
   .hist-row .acts button { min-height: var(--touch-min); padding: 0 14px; }
 
-  /* The hull has no place in the two-column phone row; it is a desk column. */
-  .job .hull { display: none; }
+  /* The hull, on a line of its own under the number, as History has it. Read
+     here and changed from the fold: the line is too small to press. */
+  .job .hull { grid-column: 1; grid-row: 3; justify-self: start; font-size: 12px; pointer-events: none; }
+  .job .hull.is-empty { display: none; }
   /* Nor has the created date: it is in the opened row, as a note. */
   .lane-row .created { display: none; }
   .lane-row .acts .created-note { display: inline; order: -1; margin-right: auto; }

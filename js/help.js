@@ -183,8 +183,9 @@ export const HELP = [
         a: [
           'Nothing upstream records which codes mean the same boat. A manufacturer may '
           + 'issue two codes for one hull, and an office may have typed a third by hand.',
-          'Rename sets what a line reads. Split moves a code off a line that grouped '
-          + 'wrongly. A shared model only ever suggests a group; it never decides one.',
+          'Rename sets what a line reads, and Confirm accepts what it reads already. Split '
+          + 'moves a code off a line that grouped wrongly. A shared model only ever suggests '
+          + 'a group; it never decides one.',
         ],
       },
       {
@@ -210,8 +211,9 @@ export const HELP = [
       {
         q: 'Where is the code map kept?',
         a: [
-          'In Firestore. Save file writes it out as JSON and Load file reads one back, '
-          + 'which is both the backup and how a map reaches another environment.',
+          'With the rest of the board\'s data. Download codes writes it out as a file and '
+          + 'Load codes reads one back, which is both the backup and how a map reaches '
+          + 'another copy of the app.',
           'It is deliberately not in the repository or on the web server: a static site '
           + 'hands its files to anyone who asks for them.',
         ],
@@ -225,12 +227,12 @@ export const HELP = [
         q: 'Which scope should I use?',
         a: [
           'The narrowest one that fixes the problem.',
-          'Just this job replaces the label on one production order. Use it for a one-off '
+          'This job only replaces the label on one production order. Use it for a one-off '
           + 'that is not going to repeat.',
-          'Every job for this item code latches to the product and applies to every future '
+          'This item code latches to the product and applies to every future '
           + 'order for it. Use it when the item code itself is the problem — a part whose '
           + 'code names one boat but which is built to the drawings of another.',
-          'Every job on this boat changes the vessel code for every product on that hull. '
+          'This boat changes the display code for every product on that hull. '
           + 'Use it when the boat is wrong, not the part.',
         ],
       },
@@ -268,34 +270,34 @@ export const HELP = [
       {
         q: 'How do I change my password?',
         a: [
-          'The cog, top right, then Password. Type the current password and the '
+          'The cog, top right, then Change password. Type the current password and the '
           + 'new one twice. It changes there and then; nothing is emailed and nobody '
           + 'else sees it. Sign out is under the same cog.',
-          'Forgotten it? Ask a manager: a password is reset in the Firebase console '
-          + 'in a minute, with a temporary one you then change here.',
+          'Forgotten it? Ask a master user: the password is replaced with a temporary '
+          + 'one, which you then change here.',
         ],
       },
       {
         q: 'How is somebody given access?',
         a: [
           'One step, by a master user: the cog, Settings, Accounts, type the address, '
-          + 'pick a role - manager, engineer or floor - and Add. That lists the '
-          + 'address and makes its account, with a temporary password shown once to '
-          + 'pass on; they sign in with it and press Password under the cog to make '
-          + 'it theirs. The list is the one place a role lives, the security rules '
+          + 'pick a role - manager, engineer, floor or tester - and Add account. That lists '
+          + 'the address and makes its sign-in, with a temporary password shown once to '
+          + 'pass on; they sign in with it and press Change password under the cog to make '
+          + 'it theirs. A tester has the manager view, always in test mode. The list is the one place a role lives, the security rules '
           + 'read it too, and an account nobody listed can sign in and see nothing. '
           + 'A role is changed on its row; nothing is deleted and remade.',
           'A master user is an ordinary account - a manager, today - with the Master '
           + 'box ticked on this list, which only a master can tick for someone else. '
-          + 'Everyone else sees under the cog just their own account, Password and '
-          + 'Sign out. A master cannot change or remove their own entry.',
+          + 'Everyone else sees under the cog just their own account, Change password, '
+          + 'Sign out and Test mode. A master cannot change or remove their own entry.',
         ],
       },
       {
         q: 'Who changed that?',
         a: [
-          'Recent changes, beside History on Current orders: the Activity log. Every edit on the board lands there '
-          + 'with a name and a time - a status set or let go, Done and Reopen, Hide '
+          'Activity log, beside History on Current orders. Every edit on the board lands there '
+          + 'with a name and a time - a status set or let go, Complete and Reopen, Hide '
           + 'and Show, a label, a hull, a part mark, a package, what an import '
           + 'changed and the jobs it added. The newest fifty are shown; Show older brings the next fifty. '
           + 'The row above it narrows the list to edits or to imports. Changes to the '
@@ -308,7 +310,8 @@ export const HELP = [
         q: 'Where are the row buttons?',
         a: [
           'Hide stays on the row, since it is the one used in passing. The rest - '
-          + 'Package, Label, Part, the status and Done - are folded beneath: click the row, '
+          + 'Package, Label, Part order, the status, Complete and Change history - are '
+          + 'folded beneath: click the row, '
           + 'or its caret, and they come out under it; click again to put them away. '
           + 'A row stays open through an edit.',
         ],
@@ -328,13 +331,13 @@ export const HELP = [
           + 'folders beside those of its own product line that carry its vessel code, '
           + 'name or model.',
           'Standard items are the folders many products share - a lock mechanism, '
-          + 'say. Each goes into the library once, under Manage, with a name and a '
+          + 'say. Each goes into the library once, under Manage library, with a name and a '
           + 'group, such as Lock. A board category takes one item of a group by '
-          + 'default, also set under Manage, for the open job\'s category. A product, '
+          + 'default, also set there, for the open job\'s category. A product, '
           + 'or a single job, can swap it for another item of the same group - a '
           + 'larger lock for a heavier lift - or leave the group out. Default, in the '
           + 'list, is the category\'s choice; for a single job, the product\'s.',
-          'Print puts everything ticked into one PDF and opens the print dialog: the '
+          'Print package puts everything ticked into one PDF and opens the print dialog: the '
           + 'checklists first, from the PDF saved beside each Word file, with the '
           + 'production number and due date written in, then the drawing sets. A '
           + 'checklist with no PDF, or whose Word file was saved after its PDF, says '
@@ -365,7 +368,7 @@ export const HELP = [
           + 'and the row says Drawing needed; so does a post and gusset with no drawing at their height. '
           + 'An open gusset has its own laser checklist: a height without one for the '
           + 'gusset chosen says Checklist needed.',
-          'The plinth folder is set once, in a davit\'s Package dialog under Manage, by '
+          'The plinth folder is set once, in a davit\'s Package dialog under Manage library, by '
           + 'dropping the Plinth Arrangements folder in. It is read again when a davit\'s '
           + 'package is opened, so new heights and drawings appear by themselves. The '
           + 'plinth\'s checklist and drawing go into the davit\'s package.',
@@ -386,7 +389,7 @@ export const HELP = [
           + 'it is showing or holding back.',
           'The shape of the code is the default, not the last word. A kit with a '
           + 'lettered code that is really a part, or a numbered code that is really '
-          + 'a unit, is set with the Part button on the row: it marks every job on '
+          + 'a unit, is set with the Part order button on the row: it marks every job on '
           + 'that item code, for everyone, and the PART chip on the row says which '
           + 'way it was decided. Pressing it back to what the code says clears the '
           + 'mark.',
@@ -399,7 +402,8 @@ export const HELP = [
           + 'sheets. It is read from the ERP\'s order text where the admin wrote it '
           + 'in ("Used by 00SY/001", "Parts for 000XX/001"); a boat named without '
           + 'a hull number is not one. Where the ERP has nothing, a manager clicks '
-          + 'the empty cell and types it: that hull shows in white, for that job '
+          + 'the empty cell and types it (on a phone, Add hull in the opened row): that hull '
+          + 'shows in white, for that job '
           + 'only, and survives the next upload. Typing the ERP\'s own hull, or '
           + 'nothing, goes back to the ERP\'s.',
         ],
@@ -471,7 +475,7 @@ export const HELP = [
         a: [
           'Work with no customer behind it. Its dates are set once and never revised, so a '
           + 'passed date says nothing about whether it is done — which is why stock starts '
-          + 'unticked in the complete sweep, and prints STOCK instead of a date.',
+          + 'unticked in Complete past due, and prints STOCK instead of a date.',
         ],
       },
     ],
@@ -545,8 +549,8 @@ export const HELP = [
       {
         q: 'What has changed on a job?',
         a: [
-          'Open the row and press Changes: every change to the job, newest first. A '
-          + 'status set by hand, Done and Reopen, Hide and Show, a label, a hull and a '
+          'Open the row and press Change history: every change to the job, newest first. A '
+          + 'status set by hand, Complete and Reopen, Hide and Show, a label, a hull and a '
           + 'part mark are the lines the log already keeps. An import adds a line for '
           + 'each job it moved — the start and end dates, the quantity, the description, '
           + 'a status the ERP changed — each field as it was and as it is, with the date '
@@ -563,11 +567,22 @@ export const HELP = [
 
 let built = false;
 
+/** The sections, the page's own first: a question is asked about what is on screen. */
+export function helpSections(page) {
+  const own = page === 'parts' ? ['Parts'] : page === 'codes' ? ['Vessel codes', 'Labels']
+    : ['The board', 'Importing', 'Status and history', 'Labels'];
+  const first = own.map((t) => HELP.find((s) => s.title === t)).filter(Boolean);
+  return [...first, ...HELP.filter((s) => !first.includes(s))];
+}
+
+const pageHere = () => (document.body.classList.contains('parts-page') ? 'parts'
+  : document.getElementById('davitSection') ? 'codes' : 'board');
+
 function build() {
   const host = document.getElementById('helpBody');
   if (!host || built) return;
   built = true;
-  for (const section of HELP) {
+  for (const section of helpSections(pageHere())) {
     host.append(el('h3', 'help-section', section.title));
     for (const t of section.topics) {
       const d = document.createElement('details');

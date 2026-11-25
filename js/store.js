@@ -337,16 +337,30 @@ export const Store = {
    * @param {Object<string,Object>} snapshots  prodNo -> the job as it was
    */
   async setCompleted(prodNos, done, who, snapshots = {}) {
-    for (const prodNo of prodNos) {
-      const patch = done
-        ? {
-          completed: true,
-          completedAt: new Date().toISOString(),
-          completedBy: who ?? null,
-          snapshot: snapshots[prodNo] ?? null,
-        }
-        : { completed: false, completedAt: null, completedBy: null, snapshot: null };
-      await this.setOverride(prodNo, patch, who ?? null);
+    const patchFor = (prodNo) => (done
+      ? {
+        completed: true,
+        completedAt: new Date().toISOString(),
+        completedBy: who ?? null,
+        snapshot: snapshots[prodNo] ?? null,
+      }
+      : { completed: false, completedAt: null, completedBy: null, snapshot: null });
+    // Undone one at a time: a record with nothing left in it has to go, which
+    // is a read. Done, it goes as one batch, so a sweep of the backlog is one
+    // round trip and cannot be left half made.
+    if (this.mode === 'local' || !done) {
+      for (const prodNo of prodNos) await this.setOverride(prodNo, patchFor(prodNo), who ?? null);
+      return;
+    }
+    const { doc, writeBatch } = this._fs;
+    for (const part of chunk(prodNos, BATCH_SIZE)) {
+      const now = new Date().toISOString();
+      const batch = writeBatch(this._db);
+      for (const prodNo of part) {
+        batch.set(doc(this._db, 'jobOverrides', prodNo),
+          { ...patchFor(prodNo), updatedAt: now, touchedBy: who ?? null, touchedAt: now }, { merge: true });
+      }
+      await batch.commit();
     }
   },
 
@@ -1018,6 +1032,32 @@ export const Store = {
       (fs, db) => fs.query(fs.collection(db, 'imports'),
         fs.orderBy('retrievedAt', 'desc'), fs.limit(1)),
       (snap, meta) => cb(snap.empty ? null : { _id: snap.docs[0].id, ...snap.docs[0].data() }, meta), onError);
+  },
+
+  // ---- the floor's board ---------------------------------------------------
+  //
+  // settings/floor: what a floor screen shows, kept up by the managers' boards
+  // (floor-board.js). Read by anyone listed, written by a manager, under the
+  // rule the other settings documents have.
+
+  async loadFloorBoard() {
+    if (this.mode === 'local') return lsGet('floorBoard', null);
+    const { doc } = this._fs;
+    const snap = await this._read(doc(this._db, 'settings', 'floor'), 'doc');
+    return snap.exists() ? snap.data() : null;
+  },
+
+  async saveFloorBoard(rec) {
+    const stamped = { ...rec, updatedAt: new Date().toISOString() };
+    if (this.mode === 'local') { lsSet('floorBoard', stamped); return; }
+    const { doc, setDoc } = this._fs;
+    await setDoc(doc(this._db, 'settings', 'floor'), stamped);
+  },
+
+  watchFloorBoard(cb, onError) {
+    return this._watch(
+      (fs, db) => fs.doc(db, 'settings', 'floor'),
+      (snap, meta) => cb(snap.exists() ? snap.data() : null, meta), onError);
   },
 
   // ---- import history -----------------------------------------------------
