@@ -420,11 +420,16 @@ export const Store = {
     return out;
   },
 
-  /** One package, or the library, as it is now; null if there is none. */
+  /**
+   * One package, or the library, as the server has it; null if there is none.
+   * Read as every other document is (`_read`): a change is made to what this
+   * returns and the whole of it written back, so it is never the SDK's cache.
+   */
   async loadPackage(key) {
     if (this.mode === 'local') return lsGet('packages', {})[key] ?? null;
-    const { doc, getDoc } = this._fs;
-    return (await getDoc(doc(this._db, 'packages', key))).data() ?? null;
+    const { doc } = this._fs;
+    const snap = await this._read(doc(this._db, 'packages', key), 'doc');
+    return snap.exists() ? snap.data() : null;
   },
 
   /**
