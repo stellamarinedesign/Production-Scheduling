@@ -164,6 +164,8 @@ export function watchDialogs() {
   }, true);
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' || e.defaultPrevented) return;
+    // Hubinator's own screens and password dialog answer their own Escape.
+    if (e.target.closest?.('.shub') || document.querySelector('.shub-screen, .shub-scrim')) return;
     const close = closers.get(open[open.length - 1]?.overlay);
     if (!close) return;
     e.preventDefault();
