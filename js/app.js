@@ -11,7 +11,7 @@ import { stellaCode, labelFor, existingBoats, acceptNewCode, applyTemplate,
   setBuilders, buildersConfigured } from './vessel-codes.js';
 import { Auth, ROLE, setManagers, setEngineers, setMasters, setTesters, tidyEmail } from './auth.js';
 import { standing } from './access.js';
-import { signInForm, focusSignIn, readAccess, notListed, offerManager } from './sign-in.js';
+import { signInForm, focusSignIn, readAccess, notListed, offerManager, watchRole } from './sign-in.js';
 import { savedCopyAllowed, hubNote } from './hub-bridge.js';
 import { prefs, showTestMode, isNotAvailable, NOT_AVAILABLE, isTestMode, carryFlag } from './test-mode.js';
 import { VERSION } from './version.js';
@@ -314,6 +314,7 @@ function takeAccess(access) {
 }
 
 let started = false;
+let roleWatched = false;
 /** First run: nobody is a manager yet, so this account may become one. See sign-in.js. */
 function offerBootstrap(email) {
   offerManager($('floorEmpty'), email, async (access) => {
@@ -360,6 +361,8 @@ async function start(st) {
   // Called again while the lists are still being read: that call goes on.
   if (!state.access) return;
   st = { ...st, role: Auth.refreshRole() };
+  // Drawn for this role; drawn again if Hubinator changes it (sign-in.js).
+  if (Auth.mode === 'firebase' && !roleWatched) { roleWatched = true; watchRole(st.email, state.access); }
 
   // ON NO LIST, OR NO LISTS. Neither goes any further, and nothing of a board
   // stays on the screen or on the device. The two used to look alike, and so

@@ -554,6 +554,18 @@ export const Store = {
    * board nobody has been given looks like. The board offered itself to whoever
    * was on no list, and the Accounts panel offered to save from nothing.
    */
+  /**
+   * The lists, each time they change: Hubinator writes them, and a page open
+   * at the time is drawn for the role it had (sign-in.js, watchRole). `null`
+   * while there is no document.
+   */
+  watchAccess(cb, onError) {
+    return this._watch(
+      (fs, db) => fs.doc(db, 'settings', 'access'),
+      (snap) => cb(snap.exists() ? markLoaded(normaliseAccess(snap.data())) : null),
+      onError);
+  },
+
   async loadAccess() {
     if (this.mode === 'local') return { managers: ['*'], engineers: [], floor: [], masters: [], testers: [] };
     const { doc } = this._fs;

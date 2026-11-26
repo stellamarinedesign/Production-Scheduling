@@ -18,7 +18,7 @@ import { resolveDisplays, boatRows, modelOptions, itemFacts, factsFromStore,
          factsAreStale, setBuilders, upgradeCodeMap } from './vessel-codes.js';
 import { classify } from './rules.js';
 import { Auth, ROLE, setManagers, setEngineers, setMasters, setTesters } from './auth.js';
-import { signInForm, focusSignIn, readAccess } from './sign-in.js';
+import { signInForm, focusSignIn, readAccess, watchRole } from './sign-in.js';
 import { showTestMode, carryFlag, prefs } from './test-mode.js';
 import { VERSION } from './version.js';
 import { fitCodesSheet, TYPE_STEPS } from './codes-print.js';
@@ -130,6 +130,8 @@ async function forget() {
   setMasters(access.masters);
   setTesters(access.testers);
   const role = Auth.refreshRole();
+  // Drawn for this role; drawn again if Hubinator changes it (sign-in.js).
+  if (Auth.mode === 'firebase' && first.email) watchRole(first.email, access);
   // A tester is in test mode from here, flag or no flag; see test-mode.js.
   if (Auth.isTester) Store.enterTestMode();
   showTestMode();

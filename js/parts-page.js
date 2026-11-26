@@ -10,7 +10,7 @@
 import { Store } from './store.js';
 import { Auth, ROLE, setManagers, setEngineers, setMasters, setTesters, tidyEmail } from './auth.js';
 import { standing } from './access.js';
-import { signInForm, focusSignIn, readAccess, notListed } from './sign-in.js';
+import { signInForm, focusSignIn, readAccess, notListed, watchRole } from './sign-in.js';
 import { VERSION } from './version.js';
 import { wireHelp } from './help.js';
 import { readStockExport } from './adapters/stock.js';
@@ -159,6 +159,8 @@ let savedFor = null;
   setTesters(access.testers);
   role = Auth.refreshRole();
   who = first.email ?? null;
+  // Drawn for this role; drawn again if Hubinator changes it (sign-in.js).
+  if (Auth.mode === 'firebase' && who) watchRole(who, access);
   // On no list the part list cannot be read, whatever the device has kept of it.
   const listed = Auth.mode !== 'firebase' || standing(access, who) === 'listed';
   // The saved copy was drawn for a role; another answer starts the page again.
