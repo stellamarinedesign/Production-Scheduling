@@ -39,7 +39,7 @@ import { startup, keepWatch, deviceCache, recallSession, rememberSession, forget
 import { isConfigured } from './firebase.js';
 import './press.js';
 import { boardHead, createdCell, createdNote, poNote, erpNote, whenWords, historyColumns, historyHead, historyRowClass } from './board-columns.js';
-import { collapseScope, anyShut, toggleAll, historyKey } from './collapse.js';
+import { collapseScope, anyShut, toggleAll, historyKey, toggleRow } from './collapse.js';
 import { floorBoard, floorSignature } from './floor-board.js';
 
 const $ = (id) => document.getElementById(id);
@@ -1226,19 +1226,9 @@ function wireCollapseAll() {
   });
 }
 
-// Rows opened to their controls, by production number, so a redraw after an
-// edit - every edit redraws - puts the row back the way it was.
+// The row opened to its controls, by production number, so a redraw after an
+// edit - every edit redraws - puts it back the way it was (collapse.js).
 const openRows = new Set();
-function toggleRow(row) {
-  const open = row.classList.toggle('is-open');
-  if (row.dataset.prod) { if (open) openRows.add(row.dataset.prod); else openRows.delete(row.dataset.prod); }
-  // The caret says what the row is doing, whichever of the two was clicked.
-  const caret = row.querySelector('.more');
-  if (caret) {
-    caret.textContent = open ? '\u25be' : '\u25b8';
-    caret.setAttribute('aria-expanded', String(open));
-  }
-}
 
 // Once per page. Both boot paths call this, and a second listener would undo
 // the first on every click - the row would open and shut in the same tap.
@@ -1255,7 +1245,7 @@ function wireRowTaps() {
     // A drag to copy a number ends in a click too; that one is not a tap.
     if (window.getSelection?.()?.toString()) return;
     if (!row.querySelector('.acts button')) return;
-    toggleRow(row);
+    toggleRow(row, openRows);
   });
 }
 
@@ -2084,7 +2074,7 @@ function jobRow(j, { full = false } = {}) {
   const more = el('button', 'mini more', openRows.has(j.prod_no) ? '\u25be' : '\u25b8');
   more.setAttribute('aria-label', `Controls for ${j.prod_no}`);
   more.setAttribute('aria-expanded', String(openRows.has(j.prod_no)));
-  more.addEventListener('click', () => toggleRow(row));
+  more.addEventListener('click', () => toggleRow(row, openRows));
   acts.append(more);
   row.append(acts);
 
