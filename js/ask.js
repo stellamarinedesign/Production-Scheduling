@@ -25,9 +25,11 @@ let seq = 0;
  * @param {string} q.title
  * @param {string} [q.lede]
  * @param {Array<[string, string]>} [q.facts]   read-only lines, name and value
- * @param {Array<object>} [q.fields]   { key, label, value, options, hint, placeholder, check }
- *        `options` ([{ value, label }]) makes it a list to pick from; `check(value)`
- *        returns why a value is refused, or nothing
+ * @param {Array<object>} [q.fields]   { key, label, value, options, hint, placeholder, check, when }
+ *        `options` ([{ value, label }]) makes it a list to pick from; `check(value, values)`
+ *        returns why a value is refused, or nothing. `when(values)` says whether the field
+ *        is shown, and only a shown one is checked; a `value` that is a function of the
+ *        values follows them until something is typed over it
  * @param {Array<object>} q.actions    { value, label, kind, busy, run }
  *        `kind` 'primary' | 'danger' | 'ghost' (the default). `run(values, say)` saves
  *        while the button reads `busy`; if it throws, the dialog stays and says so
@@ -69,7 +71,7 @@ export function ask(q) {
       } else {
         input = el('input');
         input.type = 'text';
-        input.value = f.value ?? '';
+        input.value = typeof f.value === 'function' ? '' : f.value ?? '';
         input.autocomplete = 'off';
         input.spellcheck = false;
         if (f.placeholder) input.placeholder = f.placeholder;
@@ -78,7 +80,7 @@ export function ask(q) {
       wrap.append(label, input);
       if (f.hint) wrap.append(el('div', 'hint', f.hint));
       box.append(wrap);
-      inputs.set(f.key, { f, input });
+      inputs.set(f.key, { f, input, wrap });
     }
 
     const err = el('div', 'form-err');
@@ -90,6 +92,19 @@ export function ask(q) {
     overlay.append(box);
 
     const values = () => Object.fromEntries([...inputs].map(([k, { input }]) => [k, input.value.trim()]));
+    // A field that goes with the answer in another: shown with it, and following it.
+    const follow = () => {
+      for (const x of inputs.values()) {
+        const v = values();
+        if (x.f.when) x.wrap.hidden = !x.f.when(v);
+        if (typeof x.f.value === 'function' && !x.typed) x.input.value = x.f.value(v);
+      }
+    };
+    for (const x of inputs.values()) {
+      x.input.addEventListener('input', () => { x.typed = true; });
+      x.input.addEventListener('change', follow);
+    }
+    follow();
     let working = false;
     const finish = (answer) => {
       overlay.classList.remove('show');
@@ -105,9 +120,10 @@ export function ask(q) {
       const v = values();
       // Only an action that saves something needs the fields to hold.
       if (a.run || a.kind === 'primary' || a.kind === 'danger') {
-        for (const { f, input } of inputs.values()) {
+        for (const { f, input, wrap } of inputs.values()) {
           accept(input);
-          const why = f.check?.(input.value.trim());
+          if (wrap.hidden) continue;
+          const why = f.check?.(input.value.trim(), v);
           if (why) { refuse(input, why); return; }
         }
       }
