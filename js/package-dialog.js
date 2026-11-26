@@ -1360,7 +1360,8 @@ function drawActions() {
   const busyWord = word.hasAttribute('aria-busy');
   word.hidden = unsupported || (!busyWord && !picked(downloadsAsWord).length);
   if (!busyWord) word.disabled = working || ctx.searching;
-  act('folder').hidden = unsupported || !ready();
+  // Beside Allow too: a saved folder the browser does not ask about can be chosen again.
+  act('folder').hidden = unsupported || !(ready() || ctx.state === 'prompt');
   act('folder').disabled = working;
   const manage = act('manage');
   manage.textContent = ctx.manage ? 'Close library' : 'Manage library';

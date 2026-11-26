@@ -18,6 +18,7 @@ const STORE = 'handles';
 const KEY = 'stellaSystems';
 
 let remembered = null;          // this session's copy, for a browser that cannot store it
+let picked = null;              // the folder chosen on this page: the picker gave it permission
 
 // A REQUEST HAS A LIMIT. Every Stella app on this site shares the browser's
 // storage, and a request in it can wait behind another page for as long as
@@ -62,6 +63,9 @@ async function idb(mode, fn) {
   } finally { db.close(); }
 }
 
+/** For the tests: no folder remembered or chosen on this page. */
+export function _forgetRoot() { remembered = null; picked = null; }
+
 /** Edge and Chrome can; Firefox and Safari cannot. */
 export const supported = () => typeof window.showDirectoryPicker === 'function';
 
@@ -82,8 +86,16 @@ export async function savedRoot() {
 export async function rootState() {
   const handle = await savedRoot();
   if (!handle) return { handle: null, state: 'none' };
-  try { return { handle, state: await within(handle.queryPermission({ mode: 'read' }), STORE_WITHIN, 'prompt', 'the folder permission') }; }
+  let state;
+  try { state = await within(handle.queryPermission({ mode: 'read' }), STORE_WITHIN, null, 'the folder permission'); }
   catch { return { handle, state: 'prompt' }; }
+  if (state !== null) return { handle, state };
+  // No answer. The folder chosen on this page is allowed: choosing it gave it
+  // permission. One saved before is no folder - asked again, the browser does
+  // not answer either - so Connect chooses it afresh, in its place.
+  if (handle === picked) return { handle, state: 'granted' };
+  remembered = null;
+  return { handle: null, state: 'none' };
 }
 
 /** Ask again for a folder chosen before. Needs a click to have started it. */
@@ -99,6 +111,7 @@ export async function chooseRoot() {
     throw Object.assign(new Error(words), { words });
   }
   remembered = handle;
+  picked = handle;
   try {
     await within(idb('readwrite', (s) => s.put(handle, KEY)), STORE_WITHIN, null, 'saving the Stella Systems folder');
   } catch { /* kept for this session only */ }
