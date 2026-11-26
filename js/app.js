@@ -1040,7 +1040,7 @@ async function commitImport() {
  * Learn the davit fittings from the WHOLE file, the closed rows included: a
  * fitting is a fact about a boat, not about this week's work. The same
  * reasoning for the products themselves: hulls and descriptions accumulate, so
- * the cheat sheet is a total list rather than a view of what happens to be
+ * the code sheet is a total list rather than a view of what happens to be
  * open. Both come round again with the next import, so a failure is quiet.
  */
 async function learnFrom(rows) {

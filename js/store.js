@@ -843,7 +843,7 @@ export const Store = {
 
   /**
    * What is known about each item code — description and hulls — accumulated
-   * across imports so the cheat sheet is a total product list rather than a
+   * across imports so the code sheet is a total product list rather than a
    * view of this month's orders. See `mergeItemFacts`.
    */
   async loadItemFacts() {

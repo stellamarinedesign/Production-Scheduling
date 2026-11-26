@@ -551,7 +551,7 @@ export const FACTS_REV_KEY = '_hullRule';
  * Fold a fresh reading of the export into the stored one.
  *
  * THE PRODUCT LIST IS A TOTAL, NOT A SNAPSHOT. An applied import keeps only
- * open rows, so read from those alone a product vanishes from the cheat sheet
+ * open rows, so read from those alone a product vanishes from the code sheet
  * the moment its last order closes — and a boat's fitments are no less true for
  * nobody having ordered one this month.
  *
@@ -625,7 +625,7 @@ export function boatRows(codeMap, classify, { mode = 'boats', facts = null } = {
       codes: g.codes,
       confirmed: g.codes.some((c) => codeMap[c]?._confirmed),
       models: [...models].sort(),
-      // What the cheat sheet's Model column prints: the override where one is
+      // What the code sheet's Model column prints: the override where one is
       // set, every derived code otherwise.
       model: modelFor(g, codeMap),
       modelSet: g.codes.some((c) => String(codeMap[c]?.sheetModel ?? '').trim()),
@@ -696,7 +696,7 @@ export function boatRows(codeMap, classify, { mode = 'boats', facts = null } = {
  * What the Model column prints for a boat.
  *
  * A hull often carries several manufacturer codes — a plain one, the same code
- * with a voltage, one with a note somebody appended — and the cheat sheet is a
+ * with a voltage, one with a note somebody appended — and the code sheet is a
  * single sheet of paper. Which of them to show is a decision, and sometimes the
  * answer is none of them: a boat sold under one code may be known on the floor
  * by another entirely.

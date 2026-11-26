@@ -183,8 +183,8 @@ export const HELP = [
         a: [
           'Nothing upstream records which codes mean the same boat. A manufacturer may '
           + 'issue two codes for one hull, and an office may have typed a third by hand.',
-          'Rename sets what a line reads, and Confirm code accepts what it reads already. Split '
-          + 'moves a code off a line that grouped wrongly. A shared model only ever suggests '
+          'Rename sets what a line reads, and Confirm code accepts what it reads already. Move code '
+          + 'takes a code off a line that grouped wrongly. A shared model only ever suggests '
           + 'a group; it never decides one.',
         ],
       },
@@ -202,9 +202,9 @@ export const HELP = [
         a: [
           'The manufacturer code, when there is one. A boat often carries several — a '
           + 'plain code, the same code with a voltage, one with a note appended — and the '
-          + 'cheat sheet should show one.',
+          + 'code sheet should show one.',
           'Set it with Set model on any line: pick one of the codes found in the data, or '
-          + 'Other to type what the sheet should read. It affects the cheat sheet only; nothing '
+          + 'Other to type what the sheet should read. It affects the code sheet only; nothing '
           + 'else changes.',
         ],
       },

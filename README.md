@@ -24,7 +24,7 @@ This is a board for looking at what the workshop has committed to. Printing is
 one thing it does, not what it is for, so the paper settings stay behind that
 one tab and nothing else is trimmed to fit a page.
 
-The vessel codes page prints its own **landscape A4 cheat sheet** — display
+The vessel codes page prints its own **landscape A4 code sheet** — display
 code, manufacturer's model, hull and products — for pinning up next to the
 board. The ERP codes are deliberately not on it: the sheet is for the floor,
 and the floor reads the display code. What the ERP calls a boat is a manager's
@@ -57,7 +57,7 @@ Normalising happens in the transform, once, downstream.
 | `js/transform.js` | `RawRow[] → Job[]`. The only place that knows ERP column names. |
 | `js/adapters/xlsx.js` | Reads the export, validates its columns, stamps provenance. |
 | `js/print.js` | The A4 board layout, column balancing, and the measured auto-fit. |
-| `js/codes-print.js` | The vessel code cheat sheet — landscape A4, type-step auto-fit. |
+| `js/codes-print.js` | The vessel code code sheet — landscape A4, type-step auto-fit. |
 | `js/davits.js` | Which davit is fitted to which boat. Deliberately apart from the code map. |
 | `js/gantt.js` | Start/end bars, lane packing. Layout is a pure function; only the renderer touches the DOM. |
 | `js/store.js` | Firestore, with a localStorage fallback. |

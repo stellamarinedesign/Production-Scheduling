@@ -372,7 +372,7 @@ function renderEmpty() {
 
 /**
  * Keep the printable sheet in step with whatever the page is showing, so
- * "Print cheat sheet" never prints a different view from the one on screen.
+ * "Print code sheet" never prints a different view from the one on screen.
  *
  * It is rendered whether or not the preview is open, because the print
  * stylesheet reveals it directly — the button only controls what is on screen.
@@ -590,7 +590,7 @@ function boatRow(r) {
   row.append(codes);
 
   // 3. What the manufacturer calls it, and the hulls it has been fitted to.
-  // What the cheat sheet prints, not every code the data carries — a boat with
+  // What the code sheet prints, not every code the data carries — a boat with
   // three manufacturer codes should not put all three on a sheet of paper.
   const modelCell = el('div', `c-model${r.modelSet ? ' is-set' : ''}`, r.model || '—');
   if (r.modelSet) modelCell.title = `Set by hand. Found in the data: ${r.models.join(', ') || 'none'}`;
@@ -627,7 +627,7 @@ function boatRow(r) {
       rowButton('Rename', 'rename', key, () => rename(r)),
       hideButton(r, key, () => toggleSheetHidden(r)));
     // One code on the line is the line: there is nothing to split.
-    if (r.codes.length > 1) act.append(rowButton('Split', 'split', key, () => split(r)));
+    if (r.codes.length > 1) act.append(rowButton('Move code', 'split', key, () => split(r)));
   }
   row.append(act, ...lists, ...faultLines(edits, r.codes));
   return row;
@@ -811,7 +811,7 @@ async function split(r) {
 }
 
 /**
- * Keep a line off the printed cheat sheet, or put it back.
+ * Keep a line off the printed code sheet, or put it back.
  *
  * For a boat nobody builds any more. It stays on this page — hiding is a
  * decision about a sheet of paper, not a deletion — and the sheet is what runs
@@ -835,14 +835,14 @@ const hideWords = (name, hidden) => ({
 });
 
 /**
- * Choose what the cheat sheet prints in the Model column.
+ * Choose what the code sheet prints in the Model column.
  *
  * A boat can carry several manufacturer codes — a plain one, the same with a
  * voltage, one with a note appended — and the sheet has room for one. Sometimes
  * the right answer is none of them, so this takes free text as well as the
  * codes found in the data.
  *
- * Stored on the boat, affects the cheat sheet only. Written to every code on
+ * Stored on the boat, affects the code sheet only. Written to every code on
  * the line so it survives a split or a rename of any one of them.
  */
 async function setModel(r) {
