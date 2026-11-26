@@ -1247,9 +1247,11 @@ header .who .role.manager { border-color: var(--red-deep); color: var(--red-brig
 /* ---------- role: floor ----------
    The floor sees the current orders as the manager's table, cut to the printed
    columns, and nothing else. This is presentation, not security — the
-   Firestore rules deny floor accounts every write regardless. */
+   Firestore rules deny floor accounts every write regardless. The tab strip
+   is the board's: on the parts page the floor has Search and Materials, and
+   Corrections and Import go by their own classes. */
 body.role-floor .controls,
-body.role-floor .tabs,
+body.role-floor:not(.parts-page) .tabs,
 body.role-floor #warnings,
 body.role-floor #dropZone,
 body.role-floor .fit-status,
@@ -2182,6 +2184,48 @@ body.role-engineer .not-engineer { display: none !important; }
   .fix-row { grid-template-columns: 1fr 1fr; }
   .fix-head { display: none; }
   .fix-row > span:nth-child(5), .fix-row > span:nth-child(7) { grid-column: 1 / -1; }
+}
+
+/* ---------- parts page: UX stage one ----------
+   What did not load or did not save, said where it happened; strips of pills
+   that say there is more; the orders off while a search ranks the list; the
+   Corrections rows' description, copies, who and when. */
+.load-fault { margin: 2px 0 12px; }
+.load-fault[hidden] { display: none; }
+/* The tab strip's fade, on a strip of pills with more to scroll to. */
+.pills.has-more {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+}
+.pill:disabled { opacity: .45; cursor: default; }
+.pill:disabled:hover { border-color: var(--line); color: var(--text-dim); }
+.results-bar { flex-wrap: wrap; }
+/* A card opens from the keyboard too; scrolled to, it clears the search box. */
+.part-head { scroll-margin: 84px 0 16px; }
+button.more-sentinel {
+  display: block; width: 100%; background: none; border: 0; border-top: 1px solid var(--line);
+  font: inherit; font-size: 12.5px; color: var(--text-dim);
+}
+.fx-code, .fx-should { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
+.fx-desc, .fx-live { font-size: 12.5px; }
+.fx-desc:empty, .fx-live:empty { display: none; }
+.fix-row.review :is(.fix-key, .fix-vals) { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.fix-row.review .fix-desc { font-size: 12.5px; margin-bottom: 4px; }
+/* The row's second line: the description under the code, how long under who and when. */
+@media screen and (min-width: 761px) {
+  .fix-row { grid-template-columns: 150px 86px 1.2fr 1.2fr 1.4fr 112px 132px; }
+  .fx-desc { grid-column: 1 / 6; }
+  .fx-live { grid-column: 6 / -1; }
+}
+@media screen and (min-width: 761px) and (max-width: 1100px) {
+  .fix-row { grid-template-columns: 96px 74px 1fr 1fr 1.2fr 86px 128px; }
+}
+@media screen and (max-width: 760px) {
+  .fix-row > :is(.fx-code, .fx-code + span, .fx-desc) { order: -1; }
+  .fix-row > .fx-desc { grid-column: 1 / -1; }
+  .fix-row > .fx-live { grid-column: auto; }
+  .fix-row > .fix-rm { order: 1; }
+  .fix-row > .fault { order: 2; }
 }
 
 /* Change history: one job's log, newest first, with what each import moved. */
