@@ -188,6 +188,10 @@ export function ownSources(job, packages, scope) {
   return packages?.[packageKey(SCOPE.item, job)]?.sources ?? [];
 }
 
+/** A list of folders and documents with some added, each path once. */
+export const withSources = (sources, add) => (add ?? []).reduce(
+  (list, s) => (list.some((o) => o.path === s.path) ? list : [...list, s]), [...(sources ?? [])]);
+
 /** The print defaults a package's documents start with: its own, else - a job's - its code's. */
 export function skipFor(job, packages, scope) {
   const mine = packages?.[packageKey(scope, job)];
@@ -198,6 +202,15 @@ export function skipFor(job, packages, scope) {
 /** A package with nothing left in it is removed rather than kept. */
 export const isEmptyPackage = (p) => !p?.sources?.length && !Object.keys(p?.standard ?? {}).length
   && !p?.skip?.length && !p?.plinthModel;
+
+const contents = (v) => {
+  if (Array.isArray(v)) return v.map(contents);
+  if (!v || typeof v !== 'object') return v;
+  return Object.fromEntries(Object.keys(v).sort().filter((k) => k !== 'updatedAt' && k !== 'updatedBy').map((k) => [k, contents(v[k])]));
+};
+
+/** Do two copies - of every package, or of one - hold the same? When each was written, and by whom, aside. */
+export const samePackages = (a, b) => JSON.stringify(contents(a)) === JSON.stringify(contents(b));
 
 // ---------------------------------------------------------------------------
 // standard items
@@ -283,6 +296,14 @@ export const withItem = (library, item) => normaliseLibrary({
 export const withoutItem = (library, id) => normaliseLibrary({
   ...library, items: (library?.items ?? []).filter((i) => i.id !== id),
 });
+
+/** Where a standard item is used by choice: how many packages name it, and the categories whose default it is. */
+export function usesOf(id, packages, library) {
+  return {
+    packages: Object.values(packages ?? {}).filter((p) => Object.values(p?.standard ?? {}).includes(id)).length,
+    categories: Object.entries(library?.categories ?? {}).filter(([, groups]) => Object.values(groups ?? {}).includes(id)).map(([c]) => c),
+  };
+}
 
 /** The library with a category's default for a group set, or cleared (null). */
 export function withCategoryDefault(library, category, group, id) {
