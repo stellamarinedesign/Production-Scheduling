@@ -178,7 +178,7 @@ async function forget() {
 
   $('modeBoats').addEventListener('click', () => setMode('boats'));
   $('modeProducts').addEventListener('click', () => setMode('products'));
-  wireHelp();
+  wireHelp({ admin: () => Auth.isMaster });
   $('saveCodes').addEventListener('click', downloadCodes);
   $('loadCodes').addEventListener('click', () => $('codesFile').click());
   $('codesFile').addEventListener('change', (e) => {

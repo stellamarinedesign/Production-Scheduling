@@ -318,7 +318,7 @@ let entered = false;
 function enter() {
   if (entered) return;
   entered = true;
-  wireHelp();
+  wireHelp({ admin: () => Auth.isMaster });
   wireTabs();
   wireSearch();
   wireMaterials();

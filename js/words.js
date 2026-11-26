@@ -11,7 +11,8 @@ export const count = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}
 
 const WHY = {
   offline: { why: 'no connection', next: 'Retry when the connection returns.' },
-  refused: { why: 'not permitted for this account', next: 'A master user can check its role.' },
+  // Nothing about roles: a person never reads that roles exist (Pete, 26 Nov 2026).
+  refused: { why: 'access for this account not set up', next: 'Notify the admin.' },
   full: { why: 'the database has reached its daily limit', next: 'Retry tomorrow.' },
   other: { why: 'not accepted by the server', next: 'Retry; report it if it fails again.' },
 };

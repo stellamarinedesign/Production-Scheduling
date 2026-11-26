@@ -138,9 +138,9 @@ export async function readAccess(watch) {
 export function notListed(host, email) {
   Auth.unlisted = true;
   host.textContent = '';
-  host.append(el('strong', null, 'This account is not on the access list yet'));
-  host.append(el('div', null, `Signed in as ${email}, but nobody has given it a role. `
-    + 'Ask a hub master to give it a role in Hubinator; it works from your next page load.'));
+  // Nothing about roles or lists: only the admin knows they exist (Pete, 26 Nov 2026).
+  host.append(el('strong', null, 'No current account assigned'));
+  host.append(el('div', null, `Signed in as ${email}. Notify the admin.`));
   host.hidden = false;
 }
 

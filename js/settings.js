@@ -108,12 +108,14 @@ function renderAccount() {
   const words = el('div');
   const local = Auth.mode !== 'firebase';
   const name = el('div', 'settings-row-label', local ? 'Local mode' : (Auth.user?.email ?? ''));
-  if (!local && Auth.isMaster) name.append(el('span', 'master-chip', 'MASTER'));
+  // ROLES ARE THE ADMIN'S BUSINESS. Nobody else reads that there are roles, or
+  // which one is theirs (Pete, 26 Nov 2026): the chip and the role sentence are
+  // for an admin, the account the code calls a master. A tester has no sentence.
+  if (!local && Auth.isMaster) name.append(el('span', 'master-chip', 'ADMIN'));
   words.append(name);
-  // A tester has no sentence here.
   const sub = local
     ? 'No accounts on this copy: everything is saved on this device only.'
-    : Auth.unlisted ? 'This account is not on the access list yet.' : ROLE_SENTENCE[Auth.role] ?? '';
+    : Auth.unlisted ? 'No current account assigned.' : Auth.isMaster ? ROLE_SENTENCE[Auth.role] ?? '' : '';
   if (sub) words.append(el('div', 'settings-row-sub', sub));
   row.append(words);
   card.append(row);

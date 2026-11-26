@@ -272,7 +272,7 @@ header nav a, header nav .navlink, header .cog {
   header nav a, header nav .navlink {
     display: inline-flex; align-items: center; min-height: var(--touch-min);
   }
-  header button.cog, header .hd-apps .shub-sw { width: var(--touch-min); height: var(--touch-min); }
+  header button.cog { width: var(--touch-min); height: var(--touch-min); }
   .parts-page :is(button.mini, .pill, .tab) { min-height: var(--touch-floor); }
 }
 
@@ -1067,10 +1067,8 @@ header .cog:hover { border-color: var(--red-bright); color: var(--white); }
 header .hd-end { display: flex; align-items: center; gap: 4px; }
 .hd-apps { display: flex; }
 .hd-apps:empty { display: none; }
-/* The grid button is the hub's; here it wears the cog's look beside it, as
-   every control in this header does. Its own open and pressed states stay. */
-header .hd-apps .shub-sw { color: var(--text-dim); border: 1.5px solid var(--line); }
-header .hd-apps .shub-sw:hover { border-color: var(--red-bright); color: var(--white); }
+/* The grid button keeps the hub's own look and size (Pete, 26 Nov 2026): it is
+   the same button in every Stella app. */
 .box.settings { max-width: 640px; }
 .settings-section + .settings-section { margin-top: 18px; }
 .settings-label {

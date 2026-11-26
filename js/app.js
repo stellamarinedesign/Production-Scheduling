@@ -273,6 +273,9 @@ function present(st) {
   document.body.classList.toggle('role-manager', Auth.isManager);
   const who = $('whoami');
   who.textContent = st.mode === 'local' ? 'Local mode' : (st.email ?? '');
+  // The role chip is for an admin alone: nobody else reads that there are roles
+  // (Pete, 26 Nov 2026). Drawn again when the lists arrive (refreshRole).
+  if (st.mode === 'local' || !Auth.isMaster) return;
   const chip = el('span', `role ${Auth.isManager ? 'manager' : ''}`,
     Auth.isManager ? 'MANAGER' : st.role === ROLE.ENGINEER ? 'ENGINEER' : 'FLOOR');
   who.append(chip);
@@ -468,7 +471,7 @@ function enterManager({ settings, codeMap, overrides, itemOverrides, packages })
 
   if (managerWired) return;
   managerWired = true;
-  wireHelp();
+  wireHelp({ admin: () => Auth.isMaster });
   wireUpload();
   wireControls();
   wireRowTaps();
@@ -879,7 +882,7 @@ function showFloor(published) {
   // orders for now; the other lanes stay behind the manager's tabs.
   if (!floorWired) {
     floorWired = true;
-    wireHelp();
+    wireHelp({ admin: () => Auth.isMaster });
     wireRowTaps();
     wireCollapseAll();
   }

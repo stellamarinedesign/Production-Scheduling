@@ -8,6 +8,10 @@
 // So the interface says the short version and this says the rest. Nothing here
 // is required to use the board.
 //
+// ROLES ARE THE ADMIN'S BUSINESS (Pete, 26 Nov 2026): a topic about roles,
+// lists or who may do what is marked `admin` and shown to an admin alone, the
+// account the code calls a master. Nobody else reads that roles exist.
+//
 // NO REAL CODES OR CUSTOMER NAMES. This file ships to anyone who opens the app.
 
 import { closeOnBackdrop } from './dialog.js';
@@ -155,6 +159,7 @@ export const HELP = [
       },
       {
         q: 'Who can do what?',
+        admin: true,
         a: [
           'Anyone signed in can search. Managers and engineers can make corrections '
           + 'and decide reviews. Managers import the export — they are the people who '
@@ -275,21 +280,26 @@ export const HELP = [
           + 'else sees it. Sign out is under the same cog.',
           'Signed in through Hubinator, both are Hubinator\'s: the password is the one for '
           + 'every Stella app, and Sign out signs out of all of them on this device.',
-          'Forgotten it? Ask a hub master: the login is made again in Hubinator with a '
+          'Forgotten it? Ask the admin: the login is made again in Hubinator with a '
           + 'temporary password, which you then change here.',
         ],
       },
       {
         q: 'How is somebody given access?',
+        admin: true,
         a: [
-          'In Hubinator, by a hub master: Accounts, Add person, then a role in the '
+          'In Hubinator, by an admin: Accounts, Add person, then a role in the '
           + 'production board\'s column - manager, engineer, floor or tester. They sign in '
           + 'with the temporary password shown once and press Change password under the '
           + 'cog to make it theirs. A tester has the manager view, always in test mode. '
           + 'The list is the one place a role lives, the security rules read it too, and an '
           + 'account nobody listed can sign in and see nothing.',
-          'A master user sees, under the cog, the way to Hubinator\'s Accounts. Everyone '
-          + 'else sees there just their own account, Change password, Sign out and Test mode.',
+          'An admin sees, under the cog, the way to Hubinator\'s Accounts, the role of '
+          + 'their own account, and its chip in the header. Everyone else sees no roles '
+          + 'anywhere: under the cog just their own account, Change password, Sign out and '
+          + 'Test mode, and this topic not at all.',
+          'Changes made to the Accounts lists before Hubinator are in the Activity log, '
+          + 'shown to admins only; Hubinator keeps its own Account log.',
         ],
       },
       {
@@ -299,9 +309,8 @@ export const HELP = [
           + 'with a name and a time - a status set or let go, Complete and Reopen, Hide '
           + 'and Show, a label, a hull, a part mark, a package, what an import '
           + 'changed and the jobs it added. The newest fifty are shown; Show older brings the next fifty. '
-          + 'The row above it narrows the list to edits or to imports. Changes made to the '
-          + 'Accounts lists before Hubinator are shown to master users only; Hubinator keeps '
-          + 'its own Account log. It is a record, not a control: nothing reads it back.',
+          + 'The row above it narrows the list to edits or to imports. '
+          + 'It is a record, not a control: nothing reads it back.',
           'Each line of History says under Last changed who last touched the job and when.',
         ],
       },
@@ -564,24 +573,33 @@ export const HELP = [
   },
 ];
 
-let built = false;
+let built = null;               // drawn for an admin (true) or not (false); null until drawn
+let isAdmin = () => false;
 
-/** The sections, the page's own first: a question is asked about what is on screen. */
-export function helpSections(page) {
+/**
+ * The sections, the page's own first: a question is asked about what is on
+ * screen. The `admin` topics only for an admin; a section left with none goes.
+ */
+export function helpSections(page, { admin = false } = {}) {
   const own = page === 'parts' ? ['Parts'] : page === 'codes' ? ['Vessel codes', 'Labels']
     : ['The board', 'Importing', 'Status and history', 'Labels'];
   const first = own.map((t) => HELP.find((s) => s.title === t)).filter(Boolean);
-  return [...first, ...HELP.filter((s) => !first.includes(s))];
+  return [...first, ...HELP.filter((s) => !first.includes(s))]
+    .map((s) => (admin ? s : { ...s, topics: s.topics.filter((t) => !t.admin) }))
+    .filter((s) => s.topics.length);
 }
 
 const pageHere = () => (document.body.classList.contains('parts-page') ? 'parts'
   : document.getElementById('davitSection') ? 'codes' : 'board');
 
+/** Drawn when first opened, and again when the account turns out to be an admin, or no longer one. */
 function build() {
   const host = document.getElementById('helpBody');
-  if (!host || built) return;
-  built = true;
-  for (const section of helpSections(pageHere())) {
+  const admin = Boolean(isAdmin());
+  if (!host || built === admin) return;
+  built = admin;
+  host.textContent = '';
+  for (const section of helpSections(pageHere(), { admin })) {
     host.append(el('h3', 'help-section', section.title));
     for (const t of section.topics) {
       const d = document.createElement('details');
@@ -600,7 +618,9 @@ export function openHelp() {
   document.getElementById('helpOverlay')?.classList.add('show');
 }
 
-export function wireHelp() {
+/** @param {{admin?: () => boolean}} [opts]  whether the account is an admin, asked each time Help opens */
+export function wireHelp({ admin } = {}) {
+  if (admin) isAdmin = admin;
   const close = () => document.getElementById('helpOverlay')?.classList.remove('show');
   document.getElementById('helpBtn')?.addEventListener('click', openHelp);
   document.getElementById('helpClose')?.addEventListener('click', close);
