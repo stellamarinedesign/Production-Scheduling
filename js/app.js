@@ -26,6 +26,7 @@ import { faultLine, setFault, clearFault, notDone, carries } from './faults.js';
 import { wireSettings } from './settings.js';
 import { openPackageDialog } from './package-dialog.js';
 import { plinthControl } from './plinth-control.js';
+import { Undo, inverseOf, bindUndoKeys } from './undo.js';
 import { isDavit, PLINTHS_KEY } from './plinths.js';
 import { describeOverride, describeItemOverride, activityEntry, ACTION, lastChanged } from './activity.js';
 import { renderActivityLog, touchedCell, loadedEntries, forgetActivityLog } from './activity-log.js';
@@ -2486,16 +2487,18 @@ function confirmComplete() {
  * The snapshot travels with the completion so History can render the job long
  * after the ERP stops exporting it.
  */
-function completeJobs(jobs) {
+function completeJobs(jobs, { said, snapshots = null } = {}) {
   const who = Auth.user?.email ?? null;
   const at = new Date().toISOString();
   const keys = jobs.map((j) => j.prod_no);
-  const snaps = Object.fromEntries(jobs.map((j) => [j.prod_no, snapshotOf(j)]));
+  // An undone Reopen puts back the snapshot the job left with.
+  const snaps = Object.fromEntries(jobs.map((j) => [j.prod_no, snapshots?.[j.prod_no] ?? snapshotOf(j)]));
   const before = new Map();
   return edit({
     rows: keys,
     what: 'Not completed',
-    said: keys.length === 1 ? `${keys[0]} completed. In History.` : `${count(keys.length, 'job')} completed. In History.`,
+    said: said !== undefined ? said
+      : keys.length === 1 ? `${keys[0]} completed. In History.` : `${count(keys.length, 'job')} completed. In History.`,
     apply: () => {
       for (const j of jobs) {
         before.set(j.prod_no, state.overrides[j.prod_no]);
@@ -2506,25 +2509,33 @@ function completeJobs(jobs) {
     undo: () => { for (const k of keys) if (state.overrides[k]?.completed) putBack(k, before.get(k)); },
     write: () => Store.setCompleted(keys, true, who, snaps),
     saved: () => { for (const j of jobs) logChange({ action: ACTION.done, text: 'completed' }, j.prod_no, j.inventory_id, jobTitle(j)); },
-  });
+  }).then((ok) => remember(ok, keys.length === 1 ? `${keys[0]} completed` : `${count(keys.length, 'job')} completed`,
+    () => reopenJobs(jobs, { said: null }), () => completeJobs(jobs, { said: null, snapshots: snaps })));
 }
 
 /** Put a completed job back on the board. Its failure is said on both rows: it may be on either. */
-function reopenJob(j) {
-  let before;
+function reopenJob(j) { return reopenJobs([j]); }
+
+function reopenJobs(jobs, { said } = {}) {
+  const keys = jobs.map((j) => j.prod_no);
+  const before = new Map();
   return edit({
-    rows: [j.prod_no, `hist:${j.prod_no}`],
+    rows: keys.flatMap((k) => [k, `hist:${k}`]),
     what: 'Not reopened',
-    said: `${j.prod_no} reopened.`,
+    said: said !== undefined ? said : keys.length === 1 ? `${keys[0]} reopened.` : `${count(keys.length, 'job')} reopened.`,
     apply: () => {
-      before = state.overrides[j.prod_no];
-      const { completed, completedAt, completedBy, snapshot, ...rest } = before ?? {};
-      putBack(j.prod_no, rest);
+      for (const k of keys) {
+        before.set(k, state.overrides[k]);
+        const { completed, completedAt, completedBy, snapshot, ...rest } = before.get(k) ?? {};
+        putBack(k, rest);
+      }
     },
-    undo: () => { if (!state.overrides[j.prod_no]?.completed) putBack(j.prod_no, before); },
-    write: () => Store.setCompleted([j.prod_no], false, Auth.user?.email),
-    saved: () => logChange({ action: ACTION.reopen, text: 'reopened from History' }, j.prod_no, j.inventory_id, jobTitle(j)),
-  });
+    undo: () => { for (const k of keys) if (!state.overrides[k]?.completed) putBack(k, before.get(k)); },
+    write: () => Store.setCompleted(keys, false, Auth.user?.email),
+    saved: () => { for (const j of jobs) logChange({ action: ACTION.reopen, text: 'reopened from History' }, j.prod_no, j.inventory_id, jobTitle(j)); },
+  }).then((ok) => remember(ok, keys.length === 1 ? `${keys[0]} reopened` : `${count(keys.length, 'job')} reopened`,
+    () => completeJobs(jobs, { said: null, snapshots: Object.fromEntries(keys.map((k) => [k, before.get(k)?.snapshot])) }),
+    () => reopenJobs(jobs, { said: null })));
 }
 
 /** Why jobs on the board are not on the sheet, each reason with its number. */
@@ -3533,6 +3544,10 @@ function showLabelForm(scope) {
 }
 
 function wireOverlays() {
+  // Ctrl+Z and Ctrl+Y for the board's own edits, when nothing else has them:
+  // not in a field, not with a dialog open, not on the saved copy, and for a
+  // manager alone (this is wired for one alone).
+  bindUndoKeys({ blocked: () => !Auth.isManager || isHeld() || dialogOpen(), say: (w) => toast(w) });
   wireNewCode();
   wireCustomName();
   $('scopeJob').addEventListener('click', () => showLabelForm('job'));
@@ -3632,6 +3647,8 @@ function saveLabel() {
 /** A decision on an item code, for every job on it; a failure is said on the row it was made from. */
 function setItemOverride(job, patch, what, said = null) {
   const id = job.inventory_id;
+  // What this overwrites, so Ctrl+Z can put it back through this same path.
+  const inverse = inverseOf(state.itemOverrides[id], patch);
   let before;
   return edit({
     rows: [job.prod_no],
@@ -3650,7 +3667,8 @@ function setItemOverride(job, patch, what, said = null) {
     },
     write: () => Store.setItemOverride(id, patch),
     saved: () => logChange(describeItemOverride(patch), null, id),
-  });
+  }).then((ok) => remember(ok, `${id} \u2013 ${describeItemOverride(patch)?.text ?? 'changed'}`,
+    () => setItemOverride(job, inverse, what), () => setItemOverride(job, patch, what)));
 }
 
 function closeLabel() {
@@ -3790,6 +3808,8 @@ function putBack(prodNo, record) {
 }
 
 function setOverride(prodNo, patch, said = null) {
+  // What this overwrites, so Ctrl+Z can put it back through this same path.
+  const inverse = inverseOf(state.overrides[prodNo], patch);
   let before;
   return edit({
     rows: [prodNo],
@@ -3809,7 +3829,22 @@ function setOverride(prodNo, patch, said = null) {
     undo: () => { if (carries(state.overrides[prodNo], patch)) putBack(prodNo, before); },
     write: () => Store.setOverride(prodNo, patch, Auth.user?.email ?? 'local'),
     saved: () => logChange(describeOverride(patch), prodNo),
-  });
+  }).then((ok) => remember(ok, `${prodNo} \u2013 ${describeOverride(patch)?.text ?? 'changed'}`,
+    () => setOverride(prodNo, inverse), () => setOverride(prodNo, patch)));
+}
+
+/**
+ * CTRL+Z AND CTRL+Y (undo.js). An edit that saved is a step, with a way back
+ * and a way forward through the same path it took, so the screen, the server
+ * and the activity log agree whichever way it went. One that did not save is
+ * no step; an undo that does not save leaves the step where it was, its
+ * failure said on its row like any edit's.
+ */
+function remember(ok, label, back, forward) {
+  if (!ok) return ok;
+  const run = (f) => async () => { if (!await f()) throw new Error(`${label}: not saved`); };
+  Undo.record({ label, undo: run(back), redo: run(forward) });
+  return ok;
 }
 
 /**
