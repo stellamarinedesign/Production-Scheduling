@@ -146,14 +146,13 @@ async function forget() {
   // way to tell either of those from "you are not a manager". Whatever the
   // answer is, it is more useful on the page than in the address bar.
   if (!Auth.isStaff) {
-    const why = role === ROLE.NONE
-      ? 'You are not signed in.'
-      : `You are signed in as ${first.email ?? 'an account'}, which is not on the manager or engineer list.`;
+    // Nothing about roles or lists: only the admin knows they exist (Pete, 27 Nov 2026).
+    const why = role === ROLE.NONE ? 'Not signed in.' : `Signed in as ${first.email ?? 'an account'}.`;
     const host = $('codesDenied');
     host.hidden = false;
     host.textContent = '';
-    host.append(el('strong', null, 'Vessel codes are for managers and engineers'));
-    host.append(el('div', null, `${why} The board itself is read-only for everyone else.`));
+    host.append(el('strong', null, 'Vessel codes not available'));
+    host.append(el('div', null, why));
     // Signed in, the page loads again: as that account's, from the start.
     if (role === ROLE.NONE) host.append(signInForm({ signedIn: () => { location.reload(); return new Promise(() => {}); } }));
     const back = el('a', 'backlink', 'Go to the board');
@@ -181,7 +180,7 @@ async function forget() {
 
   $('modeBoats').addEventListener('click', () => setMode('boats'));
   $('modeProducts').addEventListener('click', () => setMode('products'));
-  wireHelp({ admin: () => Auth.isMaster });
+  wireHelp({ admin: () => Auth.isMaster, role: () => Auth.role });
   $('saveCodes').addEventListener('click', downloadCodes);
   $('loadCodes').addEventListener('click', () => $('codesFile').click());
   $('codesFile').addEventListener('change', (e) => {
@@ -383,7 +382,7 @@ function renderEmpty() {
   host.hidden = Object.keys(codeMap).length > 0;
   host.textContent = Auth.isManager
     ? 'No vessel codes yet. They are added as new codes are decided on the board, or from a file with Load codes.'
-    : 'No vessel codes yet. A manager adds them on the board, or from a file.';
+    : 'No vessel codes yet.';
 }
 
 /**

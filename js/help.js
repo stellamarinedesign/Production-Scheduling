@@ -12,6 +12,11 @@
 // lists or who may do what is marked `admin` and shown to an admin alone, the
 // account the code calls a master. Nobody else reads that roles exist.
 //
+// EACH READER, WHAT THEY CAN DO (Pete, 27 Nov 2026): a section's `who`, or a
+// topic's own, names the roles whose pages have what it describes. A topic
+// with neither is for everyone. A tester reads as a manager; an admin reads
+// every topic.
+//
 // NO REAL CODES OR CUSTOMER NAMES. This file ships to anyone who opens the app.
 
 import { closeOnBackdrop } from './dialog.js';
@@ -30,7 +35,7 @@ export const HELP = [
       {
         q: 'Where does the part list come from?',
         a: [
-          'The ERP\'s Stock Items export, loaded by a manager on the Import tab. Six '
+          'The ERP\'s Stock Items export, loaded on the Import tab. Six '
           + 'things are read from it: the code, the description, the type, the unit, '
           + 'the source and the bin. Prices and everything else are dropped before the '
           + 'file is even parsed into the app, and are never stored.',
@@ -101,13 +106,14 @@ export const HELP = [
           + 'plate. Every row is a part from the list, so Copy and Correct are the '
           + 'same here as on Search, and a correction made on either tab shows on both.',
           'Which parts are materials, and of what kind, comes from the material '
-          + 'ordering app\'s sheet, loaded by a manager on the Import tab. A code the '
+          + 'ordering app\'s sheet, loaded on the Import tab. A code the '
           + 'sheet has and the last export does not is still listed, marked as '
           + 'missing, with the sheet\'s description standing in.',
         ],
       },
       {
         q: 'How do I load the materials sheet?',
+        who: ['manager'],
         a: [
           'Import tab, the second drop zone: materials.csv from the material '
           + 'ordering app, or that app\'s catalogue export. Part Code, Category, '
@@ -139,6 +145,7 @@ export const HELP = [
       },
       {
         q: 'What is a correction?',
+        who: ['manager', 'engineer'],
         a: [
           'The ERP cannot be edited from here, and the people who notice a wrong '
           + 'description are usually not the people who can fix it. A correction is '
@@ -171,6 +178,7 @@ export const HELP = [
   },
   {
     title: 'Vessel codes',
+    who: ['manager', 'engineer'],
     topics: [
       {
         q: 'What is the display code?',
@@ -227,6 +235,7 @@ export const HELP = [
   },
   {
     title: 'Labels',
+    who: ['manager'],
     topics: [
       {
         q: 'Which scope should I use?',
@@ -262,6 +271,7 @@ export const HELP = [
   },
   {
     title: 'The board',
+    who: ['manager'],
     topics: [
       {
         q: 'What does the horizon do?',
@@ -270,18 +280,6 @@ export const HELP = [
           + 'orders and on the Gantt whatever the horizon says; the horizon decides how '
           + 'far ahead the paper reaches.',
           'Auto-fit pulls it in until the sheet holds one page, and says so when it has.',
-        ],
-      },
-      {
-        q: 'How do I change my password?',
-        a: [
-          'The cog, top right, then Change password. Type the current password and the '
-          + 'new one twice. It changes there and then; nothing is emailed and nobody '
-          + 'else sees it. Sign out is under the same cog.',
-          'Signed in through Hubinator, both are Hubinator\'s: the password is the one for '
-          + 'every Stella app, and Sign out signs out of all of them on this device.',
-          'Forgotten it? Ask the admin: the login is made again in Hubinator with a '
-          + 'temporary password, which you then change here.',
         ],
       },
       {
@@ -384,6 +382,7 @@ export const HELP = [
       },
       {
         q: 'What does the Part orders toggle do?',
+        who: ['manager', 'floor'],
         a: [
           'Current orders, next to Collapse all. A part order is a production order '
           + 'for a numbered part rather than a unit - a gland, a bung, a rope kit, a '
@@ -405,12 +404,13 @@ export const HELP = [
       },
       {
         q: 'What is the Hull column?',
+        who: ['manager', 'floor'],
         a: [
           'The hull the unit is for, on the page only - never on the printed '
           + 'sheets. It is read from the ERP\'s order text where the admin wrote it '
           + 'in ("Used by 00SY/001", "Parts for 000XX/001"); a boat named without '
-          + 'a hull number is not one. Where the ERP has nothing, a manager clicks '
-          + 'the empty cell and types it (on a phone, Add hull in the opened row): that hull '
+          + 'a hull number is not one. Where the ERP has nothing, the hull can be typed '
+          + 'into the empty cell (on a phone, Add hull in the opened row): that hull '
           + 'shows in white, for that job '
           + 'only, and survives the next upload. Typing the ERP\'s own hull, or '
           + 'nothing, goes back to the ERP\'s.',
@@ -480,6 +480,7 @@ export const HELP = [
       },
       {
         q: 'What is a stock build?',
+        who: ['manager', 'floor'],
         a: [
           'Work with no customer behind it. Its dates are set once and never revised, so a '
           + 'passed date says nothing about whether it is done — which is why stock starts '
@@ -490,13 +491,14 @@ export const HELP = [
   },
   {
     title: 'Importing',
+    who: ['manager'],
     topics: [
       {
         q: 'What happens when I drop a file?',
         a: [
           'It is read and built into the board it would produce, and nothing else. The '
           + 'review says what it contains, what will not print and anything it cannot '
-          + 'settle on its own. Nothing reaches the other managers until you apply it.',
+          + 'settle on its own. Nothing is shared until it is applied.',
         ],
       },
       {
@@ -535,6 +537,7 @@ export const HELP = [
   },
   {
     title: 'Status and history',
+    who: ['manager'],
     topics: [
       {
         q: 'Can I change a status?',
@@ -571,35 +574,64 @@ export const HELP = [
       },
     ],
   },
+  {
+    title: 'Account',
+    topics: [
+      {
+        q: 'How do I change my password?',
+        a: [
+          'The cog, top right, then Change password. Type the current password and the '
+          + 'new one twice. It changes there and then; nothing is emailed and nobody '
+          + 'else sees it. Sign out is under the same cog.',
+          'Signed in through Hubinator, both are Hubinator\'s: the password is the one for '
+          + 'every Stella app, and Sign out signs out of all of them on this device.',
+          'Forgotten it? Ask the admin: the login is made again in Hubinator with a '
+          + 'temporary password, which you then change here.',
+        ],
+      },
+    ],
+  },
 ];
 
-let built = null;               // drawn for an admin (true) or not (false); null until drawn
+let built = null;               // who it was drawn for ('manager:false'); null until drawn
 let isAdmin = () => false;
+let roleNow = () => null;
+
+/** May this reader see this topic? See `who` above. With no role given, every role's topics. */
+function readable(topic, section, { admin, role }) {
+  if (admin) return true;
+  if (topic.admin) return false;
+  const who = topic.who ?? section.who;
+  return !role || !who || who.includes(role === 'tester' ? 'manager' : role);
+}
 
 /**
  * The sections, the page's own first: a question is asked about what is on
- * screen. The `admin` topics only for an admin; a section left with none goes.
+ * screen. Only the topics this reader can use (`role`, `admin`); a section left
+ * with none goes.
  */
-export function helpSections(page, { admin = false } = {}) {
+export function helpSections(page, { admin = false, role = null } = {}) {
   const own = page === 'parts' ? ['Parts'] : page === 'codes' ? ['Vessel codes', 'Labels']
     : ['The board', 'Importing', 'Status and history', 'Labels'];
   const first = own.map((t) => HELP.find((s) => s.title === t)).filter(Boolean);
   return [...first, ...HELP.filter((s) => !first.includes(s))]
-    .map((s) => (admin ? s : { ...s, topics: s.topics.filter((t) => !t.admin) }))
+    .map((s) => ({ ...s, topics: s.topics.filter((t) => readable(t, s, { admin, role })) }))
     .filter((s) => s.topics.length);
 }
 
 const pageHere = () => (document.body.classList.contains('parts-page') ? 'parts'
   : document.getElementById('davitSection') ? 'codes' : 'board');
 
-/** Drawn when first opened, and again when the account turns out to be an admin, or no longer one. */
+/** Drawn when first opened, and again when the reader turns out to be someone else: another role, an admin or no longer one. */
 function build() {
   const host = document.getElementById('helpBody');
   const admin = Boolean(isAdmin());
-  if (!host || built === admin) return;
-  built = admin;
+  const role = roleNow() || null;
+  const key = `${role}:${admin}`;
+  if (!host || built === key) return;
+  built = key;
   host.textContent = '';
-  for (const section of helpSections(pageHere(), { admin })) {
+  for (const section of helpSections(pageHere(), { admin, role })) {
     host.append(el('h3', 'help-section', section.title));
     for (const t of section.topics) {
       const d = document.createElement('details');
@@ -618,9 +650,13 @@ export function openHelp() {
   document.getElementById('helpOverlay')?.classList.add('show');
 }
 
-/** @param {{admin?: () => boolean}} [opts]  whether the account is an admin, asked each time Help opens */
-export function wireHelp({ admin } = {}) {
+/**
+ * @param {{admin?: () => boolean, role?: () => string|null}} [opts]  whether the account is an admin,
+ *        and its role, asked each time Help opens
+ */
+export function wireHelp({ admin, role } = {}) {
   if (admin) isAdmin = admin;
+  if (role) roleNow = role;
   const close = () => document.getElementById('helpOverlay')?.classList.remove('show');
   document.getElementById('helpBtn')?.addEventListener('click', openHelp);
   document.getElementById('helpClose')?.addEventListener('click', close);

@@ -320,7 +320,7 @@ let entered = false;
 function enter() {
   if (entered) return;
   entered = true;
-  wireHelp({ admin: () => Auth.isMaster });
+  wireHelp({ admin: () => Auth.isMaster, role: () => Auth.role });
   wireTabs();
   wireSearch();
   wireMaterials();
