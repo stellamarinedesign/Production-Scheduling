@@ -91,7 +91,7 @@ function shutOut(overlay) {
     for (const s of n.parentElement?.children ?? []) {
       if (s === n || s.inert || s.id === 'toast' || /^(SCRIPT|STYLE|LINK|IFRAME)$/.test(s.tagName)) continue;
       // Hubinator's screens are drawn over the page by the hub, not the board.
-      if (/shub/.test(String(s.className))) continue;
+      if (/\bshub/.test(String(s.className))) continue;
       s.inert = true;
       shut.push(s);
     }
