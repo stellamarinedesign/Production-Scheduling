@@ -45,7 +45,7 @@ import {
   chosenModel, inheritedModel,
 } from './plinths.js';
 import {
-  supported, rootState, allowRoot, chooseRoot, pathWithin, handleAt, listFiles, listFolders,
+  supported, rootState, allowRoot, chooseRoot, pathWithin, handleAt, listFiles, listFolders, within,
   droppedHandles,
 } from './stella-folder.js';
 import {
@@ -82,6 +82,11 @@ const LOADING = 'Loading…';
 const SEARCHING = 'Searching…';
 const NO_FOLDER = 'Folder not connected';
 const NOT_READ = 'Could not be read';
+// A source not read in this long is said not to be read, with a Retry, rather
+// than searched for good. A real one takes well under a second.
+let SOURCE_WITHIN = 20000;
+/** For the tests. */
+export const _sourceLimit = (ms) => { SOURCE_WITHIN = ms; };
 
 /**
  * @param {Object} job  a board job
@@ -480,7 +485,11 @@ async function refreshDocs() {
 }
 
 /** One source's documents; or that it has gone, could not be read, or that the browser wants to ask about the folder again. */
-async function readSource(root, s) {
+function readSource(root, s) {
+  return within(readSourceNow(root, s), SOURCE_WITHIN, { docs: [], unread: true }, `reading ${s.path}`);
+}
+
+async function readSourceNow(root, s) {
   // A standard item's documents say which item they are, the plinth's that they are its; the rest, where they are.
   const item = s.standard ? itemById(s.standard)?.name : s.plinth ? 'Plinth' : null;
   try {
