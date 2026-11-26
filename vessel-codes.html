@@ -138,6 +138,7 @@
     "./js/board-columns.js": "./js/board-columns.js?v=2026-11-25.1",
     "./js/boot.js": "./js/boot.js?v=2026-11-25.1",
     "./js/busy.js": "./js/busy.js?v=2026-11-25.1",
+    "./js/code-edits.js": "./js/code-edits.js?v=2026-11-25.1",
     "./js/codes-page.js": "./js/codes-page.js?v=2026-11-25.1",
     "./js/codes-print.js": "./js/codes-print.js?v=2026-11-25.1",
     "./js/collapse.js": "./js/collapse.js?v=2026-11-25.1",
@@ -186,13 +187,18 @@
 <link rel="modulepreload" href="js/version.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/codes-print.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/davits.js?v=2026-11-25.1">
+<link rel="modulepreload" href="js/transform.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/help.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/boot.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/dialog.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/toast.js?v=2026-11-25.1">
+<link rel="modulepreload" href="js/ask.js?v=2026-11-25.1">
+<link rel="modulepreload" href="js/busy.js?v=2026-11-25.1">
+<link rel="modulepreload" href="js/words.js?v=2026-11-25.1">
+<link rel="modulepreload" href="js/code-edits.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/press.js?v=2026-11-25.1">
 <link rel="modulepreload" href="js/firebase.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/transform.js?v=2026-11-25.1">
+<link rel="modulepreload" href="js/field.js?v=2026-11-25.1">
 <!-- importmap:end -->
 </head>
 <body>
@@ -212,7 +218,7 @@
 
 <main>
   <div class="provenance">
-    <span><b>DISPLAY</b> is what the floor reads and what the board prints.</span>
+    <span><b>Display code</b>: what the floor reads and the board prints.</span>
     <span class="spacer" style="margin-left:auto"></span>
     <span id="storeMode"></span>
     <span id="pageVersion" title="Which build is on screen. If this is not the version you were told to expect, the browser is holding an old copy — reload with Ctrl+Shift+R."></span>
@@ -220,12 +226,7 @@
 
   <div class="state" id="codesDenied" hidden></div>
 
-  <div class="state" id="codesEmpty" hidden>
-    <strong>No vessel codes stored yet</strong>
-    Codes are created by answering the prompts on import, and live in Firestore.
-    A store that has never been seeded starts empty — see the private SETUP
-    document for how to load the starting map into a fresh project.
-  </div>
+  <div class="state" id="codesEmpty" hidden></div>
 
   <div id="warnings"></div>
 
@@ -234,9 +235,9 @@
     <button class="tab" id="modeProducts" aria-current="false">Split by product</button>
     <span class="spacer"></span>
     <span class="hint" id="modeHint"></span>
-    <button class="mini" id="saveCodes" title="Download the current map as JSON — a backup, and how you move it to another environment">Save file</button>
-    <button class="mini" id="loadCodes" title="Load a code map from a JSON file on this machine">Load file…</button>
-    <input type="file" id="codesFile" accept=".json,application/json" hidden>
+    <button class="mini" id="saveCodes">Download codes</button>
+    <button class="mini" id="loadCodes" hidden>Load codes…</button>
+    <input type="file" id="codesFile" accept=".json,application/json" aria-label="File of vessel codes" hidden>
     <button class="mini" id="previewSheet" aria-pressed="false">Cheat sheet</button>
     <button class="primary" id="printSheet">Print cheat sheet</button>
   </div>
@@ -251,7 +252,7 @@
   <div id="codesPrintRoot" hidden><div id="codesSheet"></div></div>
 
   <div class="codes-head">
-    <div>Stella</div><div>ERP codes</div><div>Model</div><div>Hull</div>
+    <div>Display code</div><div>ERP codes</div><div>Model</div><div>Hull</div>
     <div>Products</div><div></div>
   </div>
   <div id="rows"></div>
@@ -262,7 +263,7 @@
   <div id="davitSection" hidden>
     <div class="codes-cat-static">Davits by boat</div>
     <div class="codes-head">
-      <div>Stella</div><div>Model</div><div>Hull</div><div>Davit</div><div></div>
+      <div>Display code</div><div>Model</div><div>Hull</div><div>Davit</div><div></div>
     </div>
     <div id="davitRows"></div>
   </div>
