@@ -319,9 +319,8 @@ async function readAll() {
   const reads = { record: Store.loadParts(), overrides: Store.loadPartOverrides(), materials: Store.loadMaterials() };
   const got = {};
   const errors = {};
-  for (const [what, answer] of Object.entries(reads)) {
-    await answer.then((v) => { got[what] = v; }, (e) => { errors[what] = e; });
-  }
+  await Promise.all(Object.entries(reads).map(([what, answer]) =>
+    answer.then((v) => { got[what] = v; }, (e) => { errors[what] = e; })));
   return { got, failed: errors };
 }
 
@@ -831,7 +830,7 @@ function wireDrop(zone, input, take) {
 /** The material pills, then the form pills for the chosen material. */
 function renderMaterialPills() {
   const groups = materialGroups(mindex);
-  let g = groups.find((x) => x.category === mfilters.category);
+  const g = groups.find((x) => x.category === mfilters.category);
   // One left on from before, and gone from the sheet since.
   if (!g) mfilters.category = null;
   if (!g?.subs.some((s) => s.subcategory === mfilters.subcategory)) mfilters.subcategory = null;
@@ -1451,8 +1450,8 @@ const descOf = (partId) => {
   return part ? effective(part, overrides).desc : '';
 };
 
-/** Who made a correction and when; and, in words, how many exports it has been through since. */
-const madeBy = (o) => `${o.createdBy && o.createdBy === who ? 'you' : whoShort(o.createdBy ?? (who ? null : 'you'))}, ${fmtDate(o.createdAt)}`;
+/** Who made a correction and when - you, or the name before the @ - and, in words, how many exports it has been through. */
+const madeBy = (o) => `${(o.createdBy ?? null) === who ? 'you' : o.createdBy ? whoShort(o.createdBy) : 'someone'}, ${fmtDate(o.createdAt)}`;
 const survived = (o) => (o.importsPending ? `Still unfixed after ${count(o.importsPending, 'export')}` : '');
 
 function renderFix() {
