@@ -53,18 +53,32 @@ function openDb() {
 const scratch = new Map();
 let scratchCleared = false;
 
-function request(mode, run) {
-  return openDb().then((db) => new Promise((resolve) => {
+// A REQUEST HAS THE SAME LIMIT AS THE OPEN. A page of the board left a moment
+// ago - another app opened in its place, the tab switched - can still be
+// holding the database, and a request queued behind it waits for as long as
+// that takes. Unlimited, the saved copy never arrived and start-up waited on
+// it for good; this is what hung design scheduling on an iPad (25 Nov 2026).
+// A request that does not answer promptly is no answer: the page loads from
+// the server as it always did.
+export const ANSWER_WITHIN = 1500;
+
+/** One request on an open database, null when it fails or does not answer in time. */
+export function _ask(db, mode, run, within = ANSWER_WITHIN) {
+  return new Promise((resolve) => {
     if (!db) { resolve(null); return; }
+    const timer = setTimeout(() => resolve(null), within);
+    const done = (v) => { clearTimeout(timer); resolve(v); };
     try {
       const tx = db.transaction(DB_STORE, mode);
       const r = run(tx.objectStore(DB_STORE));
-      tx.oncomplete = () => resolve(r?.result ?? null);
-      tx.onerror = () => resolve(null);
-      tx.onabort = () => resolve(null);
-    } catch { resolve(null); }
-  }));
+      tx.oncomplete = () => done(r?.result ?? null);
+      tx.onerror = () => done(null);
+      tx.onabort = () => done(null);
+    } catch { done(null); }
+  });
 }
+
+const request = (mode, run) => openDb().then((db) => _ask(db, mode, run));
 
 /** Never throws, never waits long; null when there is nothing or no store. */
 export const deviceCache = {
