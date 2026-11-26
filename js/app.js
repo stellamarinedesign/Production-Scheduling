@@ -1028,8 +1028,10 @@ async function commitImport() {
     learnFrom(src.rows),
   ]);
   // One closing word for the lot. What failed has its own, where it can be retried.
+  // Saved on this device only, or in test mode, it reached nobody else.
   if (shared && filed) {
-    toast(`Export imported and shared: ${count(orders, 'production order')}`
+    const reach = Store.mode === 'firestore' && !isTestMode() ? 'imported and shared' : 'imported';
+    toast(`Export ${reach}: ${count(orders, 'production order')}`
       + `${leaving.length ? `, ${count(leaving.length, 'job')} moved to History` : ''}.`, 6000);
   }
 }
