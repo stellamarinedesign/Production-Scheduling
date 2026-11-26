@@ -27,7 +27,7 @@ import { today } from './transform.js';
 import { wireHelp } from './help.js';
 import { startup, keepWatch } from './boot.js';
 import { watchDialogs, keepFocus } from './dialog.js';
-import { toast, toastFailed } from './toast.js';
+import { toast, toastFailed, unsay } from './toast.js';
 import { ask, choose } from './ask.js';
 import { busy } from './busy.js';
 import { count, failure } from './words.js';
@@ -554,8 +554,8 @@ function faultLines(ledger, keys) {
     const line = el('div', 'cx-fault');
     line.setAttribute('role', 'alert');
     line.append(el('span', null, f.words),
-      rowButton('Retry', 'retry', `${f.edit.kind}|${keys[0]}`, () => ledger.retry(f)),
-      rowButton('Dismiss', 'dismiss', `${f.edit.kind}|${keys[0]}`, () => ledger.dismiss(f)));
+      rowButton('Retry', 'retry', `${f.edit.kind}|${keys[0]}`, () => { unsay(f.words); ledger.retry(f); }),
+      rowButton('Dismiss', 'dismiss', `${f.edit.kind}|${keys[0]}`, () => { unsay(f.words); ledger.dismiss(f); }));
     out.push(line);
   }
   return out;
