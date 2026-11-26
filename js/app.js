@@ -409,7 +409,14 @@ async function start(st) {
   // No upload, no controls, no edit affordances — that is the whole point of
   // the role, and the rules deny those writes regardless.
   if (st.role === ROLE.FLOOR) { await startFloor(); booting(false); return; }
-  if (st.role === ROLE.ENGINEER) { $('engineerHome').hidden = false; booting(false); watch.done(); return; }
+  if (st.role === ROLE.ENGINEER) {
+    $('engineerHome').hidden = false;
+    // Help is in the header for an engineer too, and did nothing here.
+    if (!engineerWired) { engineerWired = true; wireHelp(); }
+    booting(false);
+    watch.done();
+    return;
+  }
 
   // ONE WAIT, ONE DOWNLOAD. Everything the board is built from arrives
   // together: in Firestore mode as the live listeners' first answers, which
@@ -451,6 +458,7 @@ async function start(st) {
  * once: the saved copy and the server's answer both come through here.
  */
 let managerWired = false;
+let engineerWired = false;
 function enterManager({ settings, codeMap, overrides, itemOverrides, packages }) {
   state.settings = settings;
   // Before anything is built: no builders, no vessel codes. See vessel-codes.js.
