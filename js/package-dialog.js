@@ -87,6 +87,21 @@ const NOT_READ = 'Could not be read';
 let SOURCE_WITHIN = 20000;
 /** For the tests. */
 export const _sourceLimit = (ms) => { SOURCE_WITHIN = ms; };
+// A document's bytes not read in this long, for printing, for Word or for the
+// production number box, are said not to be read, like a file that has gone,
+// rather than the button saying Preparing for good. A minute, since a file
+// kept online only (OneDrive) is fetched first; a real one takes seconds.
+let READ_WITHIN = 60000;
+/** For the tests. */
+export const _readLimit = (ms) => { READ_WITHIN = ms; };
+const LATE = Symbol('late');
+
+/** A document's bytes, or a TimeoutError once they have not come in READ_WITHIN. */
+async function bytesOf(d) {
+  const got = await within(d.handle.getFile().then((f) => f.arrayBuffer()), READ_WITHIN, LATE, `reading ${d.path}`);
+  if (got === LATE) throw new DOMException(`${d.path} did not answer`, 'TimeoutError');
+  return got;
+}
 
 /**
  * @param {Object} job  a board job
@@ -573,7 +588,7 @@ async function lookForBoxes() {
       if (!d) return;
       let has = null;
       try {
-        has = await hasBox(await (await d.handle.getFile()).arrayBuffer(), d.use);
+        has = await hasBox(await bytesOf(d), d.use);
       } catch (e) {
         if (e.library) return;                  // the reader did not load; printing says so
       }
@@ -990,7 +1005,7 @@ async function printPackage() {
   const { job } = mine;
   const title = `${job.prod_no} package`;
   const got = await prepare('print', list, 'Package not printed', printPackage, async (d) => {
-    const bytes = await (await d.handle.getFile()).arrayBuffer();
+    const bytes = await bytesOf(d);
     if (d.kind !== 'checklist') return bytes;
     const out = await stampChecklistPdf(bytes, { prodNo: job.prod_no, due: job.due_display });
     boxes.set(boxKey(d), out.filled > 0);
@@ -1056,7 +1071,7 @@ async function downloadWord() {
   const mine = ctx;
   const { job } = mine;
   const got = await prepare('download', list, 'Word documents not downloaded', downloadWord, async (d) => {
-    const bytes = await (await d.handle.getFile()).arrayBuffer();
+    const bytes = await bytesOf(d);
     const out = await fillChecklistDocx(bytes, { prodNo: job.prod_no, due: job.due_display });
     boxes.set(boxKey(d), out.filled > 0);
     const url = URL.createObjectURL(new Blob([out.bytes], { type: DOCX_TYPE }));

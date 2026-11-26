@@ -698,7 +698,7 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
   .offstage,
   #boardWrap > section,
   #importPage,
-  header, #authView, #toast, .overlay, .test-mode,
+  header, #authView, #toast, .overlay, .test-mode, .shub,
   .provenance, #dropZone, .controls, #warnings, .tabs, .view-bar,
   .fit-status, #floorEmpty, #emptyState { display: none !important; }
 
@@ -1061,6 +1061,14 @@ header .cog {
   width: 36px; height: 36px; font-size: 19px; line-height: 1; cursor: pointer; padding: 0;
 }
 header .cog:hover { border-color: var(--red-bright); color: var(--white); }
+/* The hub's app switcher (hub-bridge.js) and the cog, one pair, 4px apart: the
+   header wraps on a phone, and the two go together. Empty - a login with one
+   app, local mode, no hub - the slot takes no room. */
+header .hd-end { display: flex; align-items: center; gap: 4px; }
+.hd-apps { display: flex; }
+.hd-apps:empty { display: none; }
+/* The grid button keeps the hub's own look and size (Pete, 26 Nov 2026): it is
+   the same button in every Stella app. */
 .box.settings { max-width: 640px; }
 .settings-section + .settings-section { margin-top: 18px; }
 .settings-label {

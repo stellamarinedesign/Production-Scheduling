@@ -139,8 +139,14 @@ function lastResponse() {
   return t;
 }
 
-/** No dialog open: a reload now would lose nothing. */
-const nothingOpen = () => !document.querySelector('.overlay.show, dialog[open]');
+// THE HUB'S OWN SCREENS. `.shub-screen` is every full screen Hubinator draws
+// over the page - its sign-in, "link your login", its cards - and `.shub-scrim`
+// its password dialog. The sign-in waits for a person, for as long as they
+// take; the Hubinator session keeps these two names for exactly this.
+const HUB_SCREENS = '.shub-screen, .shub-scrim';
+
+/** No dialog open, the hub's included: a reload now would lose nothing. */
+const nothingOpen = () => !document.querySelector(`.overlay.show, dialog[open], ${HUB_SCREENS}`);
 
 /**
  * Watch the page's start-up, one step at a time.
@@ -172,6 +178,9 @@ export function startup({ canReload = nothingOpen, limit = LIMIT, online = () =>
   const arm = (ms = limit) => { clearTimeout(timer); timer = setTimeout(expire, ms); };
   function expire() {
     if (finished) return;
+    // Somebody at the hub's sign-in, or in its password dialog, is typing, not
+    // waiting: the page is neither reloaded under them nor said to be stuck.
+    if (document.querySelector(HUB_SCREENS)) { arm(); return; }
     if (!online()) { B.say('offline'); return; }                         // `online` arms again
     // Still arriving - a slow link, not a dead one: give it the time.
     if (!failing && performance.now() - progress() < limit) { arm(); return; }
