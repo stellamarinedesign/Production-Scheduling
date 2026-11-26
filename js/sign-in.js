@@ -6,14 +6,17 @@
 // people to the board and back, and have it where they are. It is a real form,
 // so a password manager fills it and hears when it is sent, Enter sends it once,
 // and what is wrong is said at the field it is wrong in.
+//
+// THE FALLBACK, since the board joined the hub: a new sign-in goes through
+// Hubinator's own screen, and this form shows only when the hub cannot be
+// reached. It has no reset link any more: a reset changes the password the
+// hub's key for the board relies on.
 
 import { Auth, tidyEmail, isEmail, isWrongPassword, friendlyAuthError } from './auth.js';
 import { NO_ACCESS, askAccess, standing } from './access.js';
 import { Store } from './store.js';
 import { busy } from './busy.js';
 import { refuse, accept } from './field.js';
-import { isNotAvailable, NOT_AVAILABLE } from './test-mode.js';
-import { toast } from './toast.js';
 import { failure } from './words.js';
 
 const el = (tag, cls, text) => {
@@ -58,10 +61,9 @@ export function signInForm({ signedIn, answerWithin = ANSWER_WITHIN } = {}) {
   const pass = Object.assign(el('input'), { type: 'password', name: 'password', autocomplete: 'current-password', required: true });
 
   const btn = Object.assign(el('button', 'primary', 'Sign in'), { id: 'loginBtn', type: 'submit' });
-  const reset = Object.assign(el('button', 'linkish', 'Email me a password reset link'), { id: 'resetBtn', type: 'button' });
   const line = Object.assign(el('div'), { id: 'loginErr' });
   line.setAttribute('role', 'status');
-  form.append(field('loginEmail', 'Email', email), field('loginPass', 'Password', pass), btn, reset, line);
+  form.append(field('loginEmail', 'Email', email), field('loginPass', 'Password', pass), btn, line);
 
   /** The line under the form: a failure, or dimmed when it is only news. */
   const say = (words, { news = false } = {}) => {
@@ -98,25 +100,6 @@ export function signInForm({ signedIn, answerWithin = ANSWER_WITHIN } = {}) {
       clearTimeout(late);
       sending = false;
     }
-  });
-
-  // Lets somebody set a password nobody else has seen - including whoever
-  // created their account.
-  reset.addEventListener('click', async () => {
-    clear();
-    const address = email.value.trim();
-    if (!isEmail(address)) { refuse(email, address ? NOT_AN_EMAIL : 'Type your email address first.'); return; }
-    try {
-      await busy(reset, 'Sending…', () => Auth.sendPasswordReset(address));
-    } catch (e) {
-      if (isNotAvailable(e)) { toast(NOT_AVAILABLE); return; }
-      if (!isWrongPassword(e)) { say(friendlyAuthError(e, 'Reset link not sent')); return; }
-    }
-    // Firebase answers identically for an address that has no account, so
-    // promising "it has been sent" would be a lie for a typo. Say what was
-    // actually done, and where to look.
-    say(`If ${address} has an account, a link to set a password is on its `
-      + 'way. It can take a minute, and it may land in junk mail.', { news: true });
   });
 
   return form;
@@ -157,7 +140,7 @@ export function notListed(host, email) {
   host.textContent = '';
   host.append(el('strong', null, 'This account is not on the access list yet'));
   host.append(el('div', null, `Signed in as ${email}, but nobody has given it a role. `
-    + 'Ask a master user to add it under their cog; it works from your next page load.'));
+    + 'Ask a hub master to give it a role in Hubinator; it works from your next page load.'));
   host.hidden = false;
 }
 

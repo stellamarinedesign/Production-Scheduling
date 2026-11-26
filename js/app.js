@@ -12,6 +12,7 @@ import { stellaCode, labelFor, existingBoats, acceptNewCode, applyTemplate,
 import { Auth, ROLE, setManagers, setEngineers, setMasters, setTesters, tidyEmail } from './auth.js';
 import { standing } from './access.js';
 import { signInForm, focusSignIn, readAccess, notListed, offerManager } from './sign-in.js';
+import { savedCopyAllowed, hubNote } from './hub-bridge.js';
 import { prefs, showTestMode, isNotAvailable, NOT_AVAILABLE, isTestMode, carryFlag } from './test-mode.js';
 import { VERSION } from './version.js';
 import { wireHelp } from './help.js';
@@ -175,6 +176,8 @@ let savedFor = null;
   watch.step('sign-in');
   const mode = await Auth.init(async (st) => {
     const saved = await early;
+    // The hub's full-screen card is up: it is the answer, with nothing behind it.
+    if (st.role === ROLE.NONE && Auth.hubCard) { await forget(); watch.done(); $('appShell').hidden = true; return; }
     const other = saved && st.role !== ROLE.NONE && tidyEmail(st.email) !== saved.email;
     if (st.role === ROLE.NONE || other) {
       // Signed out, or somebody else: nothing saved stays for them, and a page
@@ -184,7 +187,7 @@ let savedFor = null;
       if (st.role === ROLE.NONE) { watch.done(); showAuth(); return; }
     }
     await start(st);
-  });
+  }, { forget });
   // A configured board whose SDK did not load: the page starts again on fresh
   // connections, once, and says so after that.
   if (mode === 'failed') watch.retry();
@@ -206,6 +209,8 @@ async function drawSaved() {
   if (!isConfigured() || isTestMode()) return null;
   const session = await recallSession();
   if (!session) return null;
+  // Signed out of the hub since, or somebody else is signed in to it here.
+  if (!savedCopyAllowed(hubNote(), session.email)) { await forget(); return null; }
   const { email, role } = session;
   const manager = role === ROLE.MANAGER || role === ROLE.TESTER;
   let data = null;
@@ -251,9 +256,14 @@ async function drawSaved() {
  * device that cannot forget never reloads in a loop; the page goes on as it is.
  */
 async function startAgain(saved) {
+  await forget();
+  return Boolean(saved) && window.__boot?.reloadOnce?.() === true;
+}
+
+/** Forget what this device holds: the saved copies (boot.js) and the board's rows. */
+async function forget() {
   await forgetDevice();
   Store.clearCache();
-  return Boolean(saved) && window.__boot?.reloadOnce?.() === true;
 }
 
 /** The role on the page: what is drawn, and the account in the header. */

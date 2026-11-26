@@ -39,6 +39,7 @@ import {
 } from './parts.js';
 import { startup, keepWatch, deviceCache, recallSession, rememberSession, forgetDevice, hold, isHeld, LOST_FOR } from './boot.js';
 import { isConfigured } from './firebase.js';
+import { savedCopyAllowed, hubNote } from './hub-bridge.js';
 import './press.js';
 
 const $ = (id) => document.getElementById(id);
@@ -122,7 +123,7 @@ let savedFor = null;
   watch.step('sign-in');
   const first = await new Promise((resolve) => {
     let done = false;
-    Auth.init((st) => { if (!done) { done = true; resolve(st); } })
+    Auth.init((st) => { if (!done) { done = true; resolve(st); } }, { forget })
       .then((mode) => {
         if (mode !== 'failed') return;
         // Offline is said already, and waited out; else the page reloads, once.
@@ -132,6 +133,13 @@ let savedFor = null;
       });
   });
   const saved = await early;
+  // The hub's full-screen card is up: it is the answer, with nothing drawn behind it.
+  if (first.role === ROLE.NONE && Auth.hubCard) {
+    await forget();
+    for (const n of document.querySelectorAll('body > header, body > main')) n.hidden = true;
+    watch.done();
+    return;
+  }
   if (first.role === ROLE.NONE || (saved && tidyEmail(first.email) !== saved.email)) {
     // Signed out, or somebody else: nothing saved stays for them.
     await forgetDevice();
@@ -191,6 +199,12 @@ let savedFor = null;
   watch.done();
   stalled(e);
 });
+
+/** Forget what this device holds: the saved copies (boot.js) and the board's rows. */
+async function forget() {
+  await forgetDevice();
+  Store.clearCache();
+}
 
 /**
  * Start-up has ended without a list: the waiting stops, and the way on is to
@@ -261,6 +275,8 @@ async function drawSaved() {
   if (!isConfigured() || isTestMode()) return null;
   const session = await recallSession();
   if (!session || session.role === ROLE.NONE) return null;
+  // Signed out of the hub since, or somebody else is signed in to it here.
+  if (!savedCopyAllowed(hubNote(), session.email)) { await forget(); return null; }
   const copy = await deviceCache.get('parts');
   if (!copy?.record) return null;
   Auth.assume(session.email, session.role);

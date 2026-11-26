@@ -25,7 +25,7 @@ import { fitCodesSheet, TYPE_STEPS } from './codes-print.js';
 import { davitsByBoat } from './davits.js';
 import { today } from './transform.js';
 import { wireHelp } from './help.js';
-import { startup, keepWatch } from './boot.js';
+import { startup, keepWatch, forgetDevice } from './boot.js';
 import { watchDialogs, keepFocus } from './dialog.js';
 import { toast, toastFailed, unsay } from './toast.js';
 import { ask, choose } from './ask.js';
@@ -80,6 +80,12 @@ const davitEdits = createLedger({
 });
 let tellLink = () => {};
 
+/** Forget what this device holds: the saved copies (boot.js) and the board's rows. */
+async function forget() {
+  await forgetDevice();
+  Store.clearCache();
+}
+
 (async function boot() {
   $('pageVersion').textContent = `v${VERSION}`;
   watchDialogs();
@@ -99,9 +105,16 @@ let tellLink = () => {};
   // fires asynchronously, so reading Auth.role right after init is a race.
   const first = await new Promise((resolve) => {
     let done = false;
-    Auth.init((st) => { if (!done) { done = true; resolve(st); } })
+    Auth.init((st) => { if (!done) { done = true; resolve(st); } }, { forget })
       .then((mode) => { if (mode === 'failed') watch.retry(); });
   });
+  // The hub's full-screen card is up: it is the answer, with nothing drawn behind it.
+  if (first.role === ROLE.NONE && Auth.hubCard) {
+    await forget();
+    for (const n of document.querySelectorAll('body > header, body > main')) n.hidden = true;
+    watch.done();
+    return;
+  }
 
   watch.step('connect');
   await Store.init();

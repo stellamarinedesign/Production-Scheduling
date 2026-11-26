@@ -150,6 +150,7 @@
     "./js/floor-board.js": "./js/floor-board.js?v=2026-11-26.1",
     "./js/gantt.js": "./js/gantt.js?v=2026-11-26.1",
     "./js/help.js": "./js/help.js?v=2026-11-26.1",
+    "./js/hub-bridge.js": "./js/hub-bridge.js?v=2026-11-26.1",
     "./js/import-review.js": "./js/import-review.js?v=2026-11-26.1",
     "./js/item-history.js": "./js/item-history.js?v=2026-11-26.1",
     "./js/package-changes.js": "./js/package-changes.js?v=2026-11-26.1",
@@ -205,6 +206,7 @@
 <link rel="modulepreload" href="js/press.js?v=2026-11-26.1">
 <link rel="modulepreload" href="js/firebase.js?v=2026-11-26.1">
 <link rel="modulepreload" href="js/access.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/hub-bridge.js?v=2026-11-26.1">
 <link rel="modulepreload" href="js/field.js?v=2026-11-26.1">
 <!-- importmap:end -->
 </head>
@@ -221,6 +223,8 @@
     <a href="parts">Parts</a>
     <button class="navlink" id="helpBtn" title="Explanations, in one place">Help</button>
   </nav>
+  <!-- The hub's app switcher: Hubinator draws it here, for a login with two apps or more. -->
+  <span class="hd-apps" id="hubSlot"></span>
 </header>
 
 <main>

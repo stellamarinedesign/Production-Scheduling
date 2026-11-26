@@ -273,24 +273,23 @@ export const HELP = [
           'The cog, top right, then Change password. Type the current password and the '
           + 'new one twice. It changes there and then; nothing is emailed and nobody '
           + 'else sees it. Sign out is under the same cog.',
-          'Forgotten it? Ask a master user: the password is replaced with a temporary '
-          + 'one, which you then change here.',
+          'Signed in through Hubinator, both are Hubinator\'s: the password is the one for '
+          + 'every Stella app, and Sign out signs out of all of them on this device.',
+          'Forgotten it? Ask a hub master: the login is made again in Hubinator with a '
+          + 'temporary password, which you then change here.',
         ],
       },
       {
         q: 'How is somebody given access?',
         a: [
-          'One step, by a master user: the cog, Settings, Accounts, type the address, '
-          + 'pick a role - manager, engineer, floor or tester - and Add account. That lists '
-          + 'the address and makes its sign-in, with a temporary password shown once to '
-          + 'pass on; they sign in with it and press Change password under the cog to make '
-          + 'it theirs. A tester has the manager view, always in test mode. The list is the one place a role lives, the security rules '
-          + 'read it too, and an account nobody listed can sign in and see nothing. '
-          + 'A role is changed on its row; nothing is deleted and remade.',
-          'A master user is an ordinary account - a manager, today - with the Master '
-          + 'box ticked on this list, which only a master can tick for someone else. '
-          + 'Everyone else sees under the cog just their own account, Change password, '
-          + 'Sign out and Test mode. A master cannot change or remove their own entry.',
+          'In Hubinator, by a hub master: Accounts, Add person, then a role in the '
+          + 'production board\'s column - manager, engineer, floor or tester. They sign in '
+          + 'with the temporary password shown once and press Change password under the '
+          + 'cog to make it theirs. A tester has the manager view, always in test mode. '
+          + 'The list is the one place a role lives, the security rules read it too, and an '
+          + 'account nobody listed can sign in and see nothing.',
+          'A master user sees, under the cog, the way to Hubinator\'s Accounts. Everyone '
+          + 'else sees there just their own account, Change password, Sign out and Test mode.',
         ],
       },
       {
@@ -300,9 +299,9 @@ export const HELP = [
           + 'with a name and a time - a status set or let go, Complete and Reopen, Hide '
           + 'and Show, a label, a hull, a part mark, a package, what an import '
           + 'changed and the jobs it added. The newest fifty are shown; Show older brings the next fifty. '
-          + 'The row above it narrows the list to edits or to imports. Changes to the '
-          + 'Accounts lists are shown to master users only. It is a record, not a '
-          + 'control: nothing reads it back.',
+          + 'The row above it narrows the list to edits or to imports. Changes made to the '
+          + 'Accounts lists before Hubinator are shown to master users only; Hubinator keeps '
+          + 'its own Account log. It is a record, not a control: nothing reads it back.',
           'Each line of History says under Last changed who last touched the job and when.',
         ],
       },

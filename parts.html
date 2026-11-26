@@ -147,6 +147,7 @@
     "./js/floor-board.js": "./js/floor-board.js?v=2026-11-26.1",
     "./js/gantt.js": "./js/gantt.js?v=2026-11-26.1",
     "./js/help.js": "./js/help.js?v=2026-11-26.1",
+    "./js/hub-bridge.js": "./js/hub-bridge.js?v=2026-11-26.1",
     "./js/import-review.js": "./js/import-review.js?v=2026-11-26.1",
     "./js/item-history.js": "./js/item-history.js?v=2026-11-26.1",
     "./js/package-changes.js": "./js/package-changes.js?v=2026-11-26.1",
@@ -205,6 +206,7 @@
 <link rel="modulepreload" href="js/parts.js?v=2026-11-26.1">
 <link rel="modulepreload" href="js/boot.js?v=2026-11-26.1">
 <link rel="modulepreload" href="js/firebase.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/hub-bridge.js?v=2026-11-26.1">
 <link rel="modulepreload" href="js/press.js?v=2026-11-26.1">
 <link rel="modulepreload" href="js/transform.js?v=2026-11-26.1">
 <link rel="modulepreload" href="js/vessel-codes.js?v=2026-11-26.1">
@@ -230,7 +232,10 @@
     <button class="navlink" id="helpBtn" title="Explanations, in one place">Help</button>
   </nav>
   <span class="who" id="whoami"></span>
-  <button class="cog" id="settingsBtn" title="Settings: your account, password, sign out" aria-label="Settings">&#9881;</button>
+  <!-- The hub's app switcher (Hubinator draws it in the slot, for a login with
+       two apps or more) and the cog: one pair, kept together when the header wraps. -->
+  <span class="hd-end"><span class="hd-apps" id="hubSlot"></span>
+  <button class="cog" id="settingsBtn" title="Settings: your account, password, sign out" aria-label="Settings">&#9881;</button></span>
 </header>
 
 <main>
