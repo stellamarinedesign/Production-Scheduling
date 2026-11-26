@@ -1166,11 +1166,13 @@ const corrections = writeBehind({
   },
 });
 
-// A correction the server does not have yet, because there is no connection,
-// would go with the page: the browser asks.
+// A file read and not yet applied or loaded, or a correction the server does
+// not have yet because there is no connection, would go with the page: the
+// browser asks.
 window.addEventListener('beforeunload', (e) => {
   const { n, since } = corrections.waiting();
-  if (n && (navigator.onLine === false || Date.now() - since > LOST_FOR)) e.preventDefault();
+  const unsent = n && (navigator.onLine === false || Date.now() - since > LOST_FOR);
+  if (staged || matStaged || fixStaged || unsent) e.preventDefault();
 });
 
 /** One part's entries in both lists, made again; the rest are as they were. */
@@ -1581,7 +1583,10 @@ function decide(o, action) {
  * current export before anything is written, so a correction the ERP has
  * already caught up with is reported rather than created.
  */
+let fixStaged = 0;        // corrections read from a file, not yet loaded
+
 async function reviewFixFile(file) {
+  fixStaged = 0;
   const host = $('fixLoad');
   const say = (words) => { host.replaceChildren(faultWords(words)); host.hidden = false; };
   // What the file should have been, said once, whatever was wrong with it.
@@ -1633,10 +1638,11 @@ async function reviewFixFile(file) {
   host.append(grid);
   const acts = el('div', 'import-actions');
   const n = Object.keys(toWrite).length;
+  fixStaged = n;
   const apply = el('button', 'primary', `Load ${count(n, 'correction')}`);
   apply.disabled = !n;
   const cancel = el('button', 'ghost', 'Discard import');
-  cancel.addEventListener('click', () => { host.hidden = true; discarded(); });
+  cancel.addEventListener('click', () => { host.hidden = true; fixStaged = 0; discarded(); });
   let said = null;
   apply.addEventListener('click', () => {
     host.querySelector('.fault')?.remove();
@@ -1655,6 +1661,7 @@ async function reviewFixFile(file) {
       }
       // What was saved is what is drawn: no second read to wait for.
       host.hidden = true;
+      fixStaged = 0;
       Object.assign(overrides, toWrite);
       rebuildIndexes();
       refreshEntries(Object.values(toWrite).map((o) => o.partId));

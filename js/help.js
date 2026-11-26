@@ -71,7 +71,7 @@ export const HELP = [
       {
         q: 'How do I copy from the list?',
         a: [
-          'Open a part and press Copy: it puts the code and the description on '
+          'Open a part and press Copy as one line: it puts the code and the description on '
           + 'one line, "CODE - description", ready for an email or a drawing note. '
           + 'The description is the one on screen, corrected if it has been.',
           'Copy for sheet copies the two separately, for a spreadsheet: the '
@@ -148,7 +148,7 @@ export const HELP = [
           + 'correction, accept the ERP or edit it, and keeps it if nobody says. One '
           + 'whose part has gone from the export waits on the Corrections tab for a decision.',
           'One made by mistake can be taken back. Open the part, or find it on the '
-          + 'Corrections tab, and press Remove; it asks once. The part goes back to '
+          + 'Corrections tab, and press Remove correction; it asks once. The part goes back to '
           + 'showing what the ERP says, and the correction is kept as history rather '
           + 'than counted as something the ERP fixed.',
         ],
@@ -183,7 +183,7 @@ export const HELP = [
         a: [
           'Nothing upstream records which codes mean the same boat. A manufacturer may '
           + 'issue two codes for one hull, and an office may have typed a third by hand.',
-          'Rename sets what a line reads, and Confirm accepts what it reads already. Split '
+          'Rename sets what a line reads, and Confirm code accepts what it reads already. Split '
           + 'moves a code off a line that grouped wrongly. A shared model only ever suggests '
           + 'a group; it never decides one.',
         ],
@@ -203,8 +203,8 @@ export const HELP = [
           'The manufacturer code, when there is one. A boat often carries several — a '
           + 'plain code, the same code with a voltage, one with a note appended — and the '
           + 'cheat sheet should show one.',
-          'Set it with Model on any line: pick one of the codes found in the data, or '
-          + 'type what the sheet should read. It affects the cheat sheet only; nothing '
+          'Set it with Set model on any line: pick one of the codes found in the data, or '
+          + 'Other to type what the sheet should read. It affects the cheat sheet only; nothing '
           + 'else changes.',
         ],
       },

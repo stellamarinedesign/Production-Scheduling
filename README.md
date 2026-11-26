@@ -95,8 +95,8 @@ Normalising happens in the transform, once, downstream.
   reads them from a gitignored `data/builders.json`.
 - **The display code is a human decision.** `XX16` prints as `XX06` but `XX01`
   prints as `XX01`. Both are correct and confirmed individually. It lives in
-  Firestore, and is maintained by hand. It moves on a FILE: **Save file** and
-  **Load file…** on the vessel codes page write it out and read it back, which
+  Firestore, and is maintained by hand. It moves on a FILE: **Download codes** and
+  **Load codes…** on the vessel codes page write it out and read it back, which
   is both the backup and how a map reaches a fresh environment. It used to ship
   as `data/vessel-codes.seed.json` — the product structure of every boat, one
   URL away from anybody, because a static site hands its files to whoever asks.
