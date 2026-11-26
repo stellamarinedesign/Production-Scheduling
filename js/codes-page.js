@@ -134,6 +134,7 @@ async function forget() {
   if (Auth.mode === 'firebase' && first.email) watchRole(first.email, access);
   // A tester is in test mode from here, flag or no flag; see test-mode.js.
   if (Auth.isTester) Store.enterTestMode();
+  Store.setWriter(role === ROLE.MANAGER);
   showTestMode();
   document.body.classList.toggle('role-engineer', role === ROLE.ENGINEER);
 

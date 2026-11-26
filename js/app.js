@@ -391,15 +391,19 @@ async function start(st) {
   if (savedFor && savedFor.role !== st.role) {
     dropEarly();
     if (await startAgain(savedFor)) return;
-    // It reloaded itself a moment ago: go on in this page, as the role it is.
+    // It reloaded itself a moment ago: go on in this page, as the role it is,
+    // with nothing of the saved role's board left up. The role's own view is
+    // drawn below (the floor's, the manager's); an engineer has none.
     releaseHold?.();
     releaseHold = null;
+    hideBoard();
     $('engineerHome').hidden = true;
   }
   if (Auth.mode === 'firebase') rememberSession(st.email, st.role);
   // A tester is in test mode from here, flag or no flag; see test-mode.js.
   if (Auth.isTester) Store.enterTestMode();
   showTestMode();
+  Store.setWriter(st.role === ROLE.MANAGER);
 
   // Role decides what is drawn. The Firestore rules decide what is allowed —
   // hiding a button is not security, it is tidiness.
