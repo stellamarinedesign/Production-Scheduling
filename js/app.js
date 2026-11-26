@@ -419,7 +419,7 @@ async function start(st) {
   if (st.role === ROLE.ENGINEER) {
     $('engineerHome').hidden = false;
     // Help is in the header for an engineer too, and did nothing here.
-    if (!engineerWired) { engineerWired = true; wireHelp({ admin: () => Auth.isMaster }); }
+    if (!engineerWired) { engineerWired = true; wireHelp({ admin: () => Auth.isMaster, role: () => Auth.role }); }
     booting(false);
     watch.done();
     return;
@@ -486,7 +486,7 @@ function enterManager({ settings, codeMap, overrides, itemOverrides, packages })
 
   if (managerWired) return;
   managerWired = true;
-  wireHelp({ admin: () => Auth.isMaster });
+  wireHelp({ admin: () => Auth.isMaster, role: () => Auth.role });
   wireUpload();
   wireControls();
   wireRowTaps();
@@ -742,7 +742,7 @@ async function loadLastBoard(published) {
   // This device holds an export the others never got: an import that could not
   // be shared. Said until somebody shares it.
   if (Auth.isManager && Store.mode === 'firestore' && localAt > remoteAt && !isTestMode()) {
-    state.share = { words: 'Not shared with the other managers.' };
+    state.share = { words: 'Board not shared.' };
   }
   rebuild();
   if (shownAt && (pick.source.retrievedAt ?? '') > shownAt) toastNewer(pick.source);
@@ -897,7 +897,7 @@ function showFloor(published) {
   // orders for now; the other lanes stay behind the manager's tabs.
   if (!floorWired) {
     floorWired = true;
-    wireHelp({ admin: () => Auth.isMaster });
+    wireHelp({ admin: () => Auth.isMaster, role: () => Auth.role });
     wireRowTaps();
     wireCollapseAll();
   }
@@ -1151,7 +1151,7 @@ async function shareBoard({ quiet = false } = {}) {
   state.share = words ? { words } : null;
   renderShare();
   if (words) toastFailed(words);
-  else if (!quiet) toast('Board shared with the other managers.');
+  else if (!quiet) toast('Board shared.');
   return !words;
 }
 
@@ -1217,7 +1217,7 @@ async function publish(rows) {
     return null;
   } catch (e) {
     console.error('[publish]', e);
-    return failure('Not shared with the other managers', e);
+    return failure('Board not shared', e);
   }
 }
 
