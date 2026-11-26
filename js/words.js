@@ -13,15 +13,24 @@ const WHY = {
   offline: { why: 'no connection', next: 'Retry when the connection returns.' },
   // Nothing about roles: a person never reads that roles exist (Pete, 26 Nov 2026).
   refused: { why: 'access for this account not set up', next: 'Notify the admin.' },
+  // Signed out in another app, or the sign-in ran out: the rules refuse a
+  // write from nobody as they refuse one from an account without access, and
+  // the two are told apart here (Pete, 27 Nov 2026).
+  signedOut: { why: 'no longer signed in', next: 'Reload the page to sign in.' },
   full: { why: 'the database has reached its daily limit', next: 'Retry tomorrow.' },
   other: { why: 'not accepted by the server', next: 'Retry; report it if it fails again.' },
 };
+
+let signedIn = () => true;
+/** How to tell whether anybody is signed in: auth.js says, since this file cannot import it. */
+export function knowSignedIn(fn) { signedIn = fn; }
 
 /** Which of the few reasons a person can do anything about this error is. */
 export function cause(e, online = navigator.onLine !== false) {
   const code = String(e?.code ?? '');
   const msg = String(e?.message ?? '');
-  if (/permission-denied|unauthenticated/.test(code) || /insufficient permissions/i.test(msg)) return 'refused';
+  if (/unauthenticated/.test(code)) return 'signedOut';
+  if (/permission-denied/.test(code) || /insufficient permissions/i.test(msg)) return signedIn() ? 'refused' : 'signedOut';
   if (/resource-exhausted/.test(code)) return 'full';
   if (!online || /unavailable|deadline-exceeded|network-request-failed|cancelled/.test(code)
       || /failed to fetch|load failed|networkerror/i.test(msg)) return 'offline';

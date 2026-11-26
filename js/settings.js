@@ -125,9 +125,11 @@ function renderAccount() {
   const err = el('div', 'form-err');
   err.setAttribute('role', 'alert');
   err.hidden = true;
+  // Not in test mode, where it could only say it is not available: a control
+  // that cannot be used is not shown (Pete, 27 Nov 2026).
   const pw = el('button', 'mini', 'Change password');
+  pw.hidden = isTestMode();
   pw.addEventListener('click', () => {
-    if (isTestMode()) { openPasswordDialog(); return; }        // says it is not available, and opens nothing
     close();
     if (!Auth.viaHub) { openPasswordDialog(); return; }
     // The hub's own dialog. It opens from the hub's file, which can fail to arrive.

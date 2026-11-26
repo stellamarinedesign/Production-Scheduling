@@ -13,7 +13,7 @@
 // hub's key for the board relies on.
 
 import { Auth, tidyEmail, isEmail, isWrongPassword, friendlyAuthError } from './auth.js';
-import { NO_ACCESS, askAccess, standing } from './access.js';
+import { NO_ACCESS, askAccess, standing, placeOf } from './access.js';
 import { Store } from './store.js';
 import { busy } from './busy.js';
 import { refuse, accept } from './field.js';
@@ -132,6 +132,39 @@ export async function readAccess(watch) {
   });
   if (said) window.__boot?.say?.(null);
   return access;
+}
+
+/**
+ * A ROLE CHANGED UNDER AN OPEN PAGE. The page is drawn for the role the
+ * account had when it loaded: shown what that role may do and nothing else,
+ * so nobody is offered a control the rules will refuse. Hubinator changes the
+ * lists at any time, so the page watches them, and starts again when this
+ * account's place on them changes - its role, admin or not, listed or not -
+ * once no dialog is open, so nothing being typed is lost. Taken off every
+ * list, the lists can no longer be read at all: that refusal is the change.
+ * @param {string} email
+ * @param {object} access  the lists the page was drawn from
+ * @param {object} [opts]  `again` starts the page again; `watch` and `open` are the tests' seams
+ * @returns {() => void} stop watching
+ */
+export function watchRole(email, access, {
+  again = () => location.reload(),
+  watch = (cb, err) => Store.watchAccess(cb, err),
+  open = () => Boolean(document.querySelector('.overlay.show, dialog[open]')),
+  wait = 2000,
+} = {}) {
+  const was = placeOf(access, email);
+  let going = false;
+  const go = () => {
+    if (open()) { setTimeout(go, wait); return; }
+    again();
+  };
+  const changed = () => { if (going) return; going = true; go(); };
+  return watch((now) => {
+    if (now && placeOf(now, email) !== was) changed();
+  }, (e) => {
+    if (/permission-denied/.test(String(e?.code ?? '')) && standing(access, email) === 'listed') changed();
+  });
 }
 
 /** For an account on no list: it can read nothing, and that is what it is told. */

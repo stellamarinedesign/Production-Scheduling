@@ -108,6 +108,13 @@ export function roleOf(access, email) {
 export const isMaster = (access, email) => Boolean(access?.masters?.includes(tidyEmail(email)));
 
 /**
+ * Where an address stands, as one string: on a list or not, its role, admin
+ * or not. A page is drawn for one of these, and is drawn again when it changes
+ * (sign-in.js, watchRole).
+ */
+export const placeOf = (access, email) => `${standing(access, email)}:${roleOf(access, email)}:${isMaster(access, email)}`;
+
+/**
  * Every listed account as a row, masters first, then by role, then by
  * address. An address on no role list but on the masters list is still
  * shown, as floor.

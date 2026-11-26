@@ -26,7 +26,7 @@
 // fallback while the hub is new - the form shows when the hub cannot be
 // reached - and go in the clean-up release.
 import { isTestMode, enterTestMode, notAvailable, NOT_AVAILABLE } from './test-mode.js';
-import { failure } from './words.js';
+import { failure, knowSignedIn } from './words.js';
 import { askForHub, joinHub, showSwitcher, noUserAction } from './hub-bridge.js';
 
 let managerEmails = [];
@@ -133,6 +133,8 @@ export const Auth = {
 
     this.mode = 'firebase';
     this._fb = fb;
+    // A refused write from nobody is said as that, not as an account without access.
+    knowSignedIn(() => Boolean(fb.auth.currentUser));
     // The page starts again, for whoever the hub says it is now: nothing this
     // device holds is kept for them.
     let leaving = false;

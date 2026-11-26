@@ -554,6 +554,18 @@ export const Store = {
    * board nobody has been given looks like. The board offered itself to whoever
    * was on no list, and the Accounts panel offered to save from nothing.
    */
+  /**
+   * The lists, each time they change: Hubinator writes them, and a page open
+   * at the time is drawn for the role it had (sign-in.js, watchRole). `null`
+   * while there is no document.
+   */
+  watchAccess(cb, onError) {
+    return this._watch(
+      (fs, db) => fs.doc(db, 'settings', 'access'),
+      (snap) => cb(snap.exists() ? markLoaded(normaliseAccess(snap.data())) : null),
+      onError);
+  },
+
   async loadAccess() {
     if (this.mode === 'local') return { managers: ['*'], engineers: [], floor: [], masters: [], testers: [] };
     const { doc } = this._fs;
@@ -1027,6 +1039,27 @@ export const Store = {
    * otherwise a live update would drop the seed-only fields and a code could
    * lose its `boat` mid-session.
    */
+  // WRITES NOBODY ASKED FOR WAIT FOR THE ROLE. The codes listener tidies the
+  // stored codes on its first answer (seeding a fresh environment, rewriting
+  // the old model key), and the pages ask for it before the access lists have
+  // said who this is. Only a manager may write the codes, so that waits until
+  // the page has said whether this is a manager's browser: setWriter. Nobody
+  // else's browser tries, and so nobody else is refused.
+  _writer: null,
+  _chores: [],
+
+  /** Whether this browser may make the writes nobody asked for: a manager's (not a tester's). */
+  setWriter(yes) {
+    this._writer = Boolean(yes);
+    const parked = this._chores.splice(0);
+    if (this._writer) for (const f of parked) f();
+  },
+
+  _chore(f) {
+    if (this._writer) f();
+    else if (this._writer === null) this._chores.push(f);
+  },
+
   watchCodes(cb, onError) {
     if (this.mode !== 'firestore') return () => {};
     let seed = null;
@@ -1053,12 +1086,14 @@ export const Store = {
         // The server's first answer is the board's load of the codes, so it
         // does what loadCodes does with one: seed a fresh environment, and
         // rewrite records still on the old model key (see loadCodes).
+        // A manager's writes: they wait until the page has said whose browser this is.
         if (meta?.confirmed && !Object.keys(stored).length && Object.keys(seed ?? {}).length) {
           const { doc, setDoc } = this._fs;
-          await Promise.all(Object.entries(seed).map(([code, entry]) =>
-            setDoc(doc(this._db, 'vesselCodes', codeDocId(code)), entry))).catch((e) => console.warn('[codes] seed', e.message));
+          const all = seed;
+          this._chore(() => Promise.all(Object.entries(all).map(([code, entry]) =>
+            setDoc(doc(this._db, 'vesselCodes', codeDocId(code)), entry))).catch((e) => console.warn('[codes] seed', e.message)));
         } else if (meta?.confirmed && upgraded.length) {
-          this._rewriteLegacyCodes(map, upgraded);
+          this._chore(() => this._rewriteLegacyCodes(map, upgraded));
         }
         cb(merge(map), meta);
       }, onError);
