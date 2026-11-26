@@ -18,6 +18,7 @@ import { resolveDisplays, boatRows, modelOptions, itemFacts, factsFromStore,
          factsAreStale, setBuilders, upgradeCodeMap } from './vessel-codes.js';
 import { classify } from './rules.js';
 import { Auth, ROLE, setManagers, setEngineers, setMasters, setTesters } from './auth.js';
+import { signInForm, focusSignIn, readAccess } from './sign-in.js';
 import { showTestMode, carryFlag, prefs } from './test-mode.js';
 import { VERSION } from './version.js';
 import { fitCodesSheet, TYPE_STEPS } from './codes-print.js';
@@ -110,7 +111,7 @@ let tellLink = () => {};
   const reads = first.mode === 'local' || first.email ? loadPage() : null;
   reads?.catch(() => {});                     // said where it is waited for
   watch.step('access', 'firestore');
-  const access = await Store.loadAccess();
+  const access = await readAccess(watch);
   setManagers(access.managers);
   setEngineers(access.engineers);
   setMasters(access.masters);
@@ -137,6 +138,8 @@ let tellLink = () => {};
     host.textContent = '';
     host.append(el('strong', null, 'Vessel codes are for managers and engineers'));
     host.append(el('div', null, `${why} The board itself is read-only for everyone else.`));
+    // Signed in, the page loads again: as that account's, from the start.
+    if (role === ROLE.NONE) host.append(signInForm({ signedIn: () => { location.reload(); return new Promise(() => {}); } }));
     const back = el('a', 'backlink', 'Go to the board');
     back.href = carryFlag('./');
     host.append(back);
@@ -144,6 +147,7 @@ let tellLink = () => {};
       n.hidden = true;
     }
     stopCodes();
+    focusSignIn();
     watch.done();
     return;
   }

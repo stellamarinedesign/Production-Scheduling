@@ -2,13 +2,14 @@
 //
 // One document, settings/access, holds five lists of addresses: managers,
 // engineers, floor, testers, and masters. The first four are the roles, one
-// address in at most one of them (an address in none is floor by default,
-// the floor list only makes such an account visible in the Accounts panel;
-// a tester has the manager view and is always in test mode). The Firestore
-// rules read the lists directly, so they must stay flat arrays. MASTERS is
-// not a role: a master is whichever role they
-// are, and additionally the only one who may change the lists. Masters are
-// set in the console, not here, so nobody can promote themselves to it.
+// address in at most one of them (an address in none reads nothing: the rules
+// see to that; a tester has the manager view and is always in test mode). The
+// Firestore rules read the lists directly, so they must stay flat arrays.
+// MASTERS is not a role: a master is whichever role they are, and additionally
+// the only one who may change the lists, never for their own account.
+//
+// What a page does with an answer about the lists is decided here as well,
+// apart from the pages, because it decides who gets in: askAccess, standing.
 
 import { tidyEmail } from './auth.js';
 
@@ -26,6 +27,15 @@ const ROLE_LIST = { manager: 'managers', engineer: 'engineers', floor: 'floor', 
 
 const tidyList = (xs) => [...new Set((Array.isArray(xs) ? xs : []).map(tidyEmail).filter(Boolean))];
 
+// NOTHING IS SAVED FROM LISTS THAT WERE NOT LOADED. The five are written
+// together, so a save built on lists that failed to load would take everybody
+// off, masters included. The lists the server gave carry a mark, the functions
+// here hand it on to the lists they make from them, and Store.saveAccess
+// writes nothing without it. A copy made in any other way does not carry it.
+const LOADED = Symbol('from the server');
+export const markLoaded = (lists) => Object.defineProperty(lists, LOADED, { value: true });
+export const isLoaded = (lists) => lists?.[LOADED] === true;
+
 /**
  * The document as the app holds it: five tidy, de-duplicated lists. With no
  * masters, the first manager listed is the master - the same default the
@@ -36,7 +46,54 @@ export function normaliseAccess(d) {
   const out = {};
   for (const k of LISTS) out[k] = tidyList(d?.[k]);
   if (!out.masters.length && out.managers.length) out.masters = [out.managers[0]];
-  return out;
+  return isLoaded(d) ? markLoaded(out) : out;
+}
+
+// ---- what a page does with the answer ----------------------------------------
+
+/** Nobody is anything: what a page goes by when it was refused the lists, or is signed out. */
+export const NO_ACCESS = Object.freeze({ ...normaliseAccess({}), refused: true });
+
+/**
+ * The lists, for a page that is starting, asked for until the server answers.
+ *
+ * A REFUSAL IS AN ANSWER. The rules give the lists to a listed account and to
+ * nobody else, so an account refused them is on none, and waiting would not
+ * change it. Any other failure says nothing about anybody: `failed` is told, so
+ * the page can say so, and it is asked again. A failure never resolves to lists.
+ *
+ * @param {() => Promise<Object>} load  Store.loadAccess
+ * @param {object} [opts]
+ * @param {(e: Error) => void} [opts.failed]
+ * @param {(tries: number) => Promise<void>} [opts.pause]  between one try and the next
+ */
+export async function askAccess(load, { failed = () => {}, pause = pauseAfter } = {}) {
+  for (let tries = 1; ; tries += 1) {
+    try { return await load(); } catch (e) {
+      if (String(e?.code ?? '').includes('permission-denied')) return NO_ACCESS;
+      failed(e);
+      await pause(tries);
+    }
+  }
+}
+
+/** Two seconds, then four, eight, sixteen, and every half minute after that. */
+const pauseAfter = (tries) => new Promise((r) => setTimeout(r, Math.min(30000, 1000 * 2 ** tries)));
+
+/**
+ * Where an account stands, by what the server said of the lists:
+ *
+ *   'listed'    on a role list, so the page goes on
+ *   'unlisted'  on none of them, or refused them, which is the same thing
+ *   'missing'   there is no document: the one case in which it may be claimed
+ *   'unknown'   nothing has been said. Not to be taken for any of the others
+ */
+export function standing(access, email) {
+  if (!access) return 'unknown';
+  if (access.refused) return 'unlisted';
+  if (access.missing) return 'missing';
+  const e = tidyEmail(email);
+  return e && ROLES.some((r) => access[ROLE_LIST[r]]?.includes(e)) ? 'listed' : 'unlisted';
 }
 
 /** The role an address has: tester, manager, engineer, or floor. Testers first, as auth.js reads it. */
@@ -93,10 +150,36 @@ export function tempPassword() {
   return `${pick(4)}-${pick(4)}-${pick(4)}`;
 }
 
-/** The lists without this address on any role list. Masters untouched. */
+/**
+ * The lists without this address on any of them, the masters list included: a
+ * master left on that one alone stayed in the panel as a row nobody could
+ * take off, and could still change everybody else's role.
+ */
 export function withoutAccount(access, email) {
   const e = tidyEmail(email);
   const a = normaliseAccess(access);
-  for (const r of ROLES) a[ROLE_LIST[r]] = a[ROLE_LIST[r]].filter((x) => x !== e);
+  for (const k of LISTS) a[k] = a[k].filter((x) => x !== e);
   return a;
+}
+
+/**
+ * What may be changed on an account's row, and why the rest may not be. Not
+ * one's own, which is how nobody locks themselves out; and never the last
+ * manager or the last master, which is how nobody locks everybody out.
+ * @returns {{role: boolean, master: boolean, remove: boolean, why: string|null}}
+ */
+export function rowLimits(access, email, me) {
+  const e = tidyEmail(email);
+  const a = normaliseAccess(access);
+  const only = (list) => list.length === 1 && list[0] === e;
+  if (e === tidyEmail(me)) return { role: false, master: false, remove: false, why: 'Your own account: another master can change it.' };
+  const manager = only(a.managers);
+  const master = only(a.masters);
+  return {
+    role: !manager,
+    master: !master,
+    remove: !manager && !master,
+    why: manager ? 'The only manager: another account has to be a manager first.'
+      : master ? 'The only master: another account has to be a master first.' : null,
+  };
 }
