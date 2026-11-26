@@ -2097,6 +2097,7 @@ function jobRow(j, { full = false } = {}) {
   if (erp) fold.append(erp);
   const pkg = el('button', 'mini', 'Package');
   pkg.addEventListener('click', () => openPackageDialog(j, {
+    packages: state.packages,
     who: Auth.user?.email ?? null,
     onLog: (d) => logChange(d, j.prod_no, j.inventory_id, jobTitle(j)),
     onPlinths: (catalogue) => { state.plinths = catalogue; rebuild(); },
