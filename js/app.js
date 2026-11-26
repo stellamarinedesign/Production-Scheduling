@@ -412,7 +412,7 @@ async function start(st) {
   if (st.role === ROLE.ENGINEER) {
     $('engineerHome').hidden = false;
     // Help is in the header for an engineer too, and did nothing here.
-    if (!engineerWired) { engineerWired = true; wireHelp(); }
+    if (!engineerWired) { engineerWired = true; wireHelp({ admin: () => Auth.isMaster }); }
     booting(false);
     watch.done();
     return;
