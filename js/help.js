@@ -283,19 +283,6 @@ export const HELP = [
         ],
       },
       {
-        q: 'How do I change my password?',
-        who: ['manager', 'engineer', 'floor'],
-        a: [
-          'The cog, top right, then Change password. Type the current password and the '
-          + 'new one twice. It changes there and then; nothing is emailed and nobody '
-          + 'else sees it. Sign out is under the same cog.',
-          'Signed in through Hubinator, both are Hubinator\'s: the password is the one for '
-          + 'every Stella app, and Sign out signs out of all of them on this device.',
-          'Forgotten it? Ask the admin: the login is made again in Hubinator with a '
-          + 'temporary password, which you then change here.',
-        ],
-      },
-      {
         q: 'How is somebody given access?',
         admin: true,
         a: [
@@ -583,6 +570,23 @@ export const HELP = [
           + 'for a job that was already there when the board began.',
           'In the import review, a changed row opens on a click to show the same fields, '
           + 'old and new, before the import is applied.',
+        ],
+      },
+    ],
+  },
+  {
+    title: 'Account',
+    topics: [
+      {
+        q: 'How do I change my password?',
+        a: [
+          'The cog, top right, then Change password. Type the current password and the '
+          + 'new one twice. It changes there and then; nothing is emailed and nobody '
+          + 'else sees it. Sign out is under the same cog.',
+          'Signed in through Hubinator, both are Hubinator\'s: the password is the one for '
+          + 'every Stella app, and Sign out signs out of all of them on this device.',
+          'Forgotten it? Ask the admin: the login is made again in Hubinator with a '
+          + 'temporary password, which you then change here.',
         ],
       },
     ],
