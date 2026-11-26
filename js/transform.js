@@ -353,6 +353,11 @@ export function fromSnapshot(prodNo, ov) {
     is_stock: Boolean(snap.is_stock),
     is_custom: Boolean(snap.is_custom),
     status: snap.status ?? '',
+    // Absent on a snapshot written before the dates were kept and never filled
+    // in from the import records.
+    start_date: snap.start_date ?? null,
+    end_date: snap.end_date ?? null,
+    due_date: snap.due_date ?? null,
     hidden: false,
     completed: true,
     completed_at: ov.completedAt ?? null,
@@ -515,6 +520,11 @@ export const snapshotOf = (j) => ({
   hull: j.hull ?? null,
   is_stock: Boolean(j.is_stock),
   status: j.status ?? '',
+  // The schedule, so the Gantt's everything-view can draw finished work once
+  // the export has stopped carrying it. Calendar days, as yyyy-mm-dd strings.
+  start_date: j.start_date ?? null,
+  end_date: j.end_date ?? null,
+  due_date: j.due_date ?? null,
 });
 
 // ---------------------------------------------------------------------------

@@ -572,6 +572,17 @@ export const HELP = [
           + 'old and new, before the import is applied.',
         ],
       },
+      {
+        q: 'Can History be read in the order things happened?',
+        a: [
+          'Latest first, above the lists: one list across the categories, the most '
+          + 'recently changed job at the top, so a job completed by mistake is the '
+          + 'first row and Reopen is beside it. Off, History is grouped by category. '
+          + 'Remembered on this device.',
+          'Show everything on the Gantt draws finished work as well: the jobs in '
+          + 'History, in green, from the dates kept when each was completed.',
+        ],
+      },
     ],
   },
   {
