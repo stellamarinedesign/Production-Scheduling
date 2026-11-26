@@ -1648,6 +1648,60 @@ button.linkish:disabled { opacity: .5; cursor: default; }
   .code-row { grid-template-columns: 1fr 1fr; gap: 6px 14px; }
 }
 
+/* ---------- vessel codes: what a row can do, and what it has to say ----------
+   The buttons name what they act on, so their column is wider where there is
+   room for it, and folds onto another line where there is not. */
+.c-act { flex-wrap: wrap; }
+@media (min-width: 1280px) {
+  .codes-head, .code-row { grid-template-columns: 160px 170px 115px 105px minmax(170px, 1fr) 330px; }
+}
+@media (min-width: 1101px) {
+  #davitSection .codes-head, #davitSection .code-row {
+    grid-template-columns: 112px 80px 80px minmax(260px, 1fr) 190px;
+  }
+}
+
+/* A chip with item codes behind it is a button; the caret says which way it is. */
+button.c-catchip, button.c-item {
+  background: none; font-family: inherit; text-align: left; cursor: pointer; position: relative;
+}
+button.c-catchip::after, button.c-item::after {
+  content: '\25b8'; margin-left: 5px; color: var(--text-dim); font-size: 9px;
+}
+button.c-catchip[aria-expanded="true"]::after, button.c-item[aria-expanded="true"]::after { content: '\25be'; }
+@media screen and (pointer: coarse), screen and (max-width: 760px) {
+  button.c-catchip::before, button.c-item::before { content: ''; position: absolute; inset: -13px 0; }
+}
+.cx-list { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px; padding-top: 2px; }
+.cx-of { font-size: 11px; color: var(--text-dim); margin-right: 4px; }
+#davitSection .cx-list .c-item {
+  border: 1px solid var(--line); padding: 1px 6px; color: var(--text-dim); font-size: 11px;
+}
+
+/* What was not saved, on its line until it is dealt with. A line off the sheet
+   is dimmed; what it has to say is not. */
+.cx-fault {
+  grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  color: var(--red-bright); font-size: 12.5px; line-height: 1.5; padding-top: 4px;
+}
+.cx-fault > span { flex: 0 1 auto; }
+.code-row.is-offsheet:has(.cx-fault) { opacity: 1; }
+.code-row.is-offsheet:has(.cx-fault) > :not(.cx-fault) { opacity: .45; }
+
+/* A line arrived at from a link: a colour that fades from it, once. */
+:root { --dur-mark: 900ms; }
+@media (prefers-reduced-motion: reduce) { :root { --dur-mark: 0s; } }
+.code-row.is-marked { animation: code-mark var(--dur-mark) var(--ease-out); }
+@keyframes code-mark { from { background-color: var(--line); } }
+.code-row:focus { outline: none; }
+.cx-link { color: var(--white); text-underline-offset: 3px; }
+
+#codesLoad :focus:not(button) { outline: none; }
+#codesLoad .cx-fault { padding: 8px 0; }
+#codesLoad .detail-group { cursor: default; }
+#codesLoad .detail-group:hover { border-left-color: var(--red-deep); }
+#codesLoad .flag-row { align-items: baseline; }
+
 /* ===================================================================
    NARROW SCREENS
    =================================================================== */
