@@ -107,6 +107,13 @@ export const isNewerImport = (rec, currentRetrievedAt) => {
   return at > (currentRetrievedAt ?? '');
 };
 
+/**
+ * Can the bootstrap file be there at all? A local board, or a copy served on
+ * this machine to fill a fresh project. The live site has never carried it.
+ */
+export const seedServed = (mode, host) => mode === 'local'
+  || /^(localhost|127\.0\.0\.1|\[::1\])$/.test(host) || /\.localhost$/.test(host);
+
 /** Firestore's ceiling on writes in one batch. */
 export const BATCH_SIZE = 500;
 
@@ -240,6 +247,7 @@ export const Store = {
   /** The bootstrap map, or {} when it is not deployed. Never throws. */
   async _seed() {
     if (this.__seed) return this.__seed;
+    if (!seedServed(this.mode, location.hostname)) return (this.__seed = {});
     try {
       const r = await fetch(new URL('../data/vessel-codes.seed.json', import.meta.url),
         { cache: 'no-store' });
@@ -257,6 +265,29 @@ export const Store = {
     }
     const { doc, setDoc } = this._fs;
     await setDoc(doc(this._db, 'vesselCodes', codeDocId(code)), patch, { merge: true });
+  },
+
+  /**
+   * Several codes at once, in one batch: all of it is saved or none of it is,
+   * so a rename cannot stop half-way along a line.
+   *
+   * @param {Object<string,Object>} patches  code -> the fields to write
+   * @returns {Promise<number>} how many
+   */
+  async saveCodes(patches) {
+    const entries = Object.entries(patches ?? {});
+    if (!entries.length) return 0;
+    if (this.mode === 'local') {
+      const all = lsGet('vesselCodes', {});
+      for (const [code, patch] of entries) all[code] = { ...(all[code] ?? {}), ...patch };
+      lsSet('vesselCodes', all);
+      return entries.length;
+    }
+    const { doc, writeBatch } = this._fs;
+    const batch = writeBatch(this._db);
+    for (const [code, patch] of entries) batch.set(doc(this._db, 'vesselCodes', codeDocId(code)), patch, { merge: true });
+    await batch.commit();
+    return entries.length;
   },
 
   /**
@@ -278,24 +309,28 @@ export const Store = {
   },
 
   /**
-   * Write a whole map, one document per code.
+   * Write a whole map, one document per code, a batch at a time.
    *
    * Used by the drop-in on the vessel codes page. Unlike `mergeCodes` this is
    * deliberate and overwrites: somebody has chosen a file and confirmed what it
    * changes, so a hand-confirmed `display` in the file is the answer, not
    * something to protect the store from.
+   *
+   * Up to BATCH_SIZE codes are saved together or not at all. Past that a batch
+   * can fail with others before it saved, and the error says how many codes
+   * those were (`saved`), in the order of the map.
+   *
+   * @param {(saved: number, of: number) => void} [onSaved]  after each batch
    */
-  async putCodes(map) {
+  async putCodes(map, onSaved = () => {}) {
     const entries = Object.entries(map ?? {});
-    if (this.mode === 'local') {
-      lsSet('vesselCodes', { ...lsGet('vesselCodes', {}), ...map });
-      return entries.length;
+    let saved = 0;
+    for (const part of chunk(entries, BATCH_SIZE)) {
+      try { await this.saveCodes(Object.fromEntries(part)); } catch (e) { throw Object.assign(e, { saved }); }
+      saved += part.length;
+      onSaved(saved, entries.length);
     }
-    const { doc, setDoc } = this._fs;
-    for (const [code, entry] of entries) {
-      await setDoc(doc(this._db, 'vesselCodes', codeDocId(code)), entry, { merge: true });
-    }
-    return entries.length;
+    return saved;
   },
 
   /** Merge newly-derived codes in without ever overwriting a `display`. */
