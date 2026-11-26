@@ -1,4 +1,4 @@
-// codes-print.js — the vessel code cheat sheet, one landscape A4 page.
+// codes-print.js — the vessel code code sheet, one landscape A4 page.
 //
 // Same visual language as the production board: red category banners, zebra
 // rows, a title and an "as of" line. Landscape because the useful thing here is

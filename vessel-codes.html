@@ -56,15 +56,15 @@
     return n;
   }
 
-  /** 'offline', 'failing', or null to take the line away. */
-  function say(kind) {
+  /** 'offline', 'failing', or null to take the line away; after start-up, boot.js's own words. */
+  function say(kind, words) {
     shown = kind || null;
     var n = line();
     if (!n) {
-      if (shown) document.addEventListener('DOMContentLoaded', function () { say(shown); }, { once: true });
+      if (shown) document.addEventListener('DOMContentLoaded', function () { say(shown, words); }, { once: true });
       return;
     }
-    var text = shown === 'offline' ? (B.saved ? WORDS.offlineSaved : WORDS.offline)
+    var text = words ? words : shown === 'offline' ? (B.saved ? WORDS.offlineSaved : WORDS.offline)
       : shown === 'failing' ? WORDS.failing : '';
     n.textContent = text;
     n.hidden = !text;
@@ -116,77 +116,96 @@
 <link rel="icon" type="image/png" href="assets/logo.png">
 <title>Vessel codes — Stella Marine</title>
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="css/style.css?v=2026-11-25.1">
+<link rel="stylesheet" href="css/style.css?v=2026-11-26.1">
 <!-- AFTER style.css: it declares A4 portrait for the board, and @page cannot be
      scoped by selector, so the landscape rule has to win by coming later. -->
-<link rel="stylesheet" href="css/codes-print.css?v=2026-11-25.1">
+<link rel="stylesheet" href="css/codes-print.css?v=2026-11-26.1">
 <!-- importmap:start - every module named with the build's ?v=, so a page is never mixed with cached modules, then every file the page starts with preloaded; regenerate with: python tools/importmap.py -->
 <script type="importmap">
 {
   "imports": {
-    "./js/access.js": "./js/access.js?v=2026-11-25.1",
-    "./js/activity-log.js": "./js/activity-log.js?v=2026-11-25.1",
-    "./js/activity.js": "./js/activity.js?v=2026-11-25.1",
-    "./js/adapters/drafting-xlsx.js": "./js/adapters/drafting-xlsx.js?v=2026-11-25.1",
-    "./js/adapters/index.js": "./js/adapters/index.js?v=2026-11-25.1",
-    "./js/adapters/package-files.js": "./js/adapters/package-files.js?v=2026-11-25.1",
-    "./js/adapters/stock.js": "./js/adapters/stock.js?v=2026-11-25.1",
-    "./js/adapters/xlsx.js": "./js/adapters/xlsx.js?v=2026-11-25.1",
-    "./js/app.js": "./js/app.js?v=2026-11-25.1",
-    "./js/auth.js": "./js/auth.js?v=2026-11-25.1",
-    "./js/board-columns.js": "./js/board-columns.js?v=2026-11-25.1",
-    "./js/boot.js": "./js/boot.js?v=2026-11-25.1",
-    "./js/codes-page.js": "./js/codes-page.js?v=2026-11-25.1",
-    "./js/codes-print.js": "./js/codes-print.js?v=2026-11-25.1",
-    "./js/collapse.js": "./js/collapse.js?v=2026-11-25.1",
-    "./js/davits.js": "./js/davits.js?v=2026-11-25.1",
-    "./js/dialog.js": "./js/dialog.js?v=2026-11-25.1",
-    "./js/firebase.js": "./js/firebase.js?v=2026-11-25.1",
-    "./js/gantt.js": "./js/gantt.js?v=2026-11-25.1",
-    "./js/help.js": "./js/help.js?v=2026-11-25.1",
-    "./js/import-review.js": "./js/import-review.js?v=2026-11-25.1",
-    "./js/item-history.js": "./js/item-history.js?v=2026-11-25.1",
-    "./js/package-dialog.js": "./js/package-dialog.js?v=2026-11-25.1",
-    "./js/packages.js": "./js/packages.js?v=2026-11-25.1",
-    "./js/parts-page.js": "./js/parts-page.js?v=2026-11-25.1",
-    "./js/parts-review.js": "./js/parts-review.js?v=2026-11-25.1",
-    "./js/parts.js": "./js/parts.js?v=2026-11-25.1",
-    "./js/password.js": "./js/password.js?v=2026-11-25.1",
-    "./js/plinth-control.js": "./js/plinth-control.js?v=2026-11-25.1",
-    "./js/plinths.js": "./js/plinths.js?v=2026-11-25.1",
-    "./js/press.js": "./js/press.js?v=2026-11-25.1",
-    "./js/print.js": "./js/print.js?v=2026-11-25.1",
-    "./js/rules.js": "./js/rules.js?v=2026-11-25.1",
-    "./js/search-core.js": "./js/search-core.js?v=2026-11-25.1",
-    "./js/settings.js": "./js/settings.js?v=2026-11-25.1",
-    "./js/stella-folder.js": "./js/stella-folder.js?v=2026-11-25.1",
-    "./js/store.js": "./js/store.js?v=2026-11-25.1",
-    "./js/test-mode.js": "./js/test-mode.js?v=2026-11-25.1",
-    "./js/transform.js": "./js/transform.js?v=2026-11-25.1",
-    "./js/version.js": "./js/version.js?v=2026-11-25.1",
-    "./js/vessel-codes.js": "./js/vessel-codes.js?v=2026-11-25.1",
-    "./js/watchdog.js": "./js/watchdog.js?v=2026-11-25.1"
+    "./js/access.js": "./js/access.js?v=2026-11-26.1",
+    "./js/activity-log.js": "./js/activity-log.js?v=2026-11-26.1",
+    "./js/activity.js": "./js/activity.js?v=2026-11-26.1",
+    "./js/adapters/drafting-xlsx.js": "./js/adapters/drafting-xlsx.js?v=2026-11-26.1",
+    "./js/adapters/index.js": "./js/adapters/index.js?v=2026-11-26.1",
+    "./js/adapters/package-files.js": "./js/adapters/package-files.js?v=2026-11-26.1",
+    "./js/adapters/stock.js": "./js/adapters/stock.js?v=2026-11-26.1",
+    "./js/adapters/xlsx.js": "./js/adapters/xlsx.js?v=2026-11-26.1",
+    "./js/app.js": "./js/app.js?v=2026-11-26.1",
+    "./js/ask.js": "./js/ask.js?v=2026-11-26.1",
+    "./js/auth.js": "./js/auth.js?v=2026-11-26.1",
+    "./js/board-columns.js": "./js/board-columns.js?v=2026-11-26.1",
+    "./js/boot.js": "./js/boot.js?v=2026-11-26.1",
+    "./js/busy.js": "./js/busy.js?v=2026-11-26.1",
+    "./js/code-edits.js": "./js/code-edits.js?v=2026-11-26.1",
+    "./js/codes-page.js": "./js/codes-page.js?v=2026-11-26.1",
+    "./js/codes-print.js": "./js/codes-print.js?v=2026-11-26.1",
+    "./js/collapse.js": "./js/collapse.js?v=2026-11-26.1",
+    "./js/davits.js": "./js/davits.js?v=2026-11-26.1",
+    "./js/dialog.js": "./js/dialog.js?v=2026-11-26.1",
+    "./js/faults.js": "./js/faults.js?v=2026-11-26.1",
+    "./js/field.js": "./js/field.js?v=2026-11-26.1",
+    "./js/firebase.js": "./js/firebase.js?v=2026-11-26.1",
+    "./js/floor-board.js": "./js/floor-board.js?v=2026-11-26.1",
+    "./js/gantt.js": "./js/gantt.js?v=2026-11-26.1",
+    "./js/help.js": "./js/help.js?v=2026-11-26.1",
+    "./js/import-review.js": "./js/import-review.js?v=2026-11-26.1",
+    "./js/item-history.js": "./js/item-history.js?v=2026-11-26.1",
+    "./js/package-changes.js": "./js/package-changes.js?v=2026-11-26.1",
+    "./js/package-dialog.js": "./js/package-dialog.js?v=2026-11-26.1",
+    "./js/packages.js": "./js/packages.js?v=2026-11-26.1",
+    "./js/parts-page.js": "./js/parts-page.js?v=2026-11-26.1",
+    "./js/parts-review.js": "./js/parts-review.js?v=2026-11-26.1",
+    "./js/parts.js": "./js/parts.js?v=2026-11-26.1",
+    "./js/password.js": "./js/password.js?v=2026-11-26.1",
+    "./js/plinth-control.js": "./js/plinth-control.js?v=2026-11-26.1",
+    "./js/plinths.js": "./js/plinths.js?v=2026-11-26.1",
+    "./js/press.js": "./js/press.js?v=2026-11-26.1",
+    "./js/print.js": "./js/print.js?v=2026-11-26.1",
+    "./js/rules.js": "./js/rules.js?v=2026-11-26.1",
+    "./js/search-core.js": "./js/search-core.js?v=2026-11-26.1",
+    "./js/settings.js": "./js/settings.js?v=2026-11-26.1",
+    "./js/sign-in.js": "./js/sign-in.js?v=2026-11-26.1",
+    "./js/stella-folder.js": "./js/stella-folder.js?v=2026-11-26.1",
+    "./js/store.js": "./js/store.js?v=2026-11-26.1",
+    "./js/test-mode.js": "./js/test-mode.js?v=2026-11-26.1",
+    "./js/toast.js": "./js/toast.js?v=2026-11-26.1",
+    "./js/transform.js": "./js/transform.js?v=2026-11-26.1",
+    "./js/version.js": "./js/version.js?v=2026-11-26.1",
+    "./js/vessel-codes.js": "./js/vessel-codes.js?v=2026-11-26.1",
+    "./js/watchdog.js": "./js/watchdog.js?v=2026-11-26.1",
+    "./js/words.js": "./js/words.js?v=2026-11-26.1",
+    "./js/write-behind.js": "./js/write-behind.js?v=2026-11-26.1"
   }
 }
 </script>
 <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js">
 <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js">
 <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js">
-<link rel="modulepreload" href="js/codes-page.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/store.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/vessel-codes.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/rules.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/auth.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/test-mode.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/version.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/codes-print.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/davits.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/help.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/boot.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/press.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/firebase.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/transform.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/dialog.js?v=2026-11-25.1">
+<link rel="modulepreload" href="js/codes-page.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/store.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/vessel-codes.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/rules.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/auth.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/sign-in.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/test-mode.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/version.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/codes-print.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/davits.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/transform.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/help.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/boot.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/dialog.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/toast.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/ask.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/busy.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/words.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/code-edits.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/press.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/firebase.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/access.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/field.js?v=2026-11-26.1">
 <!-- importmap:end -->
 </head>
 <body>
@@ -206,7 +225,7 @@
 
 <main>
   <div class="provenance">
-    <span><b>DISPLAY</b> is what the floor reads and what the board prints.</span>
+    <span><b>Display code</b>: what the floor reads and the board prints.</span>
     <span class="spacer" style="margin-left:auto"></span>
     <span id="storeMode"></span>
     <span id="pageVersion" title="Which build is on screen. If this is not the version you were told to expect, the browser is holding an old copy — reload with Ctrl+Shift+R."></span>
@@ -214,12 +233,7 @@
 
   <div class="state" id="codesDenied" hidden></div>
 
-  <div class="state" id="codesEmpty" hidden>
-    <strong>No vessel codes stored yet</strong>
-    Codes are created by answering the prompts on import, and live in Firestore.
-    A store that has never been seeded starts empty — see the private SETUP
-    document for how to load the starting map into a fresh project.
-  </div>
+  <div class="state" id="codesEmpty" hidden></div>
 
   <div id="warnings"></div>
 
@@ -228,11 +242,11 @@
     <button class="tab" id="modeProducts" aria-current="false">Split by product</button>
     <span class="spacer"></span>
     <span class="hint" id="modeHint"></span>
-    <button class="mini" id="saveCodes" title="Download the current map as JSON — a backup, and how you move it to another environment">Save file</button>
-    <button class="mini" id="loadCodes" title="Load a code map from a JSON file on this machine">Load file…</button>
-    <input type="file" id="codesFile" accept=".json,application/json" hidden>
-    <button class="mini" id="previewSheet" aria-pressed="false">Cheat sheet</button>
-    <button class="primary" id="printSheet">Print cheat sheet</button>
+    <button class="mini" id="saveCodes">Download codes</button>
+    <button class="mini" id="loadCodes" hidden>Load codes…</button>
+    <input type="file" id="codesFile" accept=".json,application/json" aria-label="File of vessel codes" hidden>
+    <button class="mini" id="previewSheet" aria-pressed="false">Code sheet</button>
+    <button class="primary" id="printSheet">Print code sheet</button>
   </div>
 
   <!-- The map used to ship as data/vessel-codes.seed.json, which meant the
@@ -245,7 +259,7 @@
   <div id="codesPrintRoot" hidden><div id="codesSheet"></div></div>
 
   <div class="codes-head">
-    <div>Stella</div><div>ERP codes</div><div>Model</div><div>Hull</div>
+    <div>Display code</div><div>ERP codes</div><div>Model</div><div>Hull</div>
     <div>Products</div><div></div>
   </div>
   <div id="rows"></div>
@@ -256,7 +270,7 @@
   <div id="davitSection" hidden>
     <div class="codes-cat-static">Davits by boat</div>
     <div class="codes-head">
-      <div>Stella</div><div>Model</div><div>Hull</div><div>Davit</div><div></div>
+      <div>Display code</div><div>Model</div><div>Hull</div><div>Davit</div><div></div>
     </div>
     <div id="davitRows"></div>
   </div>
@@ -278,6 +292,6 @@
 
 <div id="toast"></div>
 
-<script type="module" src="js/codes-page.js?v=2026-11-25.1"></script>
+<script type="module" src="js/codes-page.js?v=2026-11-26.1"></script>
 </body>
 </html>

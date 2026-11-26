@@ -49,15 +49,15 @@
     return n;
   }
 
-  /** 'offline', 'failing', or null to take the line away. */
-  function say(kind) {
+  /** 'offline', 'failing', or null to take the line away; after start-up, boot.js's own words. */
+  function say(kind, words) {
     shown = kind || null;
     var n = line();
     if (!n) {
-      if (shown) document.addEventListener('DOMContentLoaded', function () { say(shown); }, { once: true });
+      if (shown) document.addEventListener('DOMContentLoaded', function () { say(shown, words); }, { once: true });
       return;
     }
-    var text = shown === 'offline' ? (B.saved ? WORDS.offlineSaved : WORDS.offline)
+    var text = words ? words : shown === 'offline' ? (B.saved ? WORDS.offlineSaved : WORDS.offline)
       : shown === 'failing' ? WORDS.failing : '';
     n.textContent = text;
     n.hidden = !text;

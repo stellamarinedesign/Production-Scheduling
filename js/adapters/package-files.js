@@ -19,6 +19,10 @@ const PDFJS_WORKER_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/
 
 const loading = {};
 
+/** A reader that did not load: no document's fault, and said as that. */
+const notLoaded = (what) => Object.assign(new Error(`The ${what} did not load`),
+  { library: true, words: `the ${what} did not load. Check the connection and retry.` });
+
 /** A UMD bundle, loaded on first use: a script tag rather than an import. */
 function umd(url, global, what) {
   if (window[global]) return Promise.resolve(window[global]);
@@ -26,11 +30,10 @@ function umd(url, global, what) {
     const s = document.createElement('script');
     s.src = url;
     s.async = true;
-    s.onload = () => (window[global] ? resolve(window[global])
-      : reject(new Error(`The ${what} loaded but did not register.`)));
+    s.onload = () => (window[global] ? resolve(window[global]) : reject(notLoaded(what)));
     s.onerror = () => {
       delete loading[url];
-      reject(new Error(`Could not load the ${what} — check the connection and try again.`));
+      reject(notLoaded(what));
     };
     document.head.append(s);
   });
@@ -52,7 +55,7 @@ export function pdfjs() {
     .then((m) => { m.GlobalWorkerOptions.workerSrc = PDFJS_WORKER_URL; return m; })
     .catch(() => {
       pdfjsLoading = null;
-      throw new Error('Could not load the PDF reader — check the connection and try again.');
+      throw notLoaded('PDF reader');
     });
   return pdfjsLoading;
 }
@@ -143,15 +146,11 @@ function widenLines(doc, L) {
 }
 
 /**
- * A checklist PDF ready to print: every line thick enough to print as a line
- * (see `MIN_LINE_PT`), and the production number and due date written in -
- * the blanks covered, each value in place and underlined (see `stampPlan`).
- * @param {ArrayBuffer|Uint8Array} bytes
- * @param {{prodNo: string, due: string}} values
- * @returns {Promise<{bytes: Uint8Array, filled: number, widened: number}>}
- *          `filled` is 0 when no page has the box, and nothing is then written in
+ * The page of a checklist PDF that has the box, and where on it the values
+ * go (see `stampPlan`); no plan when none has.
+ * @returns {Promise<{plan: Object|null, pageIndex: number}>}
  */
-export async function stampChecklistPdf(bytes, values) {
+async function findBox(bytes) {
   const reader = await pdfjs();
   // pdf.js takes the buffer it is given, so it gets a copy.
   const src = await reader.getDocument({ data: new Uint8Array(bytes).slice(), isEvalSupported: false }).promise;
@@ -169,6 +168,32 @@ export async function stampChecklistPdf(bytes, values) {
   } finally {
     await src.destroy();
   }
+  return { plan, pageIndex };
+}
+
+/**
+ * Has a checklist the box for the production number? Read without writing
+ * anything, for a row to say so before it is printed.
+ * @param {ArrayBuffer|Uint8Array} bytes
+ * @param {'pdf'|'word'} form  the file it prints from
+ */
+export async function hasBox(bytes, form) {
+  if (form === 'pdf') return Boolean((await findBox(bytes)).plan);
+  const part = (await (await jszip()).loadAsync(bytes)).file('word/document.xml');
+  return Boolean(part) && fillChecklistXml(await part.async('string'), {}).filled > 0;
+}
+
+/**
+ * A checklist PDF ready to print: every line thick enough to print as a line
+ * (see `MIN_LINE_PT`), and the production number and due date written in -
+ * the blanks covered, each value in place and underlined (see `stampPlan`).
+ * @param {ArrayBuffer|Uint8Array} bytes
+ * @param {{prodNo: string, due: string}} values
+ * @returns {Promise<{bytes: Uint8Array, filled: number, widened: number}>}
+ *          `filled` is 0 when no page has the box, and nothing is then written in
+ */
+export async function stampChecklistPdf(bytes, values) {
+  const { plan, pageIndex } = await findBox(bytes);
   const L = await pdflib();
   const { PDFDocument, StandardFonts, rgb, ParseSpeeds } = L;
   const doc = await PDFDocument.load(bytes, { ignoreEncryption: true, updateMetadata: false, parseSpeed: ParseSpeeds.Fastest });
@@ -227,17 +252,26 @@ export async function fillChecklistDocx(bytes, values) {
  * second in front took twenty behind a tab that had just opened.
  *
  * @param {Array<ArrayBuffer|Uint8Array>} list
- * @param {{title?: string}} [opts]  shown by the PDF viewer
+ * @param {{title?: string, leftOut?: (i: number, e: Error) => void}} [opts]
+ *        `title` is shown by the PDF viewer. With `leftOut`, one that cannot be
+ *        read is left out and reported by its place in the list; without, it throws
  * @returns {Promise<Uint8Array>}
  */
-export async function mergePdfs(list, { title = '' } = {}) {
+export async function mergePdfs(list, { title = '', leftOut = null } = {}) {
   const { PDFDocument, ParseSpeeds } = await pdflib();
   const out = await PDFDocument.create();
-  for (const bytes of list) {
-    const src = await PDFDocument.load(bytes, {
-      ignoreEncryption: true, updateMetadata: false, parseSpeed: ParseSpeeds.Fastest,
-    });
-    const pages = await out.copyPages(src, src.getPageIndices());
+  for (const [i, bytes] of list.entries()) {
+    let pages;
+    try {
+      const src = await PDFDocument.load(bytes, {
+        ignoreEncryption: true, updateMetadata: false, parseSpeed: ParseSpeeds.Fastest,
+      });
+      pages = await out.copyPages(src, src.getPageIndices());
+    } catch (e) {
+      if (!leftOut) throw e;
+      leftOut(i, e);
+      continue;
+    }
     for (const page of pages) out.addPage(page);
   }
   if (title) out.setTitle(title, { showInWindowTitleBar: true });

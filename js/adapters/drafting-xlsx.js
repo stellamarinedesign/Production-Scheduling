@@ -31,7 +31,8 @@ async function exceljs() {
       : reject(new Error('The spreadsheet writer loaded but did not register.')));
     s.onerror = () => {
       loading = null;
-      reject(new Error('Could not load the spreadsheet writer — check the connection and try again.'));
+      // A script that does not arrive is the connection's doing (words.js).
+      reject(Object.assign(new Error('The spreadsheet writer did not load.'), { code: 'unavailable' }));
     };
     document.head.append(s);
   });

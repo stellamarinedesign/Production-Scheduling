@@ -9,13 +9,11 @@
 // against the sheet loaded now, and the codes the part list lacks. The page
 // reads the file, draws and saves; nothing here touches the store.
 
-import { FAMILIES, familyOf, clean, resolveReview, materialGroups, browseMaterials } from './parts.js';
+import { FAMILIES, FIELD_NAME, familyOf, tidyValue, resolveReview, materialGroups, browseMaterials } from './parts.js';
 
 // A list longer than this opens with its families shut. On a first load every
 // part is new, and two thousand open rows are not something anybody reads.
 export const SHUT_OVER = 200;
-
-const FIELD = { desc: 'Description', bin: 'Bin' };
 
 /** The family heading a code sits under; every part has one, a stray code its letters. */
 const familyKey = (id) => familyOf(id) ?? ((/^[A-Z]+/.exec(String(id ?? '').toUpperCase()) ?? [''])[0] || '#');
@@ -72,9 +70,9 @@ export function settleAnswers(updated, answers, partsById, { by = null, now = ne
     const a = answerFor(key, o, answers);
     if (a?.action === 'accept') { out[key] = resolveReview(o, 'accept', { by, now }); continue; }
     if (!part) continue;
-    const v = clean(a?.value ?? o.value);
-    if (!v || v === clean(o.value)) out[key] = resolveReview(o, 'keep', { part, now });
-    else if (v === clean(part[o.field])) out[key] = resolveReview(o, 'accept', { by, now });
+    const v = tidyValue(o.field, a?.value ?? o.value);
+    if (!v || v === tidyValue(o.field, o.value)) out[key] = resolveReview(o, 'keep', { part, now });
+    else if (v === tidyValue(o.field, part[o.field])) out[key] = resolveReview(o, 'accept', { by, now });
     else out[key] = resolveReview(o, 'edit', { value: v, part, now });
   }
   return out;
@@ -99,7 +97,7 @@ function decisionRow(key, o, answers) {
   input.type = 'text';
   input.value = answerFor(key, o, answers)?.value ?? o.value;
   input.disabled = gone;
-  input.setAttribute('aria-label', `${o.partId} ${FIELD[o.field] ?? o.field}`);
+  input.setAttribute('aria-label', `${o.partId} ${FIELD_NAME[o.field] ?? o.field}`);
   const keep = mini('Keep correction');
   const accept = mini('Accept ERP');
   keep.disabled = gone;
@@ -123,7 +121,7 @@ function decisionRow(key, o, answers) {
     cls: 'is-decision',
     key: o.partId,
     main: input,
-    detail: `${FIELD[o.field] ?? o.field} \u00b7 ${gone ? 'gone from the export' : `ERP now says "${o.observed ?? ''}"`}`,
+    detail: `${FIELD_NAME[o.field] ?? o.field} \u00b7 ${gone ? 'gone from the export' : `ERP now says "${o.observed ?? ''}"`}`,
     control: () => { const f = document.createDocumentFragment(); f.append(keep, accept); return f; },
   };
 }
@@ -143,7 +141,9 @@ function decisionRow(key, o, answers) {
  *   descOf        code -> its description in the loaded list, for the codes gone
  *   nextById      code -> part in this export
  *   answers       Map, the answers to the corrections in question; given here
- *   apply, cancel the page's own
+ *   apply, cancel the page's own; `apply` is run by the button, with its label
+ *                 setter, while the button is busy
+ *   retry         this import was applied in part: the rest is what is left to do
  */
 export function stockReview(x) {
   const { fresh, d, notices, warnings = [], answers } = x;
@@ -173,10 +173,10 @@ export function stockReview(x) {
   }
   if (notices.resolved.length) {
     stats.push(stat('fixed', notices.resolved.length, 'fixed in the ERP', 'Fixed in the ERP',
-      () => notices.resolved.map((o) => ({ key: o.partId, main: `${o.field}: "${o.value}"` }))));
+      () => notices.resolved.map((o) => ({ key: o.partId, main: `${FIELD_NAME[o.field] ?? o.field}: "${o.value}"` }))));
   }
   if (questioned.length) {
-    stats.push(stat('review', questioned.length, 'need a decision', 'Corrections needing a decision',
+    stats.push(stat('review', questioned.length, 'awaiting a decision', 'Corrections awaiting a decision',
       () => questioned.map(([key, o]) => decisionRow(key, o, answers))));
   }
 
@@ -190,7 +190,7 @@ export function stockReview(x) {
       parts: [
         { n: resolved.length, label: 'fixed in the ERP', cls: 'is-new' },
         { n: pending.length, label: 'still waiting', cls: 'is-same' },
-        { n: review.length, label: 'need a decision', cls: 'is-changed' },
+        { n: review.length, label: 'awaiting a decision', cls: 'is-changed' },
       ],
       after: !resolved.length && !pending.length && !review.length ? 'none live' : null,
     } : null,
@@ -200,9 +200,17 @@ export function stockReview(x) {
       rows: warnings.map((w, i) => ({ key: `#${i + 1}`, main: w })),
     }] : [],
     clean: 'Nothing outstanding.',
+    // With warnings, keeping the list that is loaded is the filled choice. An
+    // empty list cannot be applied at all: it would blank the page for everyone.
     actions: {
-      apply: { label: warnings.length ? 'Apply anyway' : 'Apply this import', run: x.apply },
-      cancel: { label: 'Cancel', run: x.cancel },
+      apply: {
+        label: x.retry ? 'Retry import' : warnings.length ? 'Apply import anyway' : 'Apply this import',
+        run: x.apply,
+        busy: 'Applying…',
+        blocked: fresh.length ? null : 'No parts in this file, so there is nothing to apply.',
+      },
+      cancel: { label: x.retry ? 'Close review' : 'Discard import', run: x.cancel },
+      risky: warnings.length > 0 && !x.retry,
       hint: 'Read the warnings above first.',
     },
   };
@@ -344,8 +352,14 @@ export function materialsReview(x) {
     concerns,
     clean: 'Nothing outstanding.',
     actions: {
-      apply: { label: concerns.length ? 'Load anyway' : 'Load this sheet', run: x.apply },
-      cancel: { label: 'Cancel', run: x.cancel },
+      apply: {
+        label: concerns.length ? 'Load sheet anyway' : 'Load this sheet',
+        run: x.apply,
+        busy: 'Loading…',
+        blocked: x.items?.length ? null : 'No materials in this file, so there is nothing to load.',
+      },
+      cancel: { label: 'Discard import', run: x.cancel },
+      risky: concerns.length > 0,
       hint: 'Read the warnings above first.',
     },
   };

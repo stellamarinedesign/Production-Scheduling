@@ -23,6 +23,7 @@
 import { getFirebase, failureReason, isConfigured } from './firebase.js';
 import { toDateOnly, toISO } from './transform.js';
 import { upgradeCodeMap, LEGACY_MODELS_KEY } from './vessel-codes.js';
+import { normaliseAccess, markLoaded, isLoaded } from './access.js';
 import { isTestMode, storage, wrapFirestore } from './test-mode.js';
 
 const LS_PREFIX = 'stella.board.';
@@ -106,6 +107,13 @@ export const isNewerImport = (rec, currentRetrievedAt) => {
   if (!at || !rec?.rowsJson) return false;
   return at > (currentRetrievedAt ?? '');
 };
+
+/**
+ * Can the bootstrap file be there at all? A local board, or a copy served on
+ * this machine to fill a fresh project. The live site has never carried it.
+ */
+export const seedServed = (mode, host) => mode === 'local'
+  || /^(localhost|127\.0\.0\.1|\[::1\])$/.test(host) || /\.localhost$/.test(host);
 
 /** Firestore's ceiling on writes in one batch. */
 export const BATCH_SIZE = 500;
@@ -240,6 +248,7 @@ export const Store = {
   /** The bootstrap map, or {} when it is not deployed. Never throws. */
   async _seed() {
     if (this.__seed) return this.__seed;
+    if (!seedServed(this.mode, location.hostname)) return (this.__seed = {});
     try {
       const r = await fetch(new URL('../data/vessel-codes.seed.json', import.meta.url),
         { cache: 'no-store' });
@@ -257,6 +266,29 @@ export const Store = {
     }
     const { doc, setDoc } = this._fs;
     await setDoc(doc(this._db, 'vesselCodes', codeDocId(code)), patch, { merge: true });
+  },
+
+  /**
+   * Several codes at once, in one batch: all of it is saved or none of it is,
+   * so a rename cannot stop half-way along a line.
+   *
+   * @param {Object<string,Object>} patches  code -> the fields to write
+   * @returns {Promise<number>} how many
+   */
+  async saveCodes(patches) {
+    const entries = Object.entries(patches ?? {});
+    if (!entries.length) return 0;
+    if (this.mode === 'local') {
+      const all = lsGet('vesselCodes', {});
+      for (const [code, patch] of entries) all[code] = { ...(all[code] ?? {}), ...patch };
+      lsSet('vesselCodes', all);
+      return entries.length;
+    }
+    const { doc, writeBatch } = this._fs;
+    const batch = writeBatch(this._db);
+    for (const [code, patch] of entries) batch.set(doc(this._db, 'vesselCodes', codeDocId(code)), patch, { merge: true });
+    await batch.commit();
+    return entries.length;
   },
 
   /**
@@ -278,24 +310,28 @@ export const Store = {
   },
 
   /**
-   * Write a whole map, one document per code.
+   * Write a whole map, one document per code, a batch at a time.
    *
    * Used by the drop-in on the vessel codes page. Unlike `mergeCodes` this is
    * deliberate and overwrites: somebody has chosen a file and confirmed what it
    * changes, so a hand-confirmed `display` in the file is the answer, not
    * something to protect the store from.
+   *
+   * Up to BATCH_SIZE codes are saved together or not at all. Past that a batch
+   * can fail with others before it saved, and the error says how many codes
+   * those were (`saved`), in the order of the map.
+   *
+   * @param {(saved: number, of: number) => void} [onSaved]  after each batch
    */
-  async putCodes(map) {
+  async putCodes(map, onSaved = () => {}) {
     const entries = Object.entries(map ?? {});
-    if (this.mode === 'local') {
-      lsSet('vesselCodes', { ...lsGet('vesselCodes', {}), ...map });
-      return entries.length;
+    let saved = 0;
+    for (const part of chunk(entries, BATCH_SIZE)) {
+      try { await this.saveCodes(Object.fromEntries(part)); } catch (e) { throw Object.assign(e, { saved }); }
+      saved += part.length;
+      onSaved(saved, entries.length);
     }
-    const { doc, setDoc } = this._fs;
-    for (const [code, entry] of entries) {
-      await setDoc(doc(this._db, 'vesselCodes', codeDocId(code)), entry, { merge: true });
-    }
-    return entries.length;
+    return saved;
   },
 
   /** Merge newly-derived codes in without ever overwriting a `display`. */
@@ -337,16 +373,30 @@ export const Store = {
    * @param {Object<string,Object>} snapshots  prodNo -> the job as it was
    */
   async setCompleted(prodNos, done, who, snapshots = {}) {
-    for (const prodNo of prodNos) {
-      const patch = done
-        ? {
-          completed: true,
-          completedAt: new Date().toISOString(),
-          completedBy: who ?? null,
-          snapshot: snapshots[prodNo] ?? null,
-        }
-        : { completed: false, completedAt: null, completedBy: null, snapshot: null };
-      await this.setOverride(prodNo, patch, who ?? null);
+    const patchFor = (prodNo) => (done
+      ? {
+        completed: true,
+        completedAt: new Date().toISOString(),
+        completedBy: who ?? null,
+        snapshot: snapshots[prodNo] ?? null,
+      }
+      : { completed: false, completedAt: null, completedBy: null, snapshot: null });
+    // Undone one at a time: a record with nothing left in it has to go, which
+    // is a read. Done, it goes as one batch, so a sweep of the backlog is one
+    // round trip and cannot be left half made.
+    if (this.mode === 'local' || !done) {
+      for (const prodNo of prodNos) await this.setOverride(prodNo, patchFor(prodNo), who ?? null);
+      return;
+    }
+    const { doc, writeBatch } = this._fs;
+    for (const part of chunk(prodNos, BATCH_SIZE)) {
+      const now = new Date().toISOString();
+      const batch = writeBatch(this._db);
+      for (const prodNo of part) {
+        batch.set(doc(this._db, 'jobOverrides', prodNo),
+          { ...patchFor(prodNo), updatedAt: now, touchedBy: who ?? null, touchedAt: now }, { merge: true });
+      }
+      await batch.commit();
     }
   },
 
@@ -420,11 +470,16 @@ export const Store = {
     return out;
   },
 
-  /** One package, or the library, as it is now; null if there is none. */
+  /**
+   * One package, or the library, as the server has it; null if there is none.
+   * Read as every other document is (`_read`): a change is made to what this
+   * returns and the whole of it written back, so it is never the SDK's cache.
+   */
   async loadPackage(key) {
     if (this.mode === 'local') return lsGet('packages', {})[key] ?? null;
-    const { doc, getDoc } = this._fs;
-    return (await getDoc(doc(this._db, 'packages', key))).data() ?? null;
+    const { doc } = this._fs;
+    const snap = await this._read(doc(this._db, 'packages', key), 'doc');
+    return snap.exists() ? snap.data() : null;
   },
 
   /**
@@ -488,31 +543,26 @@ export const Store = {
    *
    * In local mode there is no Firestore and no sign-in either, so the single
    * user of a local board is the manager by definition.
-   */
-  async loadManagers() { return (await this.loadAccess()).managers; },
-
-  /**
-   * Both access lists in one read. `engineers` is optional in the document:
-   * a project that has never named one simply has none.
+   *
+   * THREE ANSWERS, AND NO ONE OF THEM IS TAKEN FOR ANOTHER:
+   *
+   *   the lists          the server has the document, and this is it
+   *   `missing: true`    the server has none, and five empty lists
+   *   it throws          refused, or not answered: nothing is known
+   *
+   * A read that failed used to come back as five empty lists, which is what a
+   * board nobody has been given looks like. The board offered itself to whoever
+   * was on no list, and the Accounts panel offered to save from nothing.
    */
   async loadAccess() {
     if (this.mode === 'local') return { managers: ['*'], engineers: [], floor: [], masters: [], testers: [] };
-    try {
-      const { doc } = this._fs;
-      const snap = await this._read(doc(this._db, 'settings', 'access'), 'doc');
-      const d = snap.exists() ? snap.data() : {};
-      const list = (k) => (Array.isArray(d?.[k]) ? d[k] : []);
-      // `floor` is the floor accounts (the rules read it too: unlisted reads
-      // nothing); `masters` are who may change the lists. With no masters the
-      // first manager is one - the same default the rules apply.
-      const out = { managers: list('managers'), engineers: list('engineers'), floor: list('floor'), masters: list('masters'), testers: list('testers') };
-      if (!out.masters.length && out.managers.length) out.masters = [out.managers[0]];
-      return out;
-    } catch (e) {
-      // Fail closed and loudly: an unreadable list must not promote anybody.
-      console.error('[access]', e.message);
-      return { managers: [], engineers: [], floor: [], masters: [], testers: [] };
-    }
+    const { doc } = this._fs;
+    const snap = await this._read(doc(this._db, 'settings', 'access'), 'doc');
+    if (snap.exists()) return markLoaded(normaliseAccess(snap.data()));
+    // Test mode reads from the SDK's cache once it has written, and a document
+    // the cache does not hold is not one the server does not have.
+    if (snap.metadata?.fromCache) throw Object.assign(new Error('the access lists are not in the cache'), { code: 'unavailable' });
+    return { ...normaliseAccess({}), missing: true };
   },
 
   // ---- parts ---------------------------------------------------------------
@@ -526,38 +576,43 @@ export const Store = {
   // `previous` is a copy of `current` from before the last import — the one
   // step of undo for a wrong file.
 
+  /**
+   * The list, or null when none has been loaded yet. A read that fails
+   * throws: both were once the same null, and a refused read put "No part
+   * list loaded yet" over the copy saved on the device.
+   */
   async loadParts() {
     if (this.mode === 'local') return lsGet('parts', null);
-    try {
-      const { doc } = this._fs;
-      const snap = await this._read(doc(this._db, 'parts', 'current'), 'doc');
-      return snap.exists() ? snap.data() : null;
-    } catch (e) { console.warn('[parts]', e.message); return null; }
+    const { doc } = this._fs;
+    const snap = await this._read(doc(this._db, 'parts', 'current'), 'doc');
+    return snap.exists() ? snap.data() : null;
   },
 
   async saveParts(record) {
+    // The same list again - an import tried a second time, or a file dropped
+    // twice - is not a step, and must not take the place of the one before it.
+    const stepsFrom = (cur) => cur.partsJson !== record.partsJson;
     if (this.mode === 'local') {
       const cur = lsGet('parts', null);
-      if (cur) lsSet('partsPrevious', cur);
+      if (cur && stepsFrom(cur)) lsSet('partsPrevious', cur);
       lsSet('parts', record);
       return;
     }
     const { doc, getDoc, setDoc } = this._fs;
     const cur = await getDoc(doc(this._db, 'parts', 'current'));
-    if (cur.exists()) await setDoc(doc(this._db, 'parts', 'previous'), cur.data());
+    if (cur.exists() && stepsFrom(cur.data())) await setDoc(doc(this._db, 'parts', 'previous'), cur.data());
     await setDoc(doc(this._db, 'parts', 'current'), record);
   },
 
   // The materials manifest: which parts are materials, and of what kind.
   // Loaded from the material ordering app's sheet; one document, like the
-  // list, under the same rule (everyone reads, the manager writes).
+  // list, under the same rule (everyone reads, the manager writes). Null when
+  // there is none; a read that fails throws, as the list's does.
   async loadMaterials() {
     if (this.mode === 'local') return lsGet('materials', null);
-    try {
-      const { doc } = this._fs;
-      const snap = await this._read(doc(this._db, 'parts', 'materials'), 'doc');
-      return snap.exists() ? snap.data() : null;
-    } catch (e) { console.warn('[materials]', e.message); return null; }
+    const { doc } = this._fs;
+    const snap = await this._read(doc(this._db, 'parts', 'materials'), 'doc');
+    return snap.exists() ? snap.data() : null;
   },
 
   async saveMaterials(record) {
@@ -586,9 +641,26 @@ export const Store = {
     await setDoc(doc(this._db, 'partOverrides', key), data, { merge: true });
   },
 
-  /** Several at once — an import touches every live correction. */
-  async setPartOverrides(map) {
-    for (const [key, data] of Object.entries(map ?? {})) await this.setPartOverride(key, data);
+  /**
+   * Several at once — an import touches every live correction. Up to
+   * BATCH_SIZE go as one request, so they are all saved or none is.
+   * @param {(done: number, total: number) => void} [onBatch]  as each request is answered
+   */
+  async setPartOverrides(map, onBatch) {
+    const entries = Object.entries(map ?? {});
+    if (this.mode === 'local') {
+      for (const [key, data] of entries) await this.setPartOverride(key, data);
+      return;
+    }
+    const { doc, writeBatch } = this._fs;
+    let done = 0;
+    for (const part of chunk(entries, BATCH_SIZE)) {
+      const batch = writeBatch(this._db);
+      for (const [key, data] of part) batch.set(doc(this._db, 'partOverrides', key), data, { merge: true });
+      await batch.commit();
+      done += part.length;
+      onBatch?.(done, entries.length);
+    }
   },
 
   async deletePartOverride(key) {
@@ -739,31 +811,39 @@ export const Store = {
   },
 
   /**
-   * Write the manager list.
-   *
-   * SAFE TO OFFER FROM THE APP, because the Firestore rules are what actually
-   * decide who may write here — they name the manager accounts independently of
-   * this document. A real manager's write succeeds; anybody else is refused by
-   * the server, and the refusal is the point rather than a failure.
+   * Claim the board: the first manager list, where the server has no lists at
+   * all. Asked again here, at the moment of writing, so a claim can only ever
+   * make the document and never write over one. The rules decide the rest: they
+   * let anybody signed in make it, and nobody but a master change it.
    */
   async saveManagers(emails) {
+    if (!emails?.length) throw Object.assign(new Error('an empty manager list'), { code: 'no-manager' });
     if (this.mode === 'local') return;
+    if (!(await this.loadAccess()).missing) throw Object.assign(new Error('there is an access list already'), { code: 'permission-denied' });
     const { doc, setDoc } = this._fs;
     await setDoc(doc(this._db, 'settings', 'access'),
       { managers: emails, updatedAt: new Date().toISOString() }, { merge: true });
   },
 
-  /** All five lists, from the Settings cog. The rules let only a master write this. */
-  async saveAccess({ managers, engineers, floor, masters, testers }) {
+  /**
+   * All five lists, from the Settings cog. The rules let only a master write
+   * this. Lists that did not come from the server are not written over what it
+   * has (see access.js), and neither are lists with no manager in them: the
+   * rules would let that through, and nobody could edit the board after it.
+   */
+  async saveAccess(lists) {
+    if (!isLoaded(lists)) throw Object.assign(new Error('access lists that were not loaded'), { code: 'not-loaded' });
+    const { managers, engineers, floor, masters, testers } = lists;
+    if (!managers.length) throw Object.assign(new Error('access lists with no manager'), { code: 'no-manager' });
     if (this.mode === 'local') return;
     const { doc, setDoc } = this._fs;
     await setDoc(doc(this._db, 'settings', 'access'),
-      { managers, engineers, floor: floor ?? [], masters: masters ?? [], testers: testers ?? [], updatedAt: new Date().toISOString() }, { merge: true });
+      { managers, engineers, floor, masters, testers, updatedAt: new Date().toISOString() }, { merge: true });
   },
 
   /**
    * What is known about each item code — description and hulls — accumulated
-   * across imports so the cheat sheet is a total product list rather than a
+   * across imports so the code sheet is a total product list rather than a
    * view of this month's orders. See `mergeItemFacts`.
    */
   async loadItemFacts() {
@@ -838,17 +918,57 @@ export const Store = {
     let delivered = false;
     let confirmed = false;
     let last;
-    return onSnapshot(build(this._fs, this._db), { includeMetadataChanges: true }, (snap) => {
+    const id = Symbol('listener');
+    const stop = onSnapshot(build(this._fs, this._db), { includeMetadataChanges: true }, (snap) => {
       const fromCache = Boolean(snap.metadata?.fromCache);
       const first = !fromCache && !confirmed;
       if (first) confirmed = true;
+      // Once it has answered, whether it still does (onLink).
+      if (confirmed) this._setLink(id, { lost: fromCache, unsent: Boolean(snap.metadata?.hasPendingWrites) });
       const body = typeof snap.docChanges === 'function' ? null : JSON.stringify(snap.exists?.() ? snap.data() : null);
       const changed = body === null ? snap.docChanges().length > 0 : body !== last;
       last = body;
       if (delivered && !first && !changed) return;
       delivered = true;
       shape(snap, { fromSelf: Boolean(snap.metadata?.hasPendingWrites), fromCache, confirmed: first });
-    }, (err) => { console.warn('[live]', err.message); onError?.(err); });
+    }, (err) => {
+      console.warn('[live]', err.message);
+      // The server ended it; the SDK does not open it again.
+      if (confirmed) this._setLink(id, { lost: false, unsent: false, stopped: true });
+      onError?.(err);
+    });
+    return () => { this._links.delete(id); stop?.(); };
+  },
+
+  // ---- the connection ------------------------------------------------------
+  //
+  // What the live listeners know of it: `lost` while any is answering from the
+  // cache, `unsent` while an edit made here waits to reach the server,
+  // `stopped` once the server has ended one. In test mode the network is
+  // switched off on purpose, so there is nothing to say.
+
+  _links: new Map(),
+  _linkSubs: new Set(),
+
+  _setLink(id, patch) {
+    const was = this._links.get(id) ?? { lost: false, unsent: false, stopped: false };
+    const now = { ...was, ...patch };
+    this._links.set(id, now);
+    if (was.lost === now.lost && was.unsent === now.unsent && was.stopped === now.stopped) return;
+    const link = this.link();
+    for (const cb of this._linkSubs) cb(link);
+  },
+
+  link() {
+    const all = this._testing ? [] : [...this._links.values()];
+    return { lost: all.some((l) => l.lost), unsent: all.some((l) => l.unsent), stopped: all.some((l) => l.stopped) };
+  },
+
+  /** Called with the connection now, and each time it changes. */
+  onLink(cb) {
+    this._linkSubs.add(cb);
+    cb(this.link());
+    return () => this._linkSubs.delete(cb);
   },
 
   /**
@@ -956,6 +1076,32 @@ export const Store = {
       (fs, db) => fs.query(fs.collection(db, 'imports'),
         fs.orderBy('retrievedAt', 'desc'), fs.limit(1)),
       (snap, meta) => cb(snap.empty ? null : { _id: snap.docs[0].id, ...snap.docs[0].data() }, meta), onError);
+  },
+
+  // ---- the floor's board ---------------------------------------------------
+  //
+  // settings/floor: what a floor screen shows, kept up by the managers' boards
+  // (floor-board.js). Read by anyone listed, written by a manager, under the
+  // rule the other settings documents have.
+
+  async loadFloorBoard() {
+    if (this.mode === 'local') return lsGet('floorBoard', null);
+    const { doc } = this._fs;
+    const snap = await this._read(doc(this._db, 'settings', 'floor'), 'doc');
+    return snap.exists() ? snap.data() : null;
+  },
+
+  async saveFloorBoard(rec) {
+    const stamped = { ...rec, updatedAt: new Date().toISOString() };
+    if (this.mode === 'local') { lsSet('floorBoard', stamped); return; }
+    const { doc, setDoc } = this._fs;
+    await setDoc(doc(this._db, 'settings', 'floor'), stamped);
+  },
+
+  watchFloorBoard(cb, onError) {
+    return this._watch(
+      (fs, db) => fs.doc(db, 'settings', 'floor'),
+      (snap, meta) => cb(snap.exists() ? snap.data() : null, meta), onError);
   },
 
   // ---- import history -----------------------------------------------------

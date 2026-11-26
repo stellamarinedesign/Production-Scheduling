@@ -9,18 +9,30 @@
 // The old page listed one row per Stella code, which put XX01 and XX11 on
 // separate lines despite their printing the same thing — it showed the plumbing
 // instead of the answer.
+//
+// THE SCREEN FIRST, THE WRITE BEHIND IT. An edit is drawn as it is made; one
+// the store refuses goes back as it was, and its row says why (code-edits.js).
 
 import { Store, unpackRows } from './store.js';
-import { resolveDisplays, boatRows, itemFacts, factsFromStore,
+import { resolveDisplays, boatRows, modelOptions, itemFacts, factsFromStore,
          factsAreStale, setBuilders, upgradeCodeMap } from './vessel-codes.js';
 import { classify } from './rules.js';
 import { Auth, ROLE, setManagers, setEngineers, setMasters, setTesters } from './auth.js';
-import { showTestMode, carryFlag } from './test-mode.js';
+import { signInForm, focusSignIn, readAccess } from './sign-in.js';
+import { showTestMode, carryFlag, prefs } from './test-mode.js';
 import { VERSION } from './version.js';
 import { fitCodesSheet, TYPE_STEPS } from './codes-print.js';
 import { davitsByBoat } from './davits.js';
+import { today } from './transform.js';
 import { wireHelp } from './help.js';
-import { startup } from './boot.js';
+import { startup, keepWatch } from './boot.js';
+import { watchDialogs, keepFocus } from './dialog.js';
+import { toast, toastFailed, unsay } from './toast.js';
+import { ask, choose } from './ask.js';
+import { busy } from './busy.js';
+import { count, failure } from './words.js';
+import { createLedger, nameCodes, moveCode, joinedBy, sameName, davitsWith,
+         loadReview, fileProblem, downloadName, codeInHash } from './code-edits.js';
 import './press.js';
 
 const $ = (id) => document.getElementById(id);
@@ -31,15 +43,47 @@ const el = (tag, cls, text) => {
   return n;
 };
 
-let codeMap = {};
+// The view and the folded groups are remembered on this device and nowhere
+// else: they say nothing about the codes.
+const VIEW_KEY = 'stella.codes.view';
+const FOLDED_KEY = 'stella.codes.folded';
+const loadFolded = () => {
+  try { return new Set(JSON.parse(prefs.get(FOLDED_KEY) ?? '[]')); }
+  catch { return new Set(); }
+};
+
+let codeMap = {};                   // as drawn: the store's, with the edits it has not answered
 let resolved = null;
-let mode = 'boats';                 // 'boats' | 'products'
-const collapsed = new Set();
+let mode = prefs.get(VIEW_KEY) === 'products' ? 'products' : 'boats';
+const collapsed = loadFolded();
+const visiting = new Set();         // folded on this device, opened for something in them
 let facts = null;   // item code -> { description, orders }
-let davits = [];    // boat -> davits, straight from the export
+let davits = [];    // boat -> davits, straight from the export; as drawn, like the codes
+
+const edits = createLedger({
+  write: (e) => Store.saveCodes(e.patches),
+  drawn: redraw,
+  saved: (e) => toast(e.said),
+  failed: (e, words) => { showLine(Object.keys(e.patches)); toastFailed(words); },
+});
+
+// The davit list is one document, saved whole, so its edits are saved in turn.
+// Nothing listens to it, so it says for itself that one has not been sent.
+const davitEdits = createLedger({
+  write: (e, list) => Store.saveDavits(list),
+  apply: davitsWith,
+  revert: (list) => list,
+  inTurn: true,
+  drawn: () => { redraw(); tellLink(); },
+  saved: (e) => { toast(e.said); tellLink(); },
+  failed: (e, words) => toastFailed(words),
+});
+let tellLink = () => {};
 
 (async function boot() {
   $('pageVersion').textContent = `v${VERSION}`;
+  watchDialogs();
+  showMode();
   // Start-up, watched: a time limit on each step and the offline line. See boot.js.
   const watch = startup();
   watch.step('sign-in');
@@ -61,8 +105,13 @@ let davits = [];    // boat -> davits, straight from the export
 
   watch.step('connect');
   await Store.init();
+  // ASKED FOR WITH THE ACCESS LIST, not a round trip after it. Who is answered
+  // is the rules' decision, not the page's; what comes back is drawn only once
+  // the role is known. Signed out there is nobody to ask for.
+  const reads = first.mode === 'local' || first.email ? loadPage() : null;
+  reads?.catch(() => {});                     // said where it is waited for
   watch.step('access', 'firestore');
-  const access = await Store.loadAccess();
+  const access = await readAccess(watch);
   setManagers(access.managers);
   setEngineers(access.engineers);
   setMasters(access.masters);
@@ -89,53 +138,40 @@ let davits = [];    // boat -> davits, straight from the export
     host.textContent = '';
     host.append(el('strong', null, 'Vessel codes are for managers and engineers'));
     host.append(el('div', null, `${why} The board itself is read-only for everyone else.`));
+    // Signed in, the page loads again: as that account's, from the start.
+    if (role === ROLE.NONE) host.append(signInForm({ signedIn: () => { location.reload(); return new Promise(() => {}); } }));
     const back = el('a', 'backlink', 'Go to the board');
     back.href = carryFlag('./');
     host.append(back);
     for (const n of document.querySelectorAll('main .view-bar, main #rows, main #warnings, main .provenance')) {
       n.hidden = true;
     }
+    stopCodes();
+    focusSignIn();
     watch.done();
     return;
   }
 
-  $('storeMode').textContent = Store.mode === 'firestore' ? 'Saved to Firestore' : 'Saved on this device only';
+  $('storeMode').textContent = Store.mode === 'firestore' ? 'Saved for everyone' : 'Saved on this device only';
   if (Store.mode !== 'firestore') $('storeMode').style.color = 'var(--red-bright)';
   watch.step('codes', 'firestore');
-  // ONE READ OF EACH, ALL AT ONCE. The codes come from the listener that keeps
-  // them live (its first answer from the server is the load), and the latest
-  // import, which the facts and the davits both fall back to, is read once
-  // between them. These used to be four reads in a row, with the codes and the
-  // import each downloaded twice.
   try {
-    [facts, davits] = await Promise.all([
-      loadFacts(),
-      // The davit fall-back reads vessel codes off the rows, which needs the builders.
-      Store.loadSettings().catch(() => ({})).then((s) => { setBuilders(s.builders); return loadDavits(); }),
-      watchCodeMap(),
-    ]);
+    await reads;
   } catch (e) {
     console.error('[codes]', e);
     watch.fail();
     return;
   }
 
-  // The seed file is no longer deployed — Firestore is the source of truth. An
-  // empty map here means a store that has never been seeded, not a page with
-  // nothing to say, so it should not look like an empty table.
-  if (!Object.keys(codeMap).length) {
-    $('codesEmpty').hidden = false;
-  }
-
   $('modeBoats').addEventListener('click', () => setMode('boats'));
   $('modeProducts').addEventListener('click', () => setMode('products'));
   wireHelp();
-  $('saveCodes').addEventListener('click', saveCodesFile);
+  $('saveCodes').addEventListener('click', downloadCodes);
   $('loadCodes').addEventListener('click', () => $('codesFile').click());
   $('codesFile').addEventListener('change', (e) => {
     const f = e.target.files?.[0];
     e.target.value = '';                      // so the same file can be picked twice
-    if (f) reviewCodesFile(f);
+    if (f) stageFile(f);
   });
   $('previewSheet').addEventListener('click', () => togglePreview());
   $('printSheet').addEventListener('click', () => {
@@ -152,49 +188,148 @@ let davits = [];    // boat -> davits, straight from the export
   render();
   rendered = true;
   watch.done();
+  keepWatch({
+    what: 'Vessel codes',
+    onLink: (cb) => {
+      tellLink = () => { const l = Store.link(); cb({ ...l, unsent: l.unsent || davitEdits.waiting() > 0 }); };
+      Store.onLink(tellLink);
+    },
+  });
+  window.addEventListener('hashchange', openLinked);
+  openLinked();
 })();
 
 /**
+ * Everything the page shows.
+ *
+ * ONE READ OF EACH, ALL AT ONCE. The codes come from the listener that keeps
+ * them live (its first answer from the server is the load), and the latest
+ * import, which the facts and the davits both fall back to, is read once
+ * between them. These used to be four reads in a row, with the codes and the
+ * import each downloaded twice.
+ */
+async function loadPage() {
+  const [f, d] = await Promise.all([
+    loadFacts(),
+    // The davit fall-back reads vessel codes off the rows, which needs the builders.
+    Store.loadSettings().catch(() => ({})).then((s) => { setBuilders(s.builders); return loadDavits(); }),
+    watchCodeMap(),
+  ]);
+  facts = f;
+  davitEdits.set(d);
+}
+
+/**
  * The code map, kept live. Resolves once the server has first answered,
- * with `codeMap` set from that answer; every change after it - a rename made
+ * with that answer in hand; every change after it - a rename made
  * on the board page, or by the other manager - lands here without a reload,
- * debounced because renaming a boat writes one document per ERP code on the
+ * debounced because a board edit writes one document per ERP code on the
  * line, and each write fires its own snapshot. In local mode there is nothing
  * to watch and the store's read is the load.
  */
 let rendered = false;
+let stopCodes = () => {};
 async function watchCodeMap() {
-  if (Store.mode !== 'firestore') { codeMap = await Store.loadCodes(); return; }
+  if (Store.mode !== 'firestore') { edits.set(await Store.loadCodes()); return; }
   await new Promise((resolve, reject) => {
     let loaded = false;
     let t = null;
-    const stop = Store.watchCodes((m, meta) => {
+    stopCodes = Store.watchCodes((m, meta) => {
       if (!loaded && !meta.confirmed) return;      // the SDK's cache, before the server answered
-      codeMap = m;
+      edits.set(m);
       if (!loaded) { loaded = true; resolve(); return; }
       if (!rendered) return;                        // the first render reads it
       clearTimeout(t);
-      t = setTimeout(render, 150);
+      t = setTimeout(redraw, 150);
     }, (e) => { if (!loaded) reject(e); });
-    window.addEventListener('beforeunload', () => { try { stop(); } catch {} });
   });
 }
+
+// Not `beforeunload`: that one asks first, and a page that stays still listens.
+window.addEventListener('pagehide', (e) => {
+  if (e.persisted) return;                          // kept, and shown again as it was
+  try { stopCodes(); } catch {}
+});
+
+// A file chosen and not loaded, or half loaded, or an edit the server does not
+// have yet because there is no connection, would go with the page: the browser asks.
+window.addEventListener('beforeunload', (e) => {
+  const link = Store.link();
+  const unsent = (link.unsent || davitEdits.waiting() > 0) && (link.lost || navigator.onLine === false);
+  if (staged?.data || unsent) e.preventDefault();
+});
 
 // The newest import, read at most once: the facts and the davits both fall
 // back to its rows when nothing has been accumulated yet.
 let latestRead = null;
 const latestBoard = () => (latestRead ??= Store.latestBoard());
 
+function showMode() {
+  $('modeBoats').setAttribute('aria-current', mode === 'boats' ? 'page' : 'false');
+  $('modeProducts').setAttribute('aria-current', mode === 'products' ? 'page' : 'false');
+}
+
 function setMode(m) {
   mode = m;
-  $('modeBoats').setAttribute('aria-current', m === 'boats' ? 'page' : 'false');
-  $('modeProducts').setAttribute('aria-current', m === 'products' ? 'page' : 'false');
-  render();
+  prefs.set(VIEW_KEY, m);
+  showMode();
+  redraw();
+}
+
+// ---------------------------------------------------------------------------
+// drawing
+// ---------------------------------------------------------------------------
+
+/** The heading a line sits under. */
+const groupOf = (r) => r.category ?? 'Nothing on the board';
+
+const isShut = (cat) => collapsed.has(cat) && !visiting.has(cat);
+/** Open a group for this visit: folded on this device, it is folded again at the next. True if it was shut. */
+function visit(cat) {
+  if (!isShut(cat)) return false;
+  visiting.add(cat);
+  return true;
+}
+
+let drawn = [];                     // [{ r, row }], the lines on screen
+let faultsDrawn = new Set();        // the faults already on a line, in this drawing
+
+/** The line on screen with this ERP code on it. */
+const lineOf = (code) => drawn.find((d) => d.r.codes.includes(code));
+
+/** Nowhere: on the page itself, or in a dialog that has closed. */
+const focusLost = () => {
+  const n = document.activeElement;
+  return !n || n === document.body || Boolean(n.closest('.overlay:not(.show)'));
+};
+
+/**
+ * Draw everything again. The control that had the focus has it after, or where
+ * its line has merged into another, or it is no longer offered, the nearest
+ * thing to it on the line.
+ */
+function redraw() {
+  if (!rendered) return;
+  const had = document.activeElement?.closest('[data-code] button');
+  const code = had?.closest('[data-code]').dataset.code;
+  const act = had?.dataset.act;
+  keepFocus(render);
+  if (!had || !focusLost()) return;
+  const row = lineOf(code)?.row;
+  (row?.querySelector(`[data-act="${act}"]`) ?? row?.querySelector('.c-act button'))?.focus({ preventScroll: true });
 }
 
 function render() {
+  codeMap = edits.now();
+  davits = davitEdits.now();
   resolved = resolveDisplays(codeMap);
+  drawn = [];
+  faultsDrawn = new Set();
+  // Editing is the manager's; the rules hold whatever is drawn here.
+  $('loadCodes').hidden = !Auth.isManager;
+  renderEmpty();
   renderWarnings();
+  renderStaged();
 
   const rows = boatRows(codeMap, classify, { mode, facts });
   const host = $('rows');
@@ -202,34 +337,42 @@ function render() {
   renderDavitRows();
 
   $('modeHint').textContent = mode === 'boats'
-    ? `${rows.length} boats, tagged with the product line each is best known by.`
-    : `${rows.length} lines — one per boat per product line, so a boat that builds `
+    ? `${count(rows.length, 'boat')}, tagged with the product line each is best known by.`
+    : `${count(rows.length, 'line')} — one per boat per product line, so a boat that builds `
       + 'both a lifter and a ladder appears in each.';
 
   // Grouped by category in priority order: lifters lead, then rotary.
   const counts = new Map();
-  for (const r of rows) {
-    const c = r.category ?? 'Nothing on the board';
-    counts.set(c, (counts.get(c) ?? 0) + 1);
-  }
+  for (const r of rows) counts.set(groupOf(r), (counts.get(groupOf(r)) ?? 0) + 1);
 
   let current = null;
   for (const r of rows) {
-    const cat = r.category ?? 'Nothing on the board';
+    const cat = groupOf(r);
     if (cat !== current) {
       current = cat;
       host.append(categoryHead(cat, counts.get(cat)));
     }
-    if (collapsed.has(cat)) continue;
-    host.append(boatRow(r));
+    if (isShut(cat)) continue;
+    const row = boatRow(r);
+    drawn.push({ r, row });
+    host.append(row);
   }
 
   renderSheet(rows);
 }
 
+/** Nothing stored, which is why there is no table, and where codes come from. */
+function renderEmpty() {
+  const host = $('codesEmpty');
+  host.hidden = Object.keys(codeMap).length > 0;
+  host.textContent = Auth.isManager
+    ? 'No vessel codes yet. They are added as new codes are decided on the board, or from a file with Load codes.'
+    : 'No vessel codes yet. A manager adds them on the board, or from a file.';
+}
+
 /**
  * Keep the printable sheet in step with whatever the page is showing, so
- * "Print cheat sheet" never prints a different view from the one on screen.
+ * "Print code sheet" never prints a different view from the one on screen.
  *
  * It is rendered whether or not the preview is open, because the print
  * stylesheet reveals it directly — the button only controls what is on screen.
@@ -246,28 +389,29 @@ function renderSheet(rows) {
   root.hidden = false;
   root.classList.toggle('offstage', !sheetShown);
 
-  const fit = fitCodesSheet(host, rows.filter((r) => !r.sheetHidden), { mode, davits: withDavitHulls(davits) });
+  const onSheet = rows.filter((r) => !r.sheetHidden);
+  const fit = fitCodesSheet(host, onSheet, { mode, davits: withDavitHulls(davits) });
 
   const status = $('sheetStatus');
   status.hidden = !sheetShown;
   status.classList.toggle('trimmed', !fit.fits || fit.shrunk);
+  const lines = count(onSheet.length + davits.filter((d) => !d.sheetHidden).length, 'line');
   status.textContent = !fit.measured
     ? 'Could not measure the sheet.'
     : fit.fits && !fit.shrunk
-      ? `One landscape A4 page at ${fit.pt}pt — ${rows.length} lines, `
-        + `${fit.height} of ${fit.limit}px used.`
+      ? `One landscape A4 page at ${fit.pt}pt — ${lines}.`
       : fit.fits
-        ? `Type stepped down to ${fit.pt}pt to hold one page (${rows.length} lines). `
+        ? `Type stepped down to ${fit.pt}pt to hold one page (${lines}). `
           + `Split by product adds rows, so the boats view will usually print larger.`
         : `Will not fit one page even at ${TYPE_STEPS[TYPE_STEPS.length - 1]}pt — `
-          + `${rows.length} lines. It will run to a second page.`;
+          + `${lines}. It will run to a second page.`;
 }
 
 function togglePreview() {
   sheetShown = !sheetShown;
   $('previewSheet').classList.toggle('on', sheetShown);
   $('previewSheet').setAttribute('aria-pressed', String(sheetShown));
-  render();
+  redraw();
 }
 
 /**
@@ -299,67 +443,47 @@ function renderDavitRows() {
   if (!davits.length) return;
 
   for (const d of withDavitHulls(davits)) {
+    const key = `davit|${d.boat}`;
     const row = el('div', `code-row${d.sheetHidden ? ' is-offsheet' : ''}`);
     row.append(el('div', 'c-display', d.display || d.boat));
     row.append(el('div', 'c-model', d.boat));
-    row.append(el('div', 'c-hull', (d.hulls ?? []).join(', ') || '\u2014'));
+    row.append(el('div', 'c-hull', (d.hulls ?? []).join(', ') || '—'));
 
     const items = el('div', 'c-items');
+    const lists = [];
     for (const x of d.davits) {
-      const chip = el('span', 'c-item', x.description);
-      chip.title = x.item;
-      items.append(chip);
+      if (x.description === x.item) { items.append(el('span', 'c-item', x.item)); continue; }
+      const c = codeChip('c-item', x.description, [x.item], `${key}|${x.item}`);
+      items.append(c.chip);
+      lists.push(c.list);
     }
     row.append(items);
 
     const act = el('div', 'c-act');
-    const rename = el('button', 'mini', 'Rename');
-    rename.title = 'What the cheat sheet reads for this boat';
-    rename.addEventListener('click', () => renameDavit(d));
-    const hide = el('button', `mini${d.sheetHidden ? ' on' : ''}`, d.sheetHidden ? 'Hidden' : 'Hide');
-    hide.addEventListener('click', () => toggleDavitHidden(d));
-    act.append(rename, hide);
-    row.append(act);
+    if (Auth.isManager) {
+      act.append(
+        rowButton('Rename', 'rename', key, () => renameDavit(d)),
+        hideButton(d, key, () => toggleDavitHidden(d)));
+    }
+    row.append(act, ...lists, ...faultLines(davitEdits, [d.boat]));
     host.append(row);
   }
 }
 
-async function saveDavits(next) {
-  davits = next;
-  try {
-    await Store.saveDavits(davits);
-    render();
-  } catch (e) {
-    toast(`Could not save — ${e.message}`, 6000);
-  }
-}
-
-async function renameDavit(d) {
-  const next = prompt(
-    `Cheat sheet name for this boat.\n\nFound in the item codes: ${d.boat}`,
-    d.display || d.boat,
-  );
-  if (next === null) return;
-  const value = next.trim();
-  await saveDavits(davits.map((x) => (x.boat === d.boat ? { ...x, display: value || null } : x)));
-  toast(value ? `Davit line reads "${value}".` : `Davit line reads ${d.boat}.`);
-}
-
-async function toggleDavitHidden(d) {
-  const next = !d.sheetHidden;
-  await saveDavits(davits.map((x) => (x.boat === d.boat ? { ...x, sheetHidden: next || null } : x)));
-  toast(next ? `${d.display || d.boat} is off the cheat sheet.` : `${d.display || d.boat} is back.`);
-}
-
 function categoryHead(cat, n) {
-  const shut = collapsed.has(cat);
+  const shut = isShut(cat);
   const head = el('button', `codes-cat${shut ? ' is-collapsed' : ''}`);
+  head.type = 'button';
+  head.dataset.focus = `group:${cat}`;
+  head.setAttribute('aria-expanded', String(!shut));
   head.append(el('span', 'cat-caret', shut ? '▸' : '▾'));
   head.append(el('span', 'name', cat));
   head.append(el('span', 'n', String(n)));
   head.addEventListener('click', () => {
-    if (collapsed.has(cat)) collapsed.delete(cat); else collapsed.add(cat);
-    render();
+    if (shut) collapsed.delete(cat); else collapsed.add(cat);
+    visiting.delete(cat);
+    prefs.set(FOLDED_KEY, JSON.stringify([...collapsed]));
+    redraw();
   });
   return head;
 }
@@ -373,8 +497,81 @@ const SHORT = {
 };
 const shortCat = (c) => SHORT[c] ?? c;
 
+/** A control on a row, which a redraw can find again. */
+function rowButton(label, act, key, run) {
+  const b = el('button', 'mini', label);
+  b.type = 'button';
+  b.dataset.act = act;
+  b.dataset.focus = `${act}:${key}`;
+  b.addEventListener('click', run);
+  return b;
+}
+
+/** On the sheet or off it. The label is the state, so there is no pressed look to read as well. */
+function hideButton(line, key, run) {
+  return rowButton(line.sheetHidden ? 'Show on sheet' : 'Hide from sheet', 'hide', key, run);
+}
+
+// The chips opened to their item codes, by row and chip, so a redraw leaves them open.
+const opened = new Set();
+let chipSeq = 0;
+
+/**
+ * A chip that stands for item codes it does not show. Pressed, it lists them
+ * under its row; hovering says them too, but a finger cannot hover.
+ *
+ * @returns {{chip: HTMLElement, list: HTMLElement}} the list goes at the foot of the row
+ */
+function codeChip(cls, text, items, key) {
+  const chip = el('button', cls, text);
+  chip.type = 'button';
+  chip.title = items.join('\n');
+  chip.dataset.focus = `chip:${key}`;
+  const list = el('div', 'cx-list');
+  list.id = `itemCodes${chipSeq += 1}`;
+  list.append(el('span', 'cx-of', text));
+  for (const i of items) list.append(el('span', 'c-item', i));
+  chip.setAttribute('aria-controls', list.id);
+  const show = (on) => {
+    chip.setAttribute('aria-expanded', String(on));
+    list.hidden = !on;
+    if (on) opened.add(key); else opened.delete(key);
+  };
+  chip.addEventListener('click', () => show(list.hidden));
+  show(opened.has(key));
+  return { chip, list };
+}
+
+/**
+ * What was not saved on this line, each with the way to try it again. Said
+ * once: split by product, a code can be on more than one line.
+ */
+function faultLines(ledger, keys) {
+  const out = [];
+  for (const f of ledger.faults()) {
+    if (faultsDrawn.has(f) || !Object.keys(f.edit.patches).some((k) => keys.includes(k))) continue;
+    faultsDrawn.add(f);
+    const line = el('div', 'cx-fault');
+    line.setAttribute('role', 'alert');
+    line.append(el('span', null, f.words),
+      rowButton('Retry', 'retry', `${f.edit.kind}|${keys[0]}`, () => { unsay(f.words); ledger.retry(f); }),
+      rowButton('Dismiss', 'dismiss', `${f.edit.kind}|${keys[0]}`, () => { unsay(f.words); ledger.dismiss(f); }));
+    out.push(line);
+  }
+  return out;
+}
+
+/** Open the group a line is in, where it is folded: what is said on a line has to be on the screen. */
+function showLine(codes) {
+  const r = boatRows(codeMap, classify, { mode, facts }).find((x) => x.codes.some((c) => codes.includes(c)));
+  if (r && visit(groupOf(r))) redraw();
+}
+
 function boatRow(r) {
+  const key = `${r.codes[0]}|${mode === 'products' ? groupOf(r) : ''}`;
   const row = el('div', `code-row${r.sheetHidden ? ' is-offsheet' : ''}`);
+  row.dataset.code = r.codes[0];
+  const lists = [];
 
   // 1. THE DISPLAY. First, largest, and what everything else hangs off.
   const disp = el('div', 'c-display');
@@ -393,7 +590,7 @@ function boatRow(r) {
   row.append(codes);
 
   // 3. What the manufacturer calls it, and the hulls it has been fitted to.
-  // What the cheat sheet prints, not every code the data carries — a boat with
+  // What the code sheet prints, not every code the data carries — a boat with
   // three manufacturer codes should not put all three on a sheet of paper.
   const modelCell = el('div', `c-model${r.modelSet ? ' is-set' : ''}`, r.model || '—');
   if (r.modelSet) modelCell.title = `Set by hand. Found in the data: ${r.models.join(', ') || 'none'}`;
@@ -403,140 +600,308 @@ function boatRow(r) {
   // 4. Products. In boats mode a boat with several product lines shows them as
   //    chips; in products mode the row is already one category, so list items.
   const items = el('div', 'c-items');
+  const chip = (cls, text, stands, id) => {
+    const c = codeChip(cls, text, stands, `${key}|${id}`);
+    items.append(c.chip);
+    lists.push(c.list);
+  };
   if (mode === 'boats' && r.categories.length > 1) {
-    for (const c of r.categories) {
-      const chip = el('span', 'c-catchip', shortCat(c));
-      chip.title = r.byCategory.get(c).map((x) => x.item).join('\n');
-      items.append(chip);
-    }
+    for (const c of r.categories) chip('c-catchip', shortCat(c), r.byCategory.get(c).map((x) => x.item), c);
   } else {
     for (const { item } of r.items) {
       // A davit's part number says nothing a person can use; its description
       // gives the capacity and the configuration, which is what the product IS.
       // Everywhere else the code is the more useful of the two.
       const desc = r.category === 'Davits' ? facts?.get(item)?.description : null;
-      const chip = el('span', 'c-item', desc || item);
-      if (desc) chip.title = item;
-      items.append(chip);
+      if (desc) chip('c-item', desc, [item], item);
+      else items.append(el('span', 'c-item', item));
     }
   }
   row.append(items);
 
   const act = el('div', 'c-act');
-  const hide = el('button', `mini${r.sheetHidden ? ' on' : ''}`, r.sheetHidden ? 'Hidden' : 'Hide');
-  hide.title = r.sheetHidden
-    ? 'Kept off the printed cheat sheet. Click to put it back.'
-    : 'Keep this line off the printed cheat sheet';
-  hide.addEventListener('click', () => toggleSheetHidden(r));
-
-  const model = el('button', 'mini', 'Model');
-  model.title = 'What the cheat sheet prints in the Model column';
-  model.addEventListener('click', () => setModel(r));
-
-  const edit = el('button', 'mini', 'Rename');
-  edit.title = 'Change the code the floor reads. Applies to every ERP code on this line.';
-  edit.addEventListener('click', () => rename(r));
-  act.append(model, edit);
-  act.append(hide);
-
-  const move = el('button', 'mini', 'Split');
-  move.title = 'Move one ERP code onto a different boat';
-  move.disabled = r.codes.length < 2;
-  move.addEventListener('click', () => split(r));
-  act.append(move);
-  row.append(act);
-
+  if (Auth.isManager) {
+    if (!r.confirmed) act.append(rowButton('Confirm code', 'confirm', key, () => confirmLine(r)));
+    act.append(
+      rowButton('Set model', 'model', key, () => setModel(r)),
+      rowButton('Rename', 'rename', key, () => rename(r)),
+      hideButton(r, key, () => toggleSheetHidden(r)));
+    // One code on the line is the line: there is nothing to split.
+    if (r.codes.length > 1) act.append(rowButton('Move code', 'split', key, () => split(r)));
+  }
+  row.append(act, ...lists, ...faultLines(edits, r.codes));
   return row;
 }
 
 function renderWarnings() {
   const host = $('warnings');
+  const open = new Set([...host.querySelectorAll('details[open]')].map((d) => d.dataset.panel));
   host.textContent = '';
+  const panel = (id, cls, title, openAtFirst) => {
+    const d = el('details', cls);
+    d.dataset.panel = id;
+    d.open = openAtFirst || open.has(id);
+    const s = el('summary', null, title);
+    s.dataset.focus = `panel:${id}`;
+    const b = el('div', 'body');
+    d.append(s, b);
+    host.append(d);
+    return b;
+  };
 
   for (const c of resolved.conflicts) {
-    const d = el('details', 'panel alert');
-    d.open = true;
-    d.append(el('summary', null, 'Vessel code conflict — two confirmed answers for one boat'));
-    const b = el('div', 'body');
+    const b = panel(`conflict:${c.codes[0]}`, 'panel alert',
+      'Vessel code conflict — two confirmed display codes for one boat', true);
     b.append(el('div', null,
       `${c.codes.join(' and ')} are grouped together but confirmed to different `
       + `display codes: ${c.values.map((v) => `${v.code} → ${v.display}`).join(', ')}. `
       + 'Rename the line to settle it.'));
-    d.append(b);
-    host.append(d);
   }
 
   if (resolved.undecided.length) {
-    const d = el('details', 'panel');
-    d.append(el('summary', null, `Awaiting confirmation (${resolved.undecided.length})`));
-    const b = el('div', 'body');
+    const b = panel('undecided', 'panel', `Awaiting confirmation (${resolved.undecided.length})`, false);
     for (const u of resolved.undecided) {
-      b.append(el('div', null,
-        `${u.codes.join(', ')} — showing "${u.provisional}", auto-seeded and never checked.`));
+      const line = el('div');
+      const link = el('a', 'cx-link', u.codes.join(', '));
+      link.href = `#${encodeURIComponent(u.codes[0])}`;
+      link.addEventListener('click', (e) => {
+        if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+        e.preventDefault();                  // the same address twice is no change of address
+        openCode(u.codes[0]);
+      });
+      line.append(link, document.createTextNode(` — shown as "${u.provisional}", not confirmed.`));
+      b.append(line);
     }
-    d.append(b);
-    host.append(d);
   }
 }
+
+// ---------------------------------------------------------------------------
+// a link to one code
+//
+// The board sends somebody here for one line: `vessel-codes#XX01`.
+// ---------------------------------------------------------------------------
+
+function openLinked() {
+  const code = codeInHash(location.hash);
+  if (code) openCode(code);
+}
+
+/** Open the group a code is in, bring its line into view, mark it, and go to its first control. */
+function openCode(wanted) {
+  const is = (x) => sameName(x, wanted);
+  const has = (r) => r.codes.some(is);
+  const rows = boatRows(codeMap, classify, { mode, facts });
+  const r = rows.find(has) ?? rows.find((x) => is(x.display));
+  if (!r) { toast(`Vessel code ${wanted} not found.`); return; }
+  if (visit(groupOf(r))) redraw();
+  const row = (drawn.find((d) => has(d.r)) ?? drawn.find((d) => is(d.r.display)))?.row;
+  if (!row) return;
+  row.scrollIntoView({ block: 'center', behavior: 'auto' });
+  row.classList.remove('is-marked');
+  void row.offsetWidth;                      // so a second arrival marks it again
+  row.classList.add('is-marked');
+  row.addEventListener('animationend', () => row.classList.remove('is-marked'), { once: true });
+  const to = row.querySelector('.c-act button') ?? row.querySelector('button') ?? row;
+  if (to === row) row.tabIndex = -1;
+  to.focus({ preventScroll: true });
+}
+
+// ---------------------------------------------------------------------------
+// edits
+// ---------------------------------------------------------------------------
+
+/** Every boat as its line reads, and the one these ERP codes are on. */
+const boats = () => boatRows(codeMap, classify, { mode: 'boats', facts });
+const boatWith = (codes) => boats().find((b) => b.codes.some((c) => codes.includes(c)));
+
+/** After a dialog: the focus where the edit was made, on the line its code is on now. */
+function backTo(code, act) {
+  if (!focusLost()) return;
+  const row = lineOf(code)?.row;
+  (row?.querySelector(`[data-act="${act}"]`) ?? row?.querySelector('.c-act button'))?.focus({ preventScroll: true });
+}
+
+const NAME_REQUIRED = 'A display code is required.';
 
 /**
- * Rename a boat. The display and the grouping key move together — keeping them
- * equal is what stops a line printing one code while grouping under another,
- * which is how XX01 and XX11 ended up on separate rows.
+ * Ask before a display code puts two lines together: the display is the boat,
+ * so two lines that read the same are one (see aliasGroups). True when there
+ * is nothing to ask.
  */
-async function rename(r) {
-  const next = prompt(
-    'What should the floor read for this boat?\n\n'
-    + `ERP codes on this line: ${r.codes.join(', ')}\n`
-    + `Model: ${r.models.join(', ') || 'not recorded'}\n\n`
-    + 'Code only — the product wording comes from the template.',
-    r.display,
-  );
-  if (next === null) return;
-  const value = next.trim();
-  if (!value) { toast('A display code cannot be empty.'); return; }
-
-  for (const c of r.codes) {
-    codeMap[c] = { ...(codeMap[c] ?? {}), display: value, boat: value, _confirmed: true };
-    await Store.saveCode(c, { display: value, boat: value, _confirmed: true });
-  }
-  render();
-  toast(`${r.codes.join(' / ')} now print as "${value}".`);
+async function mayMerge(value, joined, line) {
+  if (!joined.length) return true;
+  return choose({
+    title: 'Display code in use',
+    lede: `${spelled(value, joined)} is in use by another boat.`,
+    facts: [line, ...joined.map((b) => [b.display, `ERP codes ${b.codes.join(', ')}`])],
+    yes: `Merge with ${joined.map((b) => b.display).join(' and ')}`,
+    no: 'Keep separate',
+  });
 }
+
+/** A display code as the boat it belongs to already spells it. */
+const spelled = (value, joined) => joined.find((b) => sameName(b.display, value))?.display ?? value;
+
+/** Put a line's codes under one confirmed display code, as one save. */
+async function nameLine(r, value, act, words) {
+  const joined = joinedBy(codeMap, nameCodes(r.codes, value)).map(boatWith);
+  if (await mayMerge(value, joined, [r.display, `ERP codes ${r.codes.join(', ')}`])) {
+    const display = spelled(value, joined);
+    edits.save({ kind: 'name', patches: nameCodes(r.codes, display), ...words(display) });
+  }
+  backTo(r.codes[0], act);
+}
+
+/** What the floor reads for a boat. */
+async function rename(r) {
+  const got = await ask({
+    title: 'Display code',
+    facts: [['ERP codes', r.codes.join(', ')], ['Model codes', r.models.join(', ')]],
+    fields: [{ key: 'display', label: 'Display code', value: r.display, check: (v) => (v ? null : NAME_REQUIRED) }],
+    actions: [{ value: 'save', label: 'Save display code', kind: 'primary' }, { label: 'Cancel', close: true }],
+  });
+  if (!got) return;
+  await nameLine(r, got.values.display, 'rename', (display) => ({
+    what: `${r.display} not renamed`,
+    said: `${r.codes.join(' / ')} now ${r.codes.length === 1 ? 'prints' : 'print'} as "${display}".`,
+  }));
+}
+
+/** The display code a line already shows is the right one. */
+const confirmLine = (r) => nameLine(r, r.display, 'confirm', (display) => ({
+  what: `${r.display} not confirmed`, said: `${display} confirmed.`,
+}));
 
 /** Move one ERP code off this boat, onto its own line or onto another boat. */
 async function split(r) {
-  const which = prompt(
-    `Which ERP code should move off "${r.display}"?\n\n${r.codes.join('\n')}`,
-    r.codes[r.codes.length - 1],
-  );
-  if (which === null) return;
-  const code = which.trim().toUpperCase();
-  if (!r.codes.includes(code)) { toast(`${code} is not on this line.`); return; }
+  const line = boatWith(r.codes) ?? r;
+  const others = boats().filter((b) => b.codes[0] !== line.codes[0]);
+  const OWN = 'own';
+  const got = await ask({
+    title: 'Line split',
+    facts: [['Display code', line.display]],
+    fields: [
+      { key: 'code', label: 'ERP code', value: r.codes[r.codes.length - 1], options: r.codes.map((c) => ({ value: c })) },
+      { key: 'to', label: 'Moves to', value: OWN,
+        options: [{ value: OWN, label: 'A line of its own' },
+          ...others.map((b, i) => ({ value: `boat${i}`, label: `${b.display}  (${b.codes.join(', ')})` }))] },
+      { key: 'display', label: 'Display code', value: (v) => v.code, when: (v) => v.to === OWN,
+        check: (value, v) => {
+          if (!value) return NAME_REQUIRED;
+          const left = line.codes.filter((c) => c !== v.code);
+          return sameName(value, line.display) || left.some((c) => sameName(codeMap[c]?.display, value))
+            ? 'Already the display code of this line.' : null;
+        } },
+    ],
+    actions: [{ value: 'move', label: 'Move code', kind: 'primary' }, { label: 'Cancel', close: true }],
+  });
+  if (!got) return;
 
-  const to = prompt(
-    `What should ${code} read instead?\n\n`
-    + 'Type an existing boat’s code to merge it there, or something new to give '
-    + 'it a line of its own.',
-    code,
-  );
-  if (to === null) return;
-  const value = to.trim();
-  if (!value) { toast('A display code cannot be empty.'); return; }
-
-  codeMap[code] = { ...(codeMap[code] ?? {}), display: value, boat: value, _confirmed: true };
-  await Store.saveCode(code, { display: value, boat: value, _confirmed: true });
-  render();
-  toast(`${code} now reads "${value}".`);
+  const { code, to } = got.values;
+  const onto = others.find((b, i) => to === `boat${i}`) ?? null;
+  const value = onto?.display ?? got.values.display;
+  const move = (display) => moveCode(codeMap, line.codes, code, display, line.display);
+  // Joining the boat picked is what was asked for; any other is asked about.
+  const joined = joinedBy(codeMap, move(value)).map(boatWith).filter((b) => b.codes[0] !== onto?.codes[0]);
+  if (await mayMerge(value, joined, ['ERP code', code])) {
+    const display = spelled(value, joined);
+    edits.save({ kind: 'name', patches: move(display), what: `${code} not moved`, said: `${code} now reads "${display}".` });
+  }
+  backTo(r.codes.find((c) => c !== code), 'split');
 }
 
-let toastTimer;
-function toast(msg, ms = 3200) {
-  const t = $('toast');
-  t.textContent = msg;
-  t.classList.add('show');
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), ms);
+/**
+ * Keep a line off the printed code sheet, or put it back.
+ *
+ * For a boat nobody builds any more. It stays on this page — hiding is a
+ * decision about a sheet of paper, not a deletion — and the sheet is what runs
+ * out of room, not the screen.
+ *
+ * Stored on every code of the boat, so it survives a rename or a split; and
+ * read off any one of them, so it has to come off them all.
+ */
+function toggleSheetHidden(r) {
+  const next = !r.sheetHidden;
+  edits.save({
+    kind: 'hide',
+    patches: Object.fromEntries((boatWith(r.codes) ?? r).codes.map((c) => [c, { sheetHidden: next || null }])),
+    ...hideWords(r.display, next),
+  });
+}
+
+const hideWords = (name, hidden) => ({
+  what: hidden ? `${name} not hidden from the sheet` : `${name} not shown on the sheet`,
+  said: hidden ? `${name} hidden from the sheet.` : `${name} shown on the sheet.`,
+});
+
+/**
+ * Choose what the code sheet prints in the Model column.
+ *
+ * A boat can carry several manufacturer codes — a plain one, the same with a
+ * voltage, one with a note appended — and the sheet has room for one. Sometimes
+ * the right answer is none of them, so this takes free text as well as the
+ * codes found in the data.
+ *
+ * Stored on the boat, affects the code sheet only. Written to every code on
+ * the line so it survives a split or a rename of any one of them.
+ */
+async function setModel(r) {
+  const found = modelOptions(r, codeMap);
+  const now = r.modelSet ? r.model : '';
+  const at = found.indexOf(now);
+  const got = await ask({
+    title: 'Model on the sheet',
+    facts: [['Display code', r.display], ['Model codes', found.join(', ')], ...(now ? [['Set by hand', now]] : [])],
+    fields: [
+      { key: 'pick', label: 'Model', value: !now ? 'every' : at >= 0 ? `model${at}` : 'other',
+        options: [...found.map((m, i) => ({ value: `model${i}`, label: m })),
+          { value: 'every', label: 'Every model code' }, { value: 'other', label: 'Other' }] },
+      { key: 'other', label: 'Other model', value: at >= 0 ? '' : now, when: (v) => v.pick === 'other',
+        check: (v) => (v ? null : 'A model is required.') },
+    ],
+    actions: [{ value: 'save', label: 'Save model', kind: 'primary' }, { label: 'Cancel', close: true }],
+  });
+  if (!got) return;
+  const { pick, other } = got.values;
+  const value = pick === 'every' ? '' : pick === 'other' ? other : found.find((m, i) => pick === `model${i}`);
+  if (value !== now) {
+    edits.save({
+      kind: 'model',
+      patches: Object.fromEntries(r.codes.map((c) => [c, { sheetModel: value || null }])),
+      what: `Model for ${r.display} not saved`,
+      said: value ? `${r.display} prints "${value}".` : `${r.display} shows every model code.`,
+    });
+  }
+  backTo(r.codes[0], 'model');
+}
+
+async function renameDavit(d) {
+  const got = await ask({
+    title: 'Display code',
+    facts: [['In the item codes', d.boat]],
+    fields: [{ key: 'display', label: 'Display code', value: d.display || d.boat, check: (v) => (v ? null : NAME_REQUIRED) }],
+    actions: [
+      { value: 'save', label: 'Save display code', kind: 'primary' },
+      ...(d.display ? [{ value: 'own', label: `Use ${d.boat}` }] : []),
+      { label: 'Cancel', close: true },
+    ],
+  });
+  if (!got) return;
+  // The item codes' own name for the boat needs no display code to say it.
+  const value = got.action === 'own' || got.values.display === d.boat ? null : got.values.display;
+  davitEdits.save({
+    kind: 'name',
+    patches: { [d.boat]: { display: value } },
+    what: `${d.display || d.boat} not renamed`,
+    said: `Davit line reads "${value ?? d.boat}".`,
+  });
+}
+
+function toggleDavitHidden(d) {
+  const next = !d.sheetHidden;
+  davitEdits.save({
+    kind: 'hide', patches: { [d.boat]: { sheetHidden: next || null } }, ...hideWords(d.display || d.boat, next),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -548,7 +913,7 @@ function toast(msg, ms = 3200) {
 // manager's own machine now, and never touches the repository or the web
 // server.
 //
-// Save is also the backup. Firestore is the source of truth and there is no
+// Download is also the backup. Firestore is the source of truth and there is no
 // other copy of a decision somebody made by hand.
 // ---------------------------------------------------------------------------
 
@@ -610,61 +975,85 @@ async function loadFacts() {
   }
 }
 
-function saveCodesFile() {
-  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+function downloadCodes() {
   const blob = new Blob([JSON.stringify(codeMap, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `vessel-codes-${stamp}.json`;
+  a.download = downloadName(today());
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  toast(`${Object.keys(codeMap).length} codes saved. Keep it out of the repository.`);
+  toast(`${count(Object.keys(codeMap).length, 'code')} downloaded.`);
 }
 
-/** A code entry is an object; everything else in the file is refused. */
-function validCodeMap(data) {
-  if (!data || typeof data !== 'object' || Array.isArray(data)) return 'That is not a code map.';
-  const codes = Object.keys(data);
-  if (!codes.length) return 'That file has no codes in it.';
-  const bad = codes.filter((c) => {
-    const v = data[c];
-    return !v || typeof v !== 'object' || Array.isArray(v);
-  });
-  if (bad.length) return `${bad.length} entries are not code records: ${bad.slice(0, 3).join(', ')}`;
-  return null;
-}
+// A file that has been chosen: { name, data, fault, loading }, or where it
+// could not be read { name, problem }.
+let staged = null;
 
-async function reviewCodesFile(file) {
-  let data;
+async function stageFile(file) {
+  let data = null;
+  let problem = null;
   try {
     data = JSON.parse(await file.text());
   } catch (e) {
-    toast(`Could not read that file — ${e.message}`, 6000);
+    console.warn('[codes file]', e);
+    if (!(e instanceof SyntaxError)) problem = 'the file could not be opened. Choose it again.';
+  }
+  problem ??= fileProblem(data);
+  staged = problem
+    ? { name: file.name, problem }
+    // A backup saved before the model list was renamed loads like a new one.
+    : { name: file.name, data: upgradeCodeMap(data).map };
+  renderStaged();
+  const host = $('codesLoad');
+  host.scrollIntoView({ block: 'start', behavior: 'auto' });
+  host.querySelector('[tabindex]')?.focus({ preventScroll: true });
+}
+
+/** Put the chosen file away, and go back to where it was chosen. */
+function unstage() {
+  staged = null;
+  renderStaged();
+  $('loadCodes').focus({ preventScroll: true });
+}
+
+/**
+ * What loading the chosen file would change, against the codes as they are on
+ * the page now.
+ *
+ * NOTHING IS WRITTEN UNTIL IT IS LOADED, and what changes is spelled out
+ * first: this overwrites hand-made decisions, which is the whole point and
+ * also the reason to look before doing it.
+ */
+function renderStaged() {
+  const host = $('codesLoad');
+  if (staged?.loading) return;               // the button is counting; drawn again when it has finished
+  host.hidden = !staged;
+  host.textContent = '';
+  if (!staged) return;
+
+  const button = (cls, label, act, run) => {
+    const b = el('button', cls, label);
+    b.type = 'button';
+    b.dataset.focus = `load:${act}`;
+    b.addEventListener('click', run);
+    return b;
+  };
+
+  if (staged.problem) {
+    const line = el('div', 'cx-fault');
+    line.setAttribute('role', 'alert');
+    line.tabIndex = -1;
+    line.append(el('span', null, `${staged.name} not read: ${staged.problem}`),
+      button('mini', 'Dismiss', 'dismiss', unstage));
+    host.append(line);
     return;
   }
-  const problem = validCodeMap(data);
-  if (problem) { toast(problem, 6000); return; }
-  // A backup saved before the model list was renamed loads like a new one.
-  data = upgradeCodeMap(data).map;
 
-  // NOTHING IS WRITTEN UNTIL IT IS CONFIRMED, and what changes is spelled out
-  // first: this overwrites hand-made decisions, which is the whole point and
-  // also the reason to look before doing it.
-  const fresh = [], changed = [], same = [];
-  for (const [code, entry] of Object.entries(data)) {
-    const now = codeMap[code];
-    if (!now) fresh.push(code);
-    else if (JSON.stringify({ ...now, ...entry }) !== JSON.stringify(now)) {
-      changed.push({ code, from: now.display ?? '—', to: entry.display ?? now.display ?? '—' });
-    } else same.push(code);
-  }
-
-  const host = $('codesLoad');
-  host.hidden = false;
-  host.textContent = '';
-  host.append(el('h2', null, 'Load these codes?'));
-  host.append(el('div', 'lede',
-    `${file.name} — ${Object.keys(data).length} codes. Nothing is written until you apply it.`));
+  const { fresh, changed, same } = loadReview(staged.data, codeMap);
+  const title = el('h2', null, 'Codes to load');
+  title.tabIndex = -1;
+  host.append(title);
+  host.append(el('div', 'lede', `${staged.name} — ${count(Object.keys(staged.data).length, 'code')}`));
 
   const grid = el('div', 'import-stats');
   const stat = (n, label, note) => {
@@ -673,96 +1062,84 @@ async function reviewCodesFile(file) {
     if (note) c.append(el('em', null, note));
     grid.append(c);
   };
-  stat(fresh.length, 'new codes');
+  stat(fresh.length, fresh.length === 1 ? 'new code' : 'new codes');
   stat(changed.length, 'changed', changed.length ? 'existing decisions overwritten' : '');
   stat(same.length, 'unchanged');
   host.append(grid);
 
-  if (changed.length) {
-    const list = el('div', 'flag-rows');
-    for (const c of changed.slice(0, 40)) {
+  const list = (heading, rows) => {
+    if (!rows.length) return;
+    const table = el('div', 'flag-rows');
+    for (const [code, main, detail] of rows) {
       const r = el('div', 'flag-row');
-      r.append(el('span', 'fr-key', c.code), el('span', 'fr-main', `${c.from} → ${c.to}`),
-        el('span', 'fr-detail', ''), el('span', 'fr-act', ''));
-      list.append(r);
+      const cell = el('span', 'fr-main');
+      cell.append(main);
+      r.append(el('span', 'fr-key', code), cell, el('span', 'fr-detail', detail ?? ''), el('span', 'fr-act', ''));
+      table.append(r);
     }
-    host.append(el('div', 'detail-group', `Changing (${changed.length})`));
-    host.append(list);
-  }
+    host.append(el('div', 'detail-group', `${heading} (${rows.length})`), table);
+  };
+  list('New', fresh.map(({ code, entry }) => [code, entry.display || '—', (entry.items ?? []).join(', ')]));
+  list('Changed', changed.map(({ code, changes }) => [code, changeList(changes)]));
 
+  if (staged.fault) {
+    const line = el('div', 'cx-fault');
+    line.setAttribute('role', 'alert');
+    line.append(el('span', null, staged.fault));
+    host.append(line);
+  }
+  const load = [...fresh, ...changed];
   const acts = el('div', 'import-actions');
-  const apply = el('button', 'primary', `Load ${Object.keys(data).length} codes`);
-  apply.addEventListener('click', async () => {
-    apply.disabled = true;
-    try {
-      const n = await Store.putCodes(data);
-      codeMap = await Store.loadCodes();
-      host.hidden = true;
-      $('codesEmpty').hidden = true;
-      render();
-      toast(`${n} codes loaded.`);
-    } catch (e) {
-      apply.disabled = false;
-      toast(`Could not save — ${e.message}`, 8000);
-    }
-  });
-  const cancel = el('button', 'ghost', 'Cancel');
-  cancel.addEventListener('click', () => { host.hidden = true; });
-  acts.append(apply, cancel);
+  const discard = button('ghost', 'Discard file', 'discard', unstage);
+  if (load.length) {
+    const apply = button('primary', `Load ${count(load.length, 'code')}`, 'apply', () => loadStaged(apply, discard, load));
+    acts.append(apply);
+  } else host.append(el('div', 'import-clean', 'No changes in this file.'));
+  acts.append(discard);
   host.append(acts);
-  host.scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+
+/** One line per field: what it was, what it would be. */
+function changeList(changes) {
+  const list = el('div', 'change-list');
+  for (const c of changes) {
+    const v = el('span', 'ch-value');
+    if (c.from) v.append(el('span', 'ch-from', c.from), el('span', 'ch-arrow', '→'));
+    v.append(el('span', 'ch-to', c.to));
+    list.append(el('span', 'ch-field', c.field), v);
+  }
+  return list;
 }
 
 /**
- * Choose what the cheat sheet prints in the Model column.
- *
- * A boat can carry several manufacturer codes — a plain one, the same with a
- * voltage, one with a note appended — and the sheet has room for one. Sometimes
- * the right answer is none of them, so this takes free text as well as the
- * codes found in the data.
- *
- * Stored on the boat, affects the cheat sheet only.
+ * Save the new and changed codes of the chosen file, a batch at a time (one,
+ * for any map this size). What a failure leaves unsaved goes back as it was
+ * and stays in the review, to be loaded again.
  */
-/**
- * Keep a line off the printed cheat sheet, or put it back.
- *
- * For a boat nobody builds any more. It stays on this page — hiding is a
- * decision about a sheet of paper, not a deletion — and the sheet is what runs
- * out of room, not the screen.
- *
- * Stored on every code on the line, so it survives a rename or a split.
- */
-async function toggleSheetHidden(r) {
-  const next = !r.sheetHidden;
+async function loadStaged(apply, discard, load) {
+  if (staged?.loading) return;
+  const patches = Object.fromEntries(load.map(({ code, entry }) => [code, entry]));
+  const total = load.length;
+  staged.loading = true;
+  staged.fault = null;
+  discard.disabled = true;                   // it cannot be half undone
+  $('loadCodes').disabled = true;
+  const entry = edits.begin({ kind: 'load', patches });
+  redraw();
+  let error = null;
   try {
-    for (const code of r.codes) await Store.saveCode(code, { sheetHidden: next || null });
-    codeMap = await Store.loadCodes();
-    render();
-    toast(next ? `${r.display} is off the cheat sheet.` : `${r.display} is back on the cheat sheet.`);
-  } catch (e) {
-    toast(`Could not save — ${e.message}`, 6000);
-  }
-}
-
-async function setModel(r) {
-  const found = r.models;
-  const current = r.modelSet ? r.model : '';
-  const next = prompt(
-    `Model column on the cheat sheet for ${r.display}.\n\n`
-    + `Found in the data: ${found.join(', ') || 'none'}\n\n`
-    + 'Type one of those, or anything else. Leave empty to show them all.',
-    current,
-  );
-  if (next === null) return;
-  const value = next.trim();
-  try {
-    // Written to every code on the line so it survives a split or a rename of
-    // any one of them.
-    for (const code of r.codes) await Store.saveCode(code, { sheetModel: value || null });
-    codeMap = await Store.loadCodes();
-    render();
-    toast(value ? `${r.display} prints "${value}".` : `${r.display} shows every model code.`);
-  } catch (e) {
-    toast(`Could not save — ${e.message}`, 6000);
-  }
+    await busy(apply, `Loading ${count(total, 'code')}…`, (say) => Store.putCodes(patches,
+      (saved) => { if (saved < total) say(`Loading ${saved} of ${count(total, 'code')}…`); }));
+  } catch (e) { error = e; }
+  const saved = error ? error.saved ?? 0 : total;
+  edits.end(entry, Object.fromEntries(Object.entries(patches).slice(0, saved)));
+  $('loadCodes').disabled = false;
+  staged.loading = false;
+  if (error) {
+    staged.fault = failure(saved
+      ? `${saved} of ${count(total, 'code')} loaded, ${total - saved} not loaded` : `${count(total, 'code')} not loaded`, error);
+  } else staged = null;
+  redraw();
+  if (error) document.querySelector('[data-focus="load:apply"]')?.focus();
+  else { $('loadCodes').focus({ preventScroll: true }); toast(`${count(total, 'code')} loaded.`); }
 }

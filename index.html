@@ -56,15 +56,15 @@
     return n;
   }
 
-  /** 'offline', 'failing', or null to take the line away. */
-  function say(kind) {
+  /** 'offline', 'failing', or null to take the line away; after start-up, boot.js's own words. */
+  function say(kind, words) {
     shown = kind || null;
     var n = line();
     if (!n) {
-      if (shown) document.addEventListener('DOMContentLoaded', function () { say(shown); }, { once: true });
+      if (shown) document.addEventListener('DOMContentLoaded', function () { say(shown, words); }, { once: true });
       return;
     }
-    var text = shown === 'offline' ? (B.saved ? WORDS.offlineSaved : WORDS.offline)
+    var text = words ? words : shown === 'offline' ? (B.saved ? WORDS.offlineSaved : WORDS.offline)
       : shown === 'failing' ? WORDS.failing : '';
     n.textContent = text;
     n.hidden = !text;
@@ -117,93 +117,113 @@
 <link rel="apple-touch-icon" href="assets/logo.png">
 <title>Production Board — Stella Marine</title>
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="css/style.css?v=2026-11-25.1">
+<link rel="stylesheet" href="css/style.css?v=2026-11-26.1">
 <style id="pageRule"></style>  <!-- the paper's orientation; app.js switches it with the sheet -->
 <!-- importmap:start - every module named with the build's ?v=, so a page is never mixed with cached modules, then every file the page starts with preloaded; regenerate with: python tools/importmap.py -->
 <script type="importmap">
 {
   "imports": {
-    "./js/access.js": "./js/access.js?v=2026-11-25.1",
-    "./js/activity-log.js": "./js/activity-log.js?v=2026-11-25.1",
-    "./js/activity.js": "./js/activity.js?v=2026-11-25.1",
-    "./js/adapters/drafting-xlsx.js": "./js/adapters/drafting-xlsx.js?v=2026-11-25.1",
-    "./js/adapters/index.js": "./js/adapters/index.js?v=2026-11-25.1",
-    "./js/adapters/package-files.js": "./js/adapters/package-files.js?v=2026-11-25.1",
-    "./js/adapters/stock.js": "./js/adapters/stock.js?v=2026-11-25.1",
-    "./js/adapters/xlsx.js": "./js/adapters/xlsx.js?v=2026-11-25.1",
-    "./js/app.js": "./js/app.js?v=2026-11-25.1",
-    "./js/auth.js": "./js/auth.js?v=2026-11-25.1",
-    "./js/board-columns.js": "./js/board-columns.js?v=2026-11-25.1",
-    "./js/boot.js": "./js/boot.js?v=2026-11-25.1",
-    "./js/codes-page.js": "./js/codes-page.js?v=2026-11-25.1",
-    "./js/codes-print.js": "./js/codes-print.js?v=2026-11-25.1",
-    "./js/collapse.js": "./js/collapse.js?v=2026-11-25.1",
-    "./js/davits.js": "./js/davits.js?v=2026-11-25.1",
-    "./js/dialog.js": "./js/dialog.js?v=2026-11-25.1",
-    "./js/firebase.js": "./js/firebase.js?v=2026-11-25.1",
-    "./js/gantt.js": "./js/gantt.js?v=2026-11-25.1",
-    "./js/help.js": "./js/help.js?v=2026-11-25.1",
-    "./js/import-review.js": "./js/import-review.js?v=2026-11-25.1",
-    "./js/item-history.js": "./js/item-history.js?v=2026-11-25.1",
-    "./js/package-dialog.js": "./js/package-dialog.js?v=2026-11-25.1",
-    "./js/packages.js": "./js/packages.js?v=2026-11-25.1",
-    "./js/parts-page.js": "./js/parts-page.js?v=2026-11-25.1",
-    "./js/parts-review.js": "./js/parts-review.js?v=2026-11-25.1",
-    "./js/parts.js": "./js/parts.js?v=2026-11-25.1",
-    "./js/password.js": "./js/password.js?v=2026-11-25.1",
-    "./js/plinth-control.js": "./js/plinth-control.js?v=2026-11-25.1",
-    "./js/plinths.js": "./js/plinths.js?v=2026-11-25.1",
-    "./js/press.js": "./js/press.js?v=2026-11-25.1",
-    "./js/print.js": "./js/print.js?v=2026-11-25.1",
-    "./js/rules.js": "./js/rules.js?v=2026-11-25.1",
-    "./js/search-core.js": "./js/search-core.js?v=2026-11-25.1",
-    "./js/settings.js": "./js/settings.js?v=2026-11-25.1",
-    "./js/stella-folder.js": "./js/stella-folder.js?v=2026-11-25.1",
-    "./js/store.js": "./js/store.js?v=2026-11-25.1",
-    "./js/test-mode.js": "./js/test-mode.js?v=2026-11-25.1",
-    "./js/transform.js": "./js/transform.js?v=2026-11-25.1",
-    "./js/version.js": "./js/version.js?v=2026-11-25.1",
-    "./js/vessel-codes.js": "./js/vessel-codes.js?v=2026-11-25.1",
-    "./js/watchdog.js": "./js/watchdog.js?v=2026-11-25.1"
+    "./js/access.js": "./js/access.js?v=2026-11-26.1",
+    "./js/activity-log.js": "./js/activity-log.js?v=2026-11-26.1",
+    "./js/activity.js": "./js/activity.js?v=2026-11-26.1",
+    "./js/adapters/drafting-xlsx.js": "./js/adapters/drafting-xlsx.js?v=2026-11-26.1",
+    "./js/adapters/index.js": "./js/adapters/index.js?v=2026-11-26.1",
+    "./js/adapters/package-files.js": "./js/adapters/package-files.js?v=2026-11-26.1",
+    "./js/adapters/stock.js": "./js/adapters/stock.js?v=2026-11-26.1",
+    "./js/adapters/xlsx.js": "./js/adapters/xlsx.js?v=2026-11-26.1",
+    "./js/app.js": "./js/app.js?v=2026-11-26.1",
+    "./js/ask.js": "./js/ask.js?v=2026-11-26.1",
+    "./js/auth.js": "./js/auth.js?v=2026-11-26.1",
+    "./js/board-columns.js": "./js/board-columns.js?v=2026-11-26.1",
+    "./js/boot.js": "./js/boot.js?v=2026-11-26.1",
+    "./js/busy.js": "./js/busy.js?v=2026-11-26.1",
+    "./js/code-edits.js": "./js/code-edits.js?v=2026-11-26.1",
+    "./js/codes-page.js": "./js/codes-page.js?v=2026-11-26.1",
+    "./js/codes-print.js": "./js/codes-print.js?v=2026-11-26.1",
+    "./js/collapse.js": "./js/collapse.js?v=2026-11-26.1",
+    "./js/davits.js": "./js/davits.js?v=2026-11-26.1",
+    "./js/dialog.js": "./js/dialog.js?v=2026-11-26.1",
+    "./js/faults.js": "./js/faults.js?v=2026-11-26.1",
+    "./js/field.js": "./js/field.js?v=2026-11-26.1",
+    "./js/firebase.js": "./js/firebase.js?v=2026-11-26.1",
+    "./js/floor-board.js": "./js/floor-board.js?v=2026-11-26.1",
+    "./js/gantt.js": "./js/gantt.js?v=2026-11-26.1",
+    "./js/help.js": "./js/help.js?v=2026-11-26.1",
+    "./js/import-review.js": "./js/import-review.js?v=2026-11-26.1",
+    "./js/item-history.js": "./js/item-history.js?v=2026-11-26.1",
+    "./js/package-changes.js": "./js/package-changes.js?v=2026-11-26.1",
+    "./js/package-dialog.js": "./js/package-dialog.js?v=2026-11-26.1",
+    "./js/packages.js": "./js/packages.js?v=2026-11-26.1",
+    "./js/parts-page.js": "./js/parts-page.js?v=2026-11-26.1",
+    "./js/parts-review.js": "./js/parts-review.js?v=2026-11-26.1",
+    "./js/parts.js": "./js/parts.js?v=2026-11-26.1",
+    "./js/password.js": "./js/password.js?v=2026-11-26.1",
+    "./js/plinth-control.js": "./js/plinth-control.js?v=2026-11-26.1",
+    "./js/plinths.js": "./js/plinths.js?v=2026-11-26.1",
+    "./js/press.js": "./js/press.js?v=2026-11-26.1",
+    "./js/print.js": "./js/print.js?v=2026-11-26.1",
+    "./js/rules.js": "./js/rules.js?v=2026-11-26.1",
+    "./js/search-core.js": "./js/search-core.js?v=2026-11-26.1",
+    "./js/settings.js": "./js/settings.js?v=2026-11-26.1",
+    "./js/sign-in.js": "./js/sign-in.js?v=2026-11-26.1",
+    "./js/stella-folder.js": "./js/stella-folder.js?v=2026-11-26.1",
+    "./js/store.js": "./js/store.js?v=2026-11-26.1",
+    "./js/test-mode.js": "./js/test-mode.js?v=2026-11-26.1",
+    "./js/toast.js": "./js/toast.js?v=2026-11-26.1",
+    "./js/transform.js": "./js/transform.js?v=2026-11-26.1",
+    "./js/version.js": "./js/version.js?v=2026-11-26.1",
+    "./js/vessel-codes.js": "./js/vessel-codes.js?v=2026-11-26.1",
+    "./js/watchdog.js": "./js/watchdog.js?v=2026-11-26.1",
+    "./js/words.js": "./js/words.js?v=2026-11-26.1",
+    "./js/write-behind.js": "./js/write-behind.js?v=2026-11-26.1"
   }
 }
 </script>
 <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js">
 <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js">
 <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js">
-<link rel="modulepreload" href="js/app.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/adapters/index.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/transform.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/rules.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/vessel-codes.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/auth.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/test-mode.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/version.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/help.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/davits.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/dialog.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/settings.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/package-dialog.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/plinth-control.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/plinths.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/activity.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/activity-log.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/store.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/print.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/gantt.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/item-history.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/import-review.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/boot.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/firebase.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/press.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/board-columns.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/collapse.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/adapters/xlsx.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/password.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/access.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/packages.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/stella-folder.js?v=2026-11-25.1">
-<link rel="modulepreload" href="js/adapters/package-files.js?v=2026-11-25.1">
+<link rel="modulepreload" href="js/app.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/adapters/index.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/transform.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/rules.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/vessel-codes.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/auth.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/access.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/sign-in.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/test-mode.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/version.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/help.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/davits.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/dialog.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/toast.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/words.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/field.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/faults.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/settings.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/package-dialog.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/plinth-control.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/plinths.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/activity.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/activity-log.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/store.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/print.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/gantt.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/item-history.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/import-review.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/boot.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/firebase.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/press.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/board-columns.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/collapse.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/floor-board.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/adapters/xlsx.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/busy.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/password.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/ask.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/packages.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/package-changes.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/stella-folder.js?v=2026-11-26.1">
+<link rel="modulepreload" href="js/adapters/package-files.js?v=2026-11-26.1">
 <!-- importmap:end -->
 </head>
 <body>
@@ -211,22 +231,13 @@
 <!-- ============ SIGN IN ============
      Same model as the Drawings app: Firebase email/password, no self-signup.
      Manager accounts get this page; workshop accounts get the floor view only.
-     The rules are the real enforcement — this only decides what is drawn. -->
+     The rules are the real enforcement — this only decides what is drawn. The
+     form itself is js/sign-in.js, the one the parts page shows too. -->
 <div id="authView">
   <img src="assets/logo.svg" alt="Stella Marine" class="auth-logo">
   <h2 class="brand-head">Sign in</h2>
   <p>Production board for Stella Marine staff. Use the account set up for this device.</p>
-  <div class="field">
-    <label for="loginEmail">Email</label>
-    <input id="loginEmail" type="email" autocomplete="username" autocapitalize="off" spellcheck="false">
-  </div>
-  <div class="field">
-    <label for="loginPass">Password</label>
-    <input id="loginPass" type="password" autocomplete="current-password">
-  </div>
-  <button class="primary" id="loginBtn">Sign in</button>
-  <button class="linkish" id="resetBtn">Email me a password reset link</button>
-  <div id="loginErr"></div>
+  <div id="signIn"></div>
   <div id="localNote"></div>
 </div>
 
@@ -287,6 +298,7 @@
     <span>Source <b class="src" id="provSource">—</b></span>
     <span>Retrieved <b id="provWhen">—</b></span>
     <span class="age" id="provAge"></span>
+    <span class="prov-share" id="provShare" role="status" hidden></span>
     <span class="spacer" style="margin-left:auto"></span>
     <span id="provStore" title="Where manager edits are saved"></span>
     <span id="provVersion" title="Which build is on screen. If this is not the version you were told to expect, the browser is holding an old copy — reload with Ctrl+Shift+R."></span>
@@ -295,14 +307,15 @@
 
   <!-- ============ IMPORT ============ -->
     <section id="importPage" hidden>
-    <div id="dropZone">
+    <div id="dropZone" role="button" tabindex="0">
       <strong>Drop the ERP export here</strong>
       <div class="hint">
         <code>Production Order Maintenance YYYYMMDD.xlsx</code> — or click to choose a file.<br>
-        Everything is parsed in this browser; the spreadsheet is not uploaded anywhere.
+        The spreadsheet is read in this browser. Its open rows are stored with the import.
       </div>
       <input type="file" id="fileInput" accept=".xlsx,.xls" hidden>
     </div>
+      <div id="importState" class="import-state" role="status" hidden></div>
       <div id="importHost"></div>
     </section>
 
@@ -334,7 +347,7 @@
         <button class="mini on" id="partOrders" aria-pressed="true" title="Orders for numbered parts - glands, rope kits, a head rest - on the board, the Gantt and the sheet, or held back. Units are never touched.">Part orders</button>
         <span class="spacer"></span>
         <span class="hint" id="boardCount"></span>
-        <button class="mini quiet manager-only" id="recentChanges">Recent changes</button>
+        <button class="mini quiet manager-only" id="recentChanges">Activity log</button>
         <button class="mini quiet manager-only" id="historyEdit" data-lane="production">History</button>
       </div>
       <div id="board"></div>
@@ -388,6 +401,7 @@
           <input type="range" id="horizon" min="1" max="26" step="1" value="12">
           <span class="val" id="horizonVal">12 weeks</span>
         </div>
+        <div class="ctrl-err" role="alert" hidden></div>
       </div>
 
       <div class="ctrl">
@@ -396,18 +410,20 @@
           <input type="number" id="maxStock" min="0" max="20" placeholder="off">
           <span class="val" id="stockNote"></span>
         </div>
+        <div class="ctrl-err" role="alert" hidden></div>
       </div>
 
       <div class="ctrl">
-        <label for="autoFit">Fit to one page</label>
-        <div class="ctrl-row">
+        <span class="ctrl-cap" id="capFit">Fit to one page</span>
+        <div class="ctrl-row" role="group" aria-labelledby="capFit">
           <button class="mini" id="autoFit" aria-pressed="true">Auto-fit on</button>
         </div>
+        <div class="ctrl-err" role="alert" hidden></div>
       </div>
 
       <div class="ctrl">
-        <label for="sheetBoard">Which sheet</label>
-        <div class="ctrl-row" id="sheetPick">
+        <span class="ctrl-cap" id="capSheet">Which sheet</span>
+        <div class="ctrl-row" id="sheetPick" role="group" aria-labelledby="capSheet">
           <button class="mini on" id="sheetBoard" aria-pressed="true">Board</button>
           <button class="mini" id="sheetWarehouse" aria-pressed="false" title="The board for the pickers: tick boxes down the left of every row">Warehouse</button>
           <button class="mini" id="sheetInternal" aria-pressed="false">Internal</button>
@@ -416,16 +432,16 @@
       </div>
 
       <div class="ctrl" hidden>
-        <label for="paperA4">Paper</label>
-        <div class="ctrl-row" id="paperPick">
+        <span class="ctrl-cap" id="capPaper">Paper</span>
+        <div class="ctrl-row" id="paperPick" role="group" aria-labelledby="capPaper">
           <button class="mini on" id="paperA4" aria-pressed="true">A4</button>
           <button class="mini" id="paperA3" aria-pressed="false">A3</button>
         </div>
       </div>
 
       <div class="ctrl">
-        <label for="waterSheet">Second page</label>
-        <div class="ctrl-row">
+        <span class="ctrl-cap" id="capWater">Second page</span>
+        <div class="ctrl-row" role="group" aria-labelledby="capWater">
           <button class="mini" id="waterSheet" aria-pressed="false">Watermakers off</button>
         </div>
       </div>
@@ -538,7 +554,7 @@
         <span>Same vessel under another code — it will print whatever that boat
               already prints.</span>
         <div class="inline">
-          <select id="ncExisting"></select>
+          <select id="ncExisting" aria-label="Existing boat"></select>
           <button class="mini" data-mode="existing">Add</button>
         </div>
       </div>
@@ -547,7 +563,7 @@
         <b>Enter the code to display</b>
         <span>Anything else — a code the floor uses that neither field carries.</span>
         <div class="inline">
-          <input type="text" id="ncCustom" placeholder="code to display" autocomplete="off" spellcheck="false">
+          <input type="text" id="ncCustom" aria-label="Code to display" placeholder="code to display" autocomplete="off" spellcheck="false">
           <button class="mini" data-mode="custom">Use this</button>
         </div>
       </div>
@@ -593,7 +609,7 @@
         <b>Type what the floor should read</b>
         <span>Neither column says it — a boat, a hull, a job name.</span>
         <div class="inline">
-          <input type="text" id="cnCustom" autocomplete="off" spellcheck="false">
+          <input type="text" id="cnCustom" aria-label="Name to display" autocomplete="off" spellcheck="false">
           <button class="mini" data-mode="custom">Use this</button>
         </div>
       </div>
@@ -627,10 +643,10 @@
     </div>
     <div id="completeList" class="c-list"></div>
     <div class="actions">
-      <button class="primary" id="completeConfirm">Mark ticked as complete</button>
-      <button class="ghost" id="completeCancel">Cancel</button>
+      <button class="primary" id="completeConfirm">Complete job</button>
+      <button class="ghost" id="completeCancel">Keep on board</button>
     </div>
-    <div class="hint">Reversible — anything marked here can be reopened from the History tab.</div>
+    <div class="hint">Reversible — anything marked here can be reopened from History.</div>
   </div>
 </div>
 
@@ -676,6 +692,6 @@
 
 </div><!-- /#appShell -->
 
-<script type="module" src="js/app.js?v=2026-11-25.1"></script>
+<script type="module" src="js/app.js?v=2026-11-26.1"></script>
 </body>
 </html>

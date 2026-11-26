@@ -18,7 +18,11 @@
 //     summary:  { first } | { lead, parts: [{ n, label, cls }], after } | null
 //     concerns: [{ id, level, title, note, rows: [Row], resolveAll }]
 //     clean:    shown in place of the concerns when there are none
-//     actions:  { apply: { label, run }, cancel: { label, run }, hint } | null
+//     actions:  { apply: { label, run, busy, blocked }, cancel: { label, run }, risky, hint } | null
+//               `risky`: something about the file is wrong, so keeping what is
+//               loaded is the filled button and applying the outlined one.
+//               `apply.blocked`: why it cannot be applied at all; said in place
+//               of the button. `apply.busy`: what the button reads meanwhile.
 //   }
 //   Detail: { title, note, toggle, groups: [{ key, title, rows: [Row], shutByDefault }] }
 //     `toggle` undefined draws a plain heading (and the note); null or
@@ -27,6 +31,9 @@
 //   Row: { key, main, detail, cls, marks: [{ cls, text }], action: { label, run },
 //          control: () => Node, wire: (rowElement) => void }
 //     key, main and detail are text or a Node.
+
+import { keepFocus } from './dialog.js';
+import { busy } from './busy.js';
 
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
@@ -50,6 +57,8 @@ const ALWAYS_OPEN = 3;
  * @returns {{ render: (desc: object) => HTMLElement, isOn: (id: string) => boolean }}
  */
 export function createReview(rerender) {
+  // Every click here draws the review again: what was pressed keeps the focus.
+  const again = () => keepFocus(rerender);
   let openDetail = null;
   const openConcerns = new Set();
   // Groups inside an opened count. A key on its own means shut by hand; an
@@ -92,6 +101,7 @@ export function createReview(rerender) {
     const shut = shutGroups.has(g.key)
       || (g.shutByDefault && !shutGroups.has(`open:${g.key}`));
     const head = el('button', `detail-group${shut ? ' is-shut' : ''}`);
+    head.dataset.focus = `review:group:${g.key}`;
     head.setAttribute('aria-expanded', String(!shut));
     head.append(el('span', 'dg-caret', shut ? '\u25b8' : '\u25be'));
     head.append(el('span', 'dg-name', g.title));
@@ -99,7 +109,7 @@ export function createReview(rerender) {
     head.addEventListener('click', () => {
       if (shut) { shutGroups.delete(g.key); shutGroups.add(`open:${g.key}`); }
       else { shutGroups.add(g.key); shutGroups.delete(`open:${g.key}`); }
-      rerender();
+      again();
     });
     wrap.append(head);
     // Rows are drawn only for an open group: a shut one may hold a thousand.
@@ -117,9 +127,11 @@ export function createReview(rerender) {
       if (d.toggle) {
         const t = d.toggle;
         const btn = el('button', `mini${on.has(t.id) ? ' on' : ''}`, t.label);
+        btn.dataset.focus = `review:toggle:${t.id}`;
+        btn.setAttribute('aria-pressed', String(on.has(t.id)));
         btn.addEventListener('click', () => {
           if (on.has(t.id)) on.delete(t.id); else on.add(t.id);
-          rerender();
+          again();
         });
         head.append(btn);
       }
@@ -138,9 +150,11 @@ export function createReview(rerender) {
       if (s.note) c.append(el('em', null, s.note));
       if (s.detail) {
         c.append(el('span', 'stat-more', open ? 'Hide' : 'Show all'));
+        c.dataset.focus = `review:stat:${s.key}`;
+        c.setAttribute('aria-expanded', String(open));
         c.addEventListener('click', () => {
           openDetail = openDetail === s.key ? null : s.key;
-          rerender();
+          again();
         });
       }
       grid.append(c);
@@ -171,6 +185,7 @@ export function createReview(rerender) {
     const wrap = el('div', `flag flag-${c.level}${open ? ' is-open' : ''}`);
     const bar = el('div', 'flag-bar');
     const head = el('button', 'flag-head');
+    head.dataset.focus = `review:concern:${c.id}`;
     head.setAttribute('aria-expanded', String(open));
     head.append(el('span', 'flag-caret', open ? '\u25be' : '\u25b8'));
     // The count leads: the line's whole point is how many of these there are.
@@ -179,7 +194,7 @@ export function createReview(rerender) {
     head.addEventListener('click', () => {
       if (openConcerns.has(c.id)) openConcerns.delete(c.id);
       else openConcerns.add(c.id);
-      rerender();
+      again();
     });
     bar.append(head);
     // One button for the whole list, where a row's own button does only that row.
@@ -219,12 +234,23 @@ export function createReview(rerender) {
     const a = desc.actions;
     if (a) {
       const acts = el('div', 'import-actions');
-      const apply = el('button', 'primary', a.apply.label);
-      apply.addEventListener('click', a.apply.run);
-      const cancel = el('button', 'ghost', a.cancel.label);
+      const careful = Boolean(a.risky || a.apply.blocked);
+      const cancel = el('button', careful ? 'primary' : 'ghost', a.cancel.label);
       cancel.addEventListener('click', a.cancel.run);
-      acts.append(apply, cancel);
-      if (total && a.hint) acts.append(el('span', 'hint', a.hint));
+      if (a.apply.blocked) {
+        acts.append(cancel, el('span', 'hint', a.apply.blocked));
+      } else {
+        const apply = el('button', careful ? 'ghost' : 'primary', a.apply.label);
+        apply.addEventListener('click', () => {
+          if (!a.apply.busy) { a.apply.run(); return; }
+          // Nothing else here while it is applied: it cannot be half undone.
+          cancel.disabled = true;
+          busy(apply, a.apply.busy, (say) => a.apply.run(say)).finally(() => { cancel.disabled = false; });
+        });
+        // The filled one first, whichever it is.
+        acts.append(...(careful ? [cancel, apply] : [apply, cancel]));
+        if (total && a.hint) acts.append(el('span', 'hint', a.hint));
+      }
       box.append(acts);
     }
     return box;
