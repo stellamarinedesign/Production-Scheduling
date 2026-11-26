@@ -550,6 +550,18 @@ export const HELP = [
         ],
       },
       {
+        q: 'Can I undo a change?',
+        a: [
+          'Ctrl+Z undoes the last edit made on this device since the page was opened '
+          + '— a status, Hide and Show, a label, a hull, a part mark, a plinth, Complete and '
+          + 'Reopen — and Ctrl+Y, or Ctrl+Shift+Z, redoes it. On a Mac, Cmd in place of '
+          + 'Ctrl. Each reversal is written to the Activity log as the edit it is.',
+          'An import cannot be undone this way; the review before Apply is its check. '
+          + 'Edits made by somebody else, or before this page was opened, are not in '
+          + 'the list.',
+        ],
+      },
+      {
         q: 'Where did a completed job go?',
         a: [
           'History, behind the button beside each list. Each lane keeps its own, because '
@@ -570,6 +582,17 @@ export const HELP = [
           + 'for a job that was already there when the board began.',
           'In the import review, a changed row opens on a click to show the same fields, '
           + 'old and new, before the import is applied.',
+        ],
+      },
+      {
+        q: 'Can History be read in the order things happened?',
+        a: [
+          'Latest first, above the lists: one list across the categories, the most '
+          + 'recently changed job at the top, so a job completed by mistake is the '
+          + 'first row and Reopen is beside it. Off, History is grouped by category. '
+          + 'Remembered on this device.',
+          'Show everything on the Gantt draws finished work as well: the jobs in '
+          + 'History, in green, from the dates kept when each was completed.',
         ],
       },
     ],

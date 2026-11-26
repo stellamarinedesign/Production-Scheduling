@@ -353,6 +353,11 @@ export function fromSnapshot(prodNo, ov) {
     is_stock: Boolean(snap.is_stock),
     is_custom: Boolean(snap.is_custom),
     status: snap.status ?? '',
+    // Absent on a snapshot written before the dates were kept and never filled
+    // in from the import records.
+    start_date: snap.start_date ?? null,
+    end_date: snap.end_date ?? null,
+    due_date: snap.due_date ?? null,
     hidden: false,
     completed: true,
     completed_at: ov.completedAt ?? null,
@@ -515,6 +520,11 @@ export const snapshotOf = (j) => ({
   hull: j.hull ?? null,
   is_stock: Boolean(j.is_stock),
   status: j.status ?? '',
+  // The schedule, so the Gantt's everything-view can draw finished work once
+  // the export has stopped carrying it. Calendar days, as yyyy-mm-dd strings.
+  start_date: j.start_date ?? null,
+  end_date: j.end_date ?? null,
+  due_date: j.due_date ?? null,
 });
 
 // ---------------------------------------------------------------------------
@@ -674,7 +684,7 @@ function sideJob(r, lane, { overrides, asOf }) {
     completed: stillComplete(ov),
     completed_at: ov.completedAt ?? null,
     completed_by: ov.completedBy ?? null,
-    progress: ov.completed ? 1 : (typeof ov.progress === 'number' ? ov.progress : null),
+    progress: stillComplete(ov) ? 1 : (typeof ov.progress === 'number' ? ov.progress : null),
   };
 }
 
@@ -874,8 +884,11 @@ export function buildBoard(rows, opts = {}) {
       completed_at: ov.completedAt ?? null,
       completed_by: ov.completedBy ?? null,
       // 0..1. No UI sets this yet; a completed job reads as done so the bar is
-      // full the moment it is marked, rather than waiting on tracking.
-      progress: ov.completed ? 1 : (typeof ov.progress === 'number' ? ov.progress : null),
+      // full the moment it is marked, rather than waiting on tracking. From the
+      // job's state, not the raw flag: a closure the ERP has since reversed
+      // leaves `completed` on the record, and read from there every such bar
+      // drew a white wash over the red.
+      progress: stillComplete(ov) ? 1 : (typeof ov.progress === 'number' ? ov.progress : null),
     };
 
     // Completed work leaves the board permanently and lands in History. The

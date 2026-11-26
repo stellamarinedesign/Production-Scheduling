@@ -26,9 +26,11 @@ import { faultLine, setFault, clearFault, notDone, carries } from './faults.js';
 import { wireSettings } from './settings.js';
 import { openPackageDialog } from './package-dialog.js';
 import { plinthControl } from './plinth-control.js';
+import { Undo, inverseOf, bindUndoKeys } from './undo.js';
 import { isDavit, PLINTHS_KEY } from './plinths.js';
 import { describeOverride, describeItemOverride, activityEntry, ACTION, lastChanged } from './activity.js';
 import { renderActivityLog, touchedCell, loadedEntries, forgetActivityLog } from './activity-log.js';
+import { loadLatestFirst, saveLatestFirst, byLatestChange } from './history-order.js';
 import { Store, packRows, unpackRows, isNewerImport } from './store.js';
 import { renderPrint, fitWarehouse, renderWatermakers, measure, fitToPage, fitHorizon, pageRule,
          WAREHOUSE_PAPER, renderLanePrint, fitLaneToPage } from './print.js';
@@ -2178,11 +2180,18 @@ function renderGanttView({ arriving = false } = {}) {
   // T&M and internal jobs are deliberately absent. The ERP stamps their start
   // and end to the day the order was raised and never revises it, so every bar
   // would be a zero-width mark at an arbitrary date. Their tabs show age.
+  // Everything also means the finished work the export no longer carries:
+  // History's jobs, from their snapshots, where the snapshot kept the dates.
+  // Snapshots written before the dates were kept had theirs filled in once,
+  // from the import records, by a script outside the app; one with none is
+  // counted with the jobs "without dates, not shown" (gantt.js).
+  const whole = all ? buildBoard(state.rows, {
+    codeMap: state.codeMap, asOf: today(), overrides: state.overrides,
+    itemOverrides: state.itemOverrides, horizonWeeks: null, includeCompleted: true,
+  }) : null;
   const jobs = all
-    ? buildBoard(state.rows, {
-        codeMap: state.codeMap, asOf: today(), overrides: state.overrides,
-        itemOverrides: state.itemOverrides, horizonWeeks: null, includeCompleted: true,
-      }).jobs.filter((j) => !j.hidden)
+    ? [...whole.jobs.filter((j) => !j.hidden),
+      ...whole.completed.filter((j) => j.from_snapshot && (j.lane ?? 'production') === 'production')]
     : state.board.jobs.filter((j) => !j.hidden);
 
   // Collapsed bands persist, in the same localStorage set as the orders view
@@ -2195,7 +2204,8 @@ function renderGanttView({ arriving = false } = {}) {
     // Today is where it opens; after that it stays where it was scrolled to.
     toToday: arriving,
     // Held while the board is the saved copy, like every other control that writes.
-    onBarClick: Auth.isManager && !isHeld() ? (r) => openCompleteDialog([r]) : null,
+    // A finished bar (History's, on Show everything) opens nothing.
+    onBarClick: Auth.isManager && !isHeld() ? (r) => { if (!r.completed) openCompleteDialog([r]); } : null,
     isCollapsed: (cat) => collapsed.has(`gantt:${cat}`),
     onToggleCategory: (cat) => {
       const key = `gantt:${cat}`;
@@ -2228,6 +2238,7 @@ const HISTORY_CATS = {
   tm: TM_CATEGORY_ORDER,
 };
 const historyOpen = new Set();
+let historyLatest = loadLatestFirst();
 
 function toggleHistory(lane) {
   if (historyOpen.has(lane)) historyOpen.delete(lane); else historyOpen.add(lane);
@@ -2276,8 +2287,23 @@ function renderHistory(lane = 'production') {
     return;
   }
 
-  // Grouped by board category, same order as everywhere else, so History reads
-  // like the orders view rather than as one long undifferentiated list.
+  // Latest first: one list across the categories, the most recently changed
+  // job at the top, so a job ticked by mistake is the first row and Reopen is
+  // beside it. Off, History is grouped by board category, same order as
+  // everywhere else, so it reads like the orders view rather than as one long
+  // undifferentiated list.
+  const bar = el('div', 'hist-bar');
+  const latest = el('button', `mini${historyLatest ? ' on' : ''}`, 'Latest first');
+  latest.setAttribute('aria-pressed', String(historyLatest));
+  latest.dataset.focus = `hist-latest:${lane}`;
+  latest.addEventListener('click', () => {
+    historyLatest = !historyLatest;
+    saveLatestFirst(historyLatest);
+    keepFocus(() => renderHistory(lane));
+  });
+  bar.append(latest);
+  host.append(bar);
+
   const cats = [...HISTORY_CATS[lane]];
   const byCat = new Map(cats.map((c) => [c, []]));
   // One completed before records were kept has no category: last, not left out.
@@ -2285,34 +2311,38 @@ function renderHistory(lane = 'production') {
     if (!byCat.has(j.category)) { cats.push(j.category); byCat.set(j.category, []); }
     byCat.get(j.category).push(j);
   }
+  const groups = historyLatest
+    ? [[null, [...done].sort(byLatestChange(state.overrides, loadedEntries()))]]
+    : cats.map((cat) => [cat, byCat.get(cat) ?? []]);
 
-  for (const cat of cats) {
-    const rows = byCat.get(cat) ?? [];
+  for (const [cat, rows] of groups) {
     if (!rows.length) continue;
 
     const key = historyKey(lane, cat);
-    const shut = collapsed.has(key);
+    const shut = cat !== null && collapsed.has(key);
     const block = el('div', `hist-cat${shut ? ' is-collapsed' : ''}`);
 
-    const head = el('button', 'hist-cat-head');
-    head.dataset.focus = key;
-    head.setAttribute('aria-expanded', String(!shut));
-    head.append(el('span', 'cat-caret', shut ? '\u25b8' : '\u25be'));
-    head.append(el('h2', null, cat));
-    head.append(el('span', 'n', String(rows.length)));
-    head.addEventListener('click', () => {
-      if (collapsed.has(key)) collapsed.delete(key); else collapsed.add(key);
-      saveCollapsed(collapsed);
-      keepFocus(() => renderHistory(lane));
-    });
-    block.append(head);
+    if (cat !== null) {
+      const head = el('button', 'hist-cat-head');
+      head.dataset.focus = key;
+      head.setAttribute('aria-expanded', String(!shut));
+      head.append(el('span', 'cat-caret', shut ? '\u25b8' : '\u25be'));
+      head.append(el('h2', null, cat));
+      head.append(el('span', 'n', String(rows.length)));
+      head.addEventListener('click', () => {
+        if (collapsed.has(key)) collapsed.delete(key); else collapsed.add(key);
+        saveCollapsed(collapsed);
+        keepFocus(() => renderHistory(lane));
+      });
+      block.append(head);
+    }
 
     if (!shut) {
       const table = el('div', 'hist');
       table.append(historyHead(lane));
 
       // Most recently completed first within a category.
-      rows.sort((a, b) => String(b.completed_at ?? '').localeCompare(String(a.completed_at ?? '')));
+      if (cat !== null) rows.sort((a, b) => String(b.completed_at ?? '').localeCompare(String(a.completed_at ?? '')));
 
       for (const j of rows) {
         // Its own key among the opened rows: a job reopened from here must not
@@ -2334,6 +2364,8 @@ function renderHistory(lane = 'production') {
         // A job the ERP closed reads differently from one somebody ticked, and
         // History is the wrong place to blur the two.
         if (j.closed_why) label.append(el('span', 'hist-why', j.closed_why));
+        // One list across the categories names each row's category itself.
+        if (cat === null) label.append(el('span', 'cat', j.category));
         row.append(label);
         if (lane === 'production') row.append(el('span', 'hull', j.hull ?? ''));
         const due = el('span', 'due', lane === 'production' ? j.due_display : (j.opened_display ?? ''));
@@ -2455,16 +2487,18 @@ function confirmComplete() {
  * The snapshot travels with the completion so History can render the job long
  * after the ERP stops exporting it.
  */
-function completeJobs(jobs) {
+function completeJobs(jobs, { said, snapshots = null } = {}) {
   const who = Auth.user?.email ?? null;
   const at = new Date().toISOString();
   const keys = jobs.map((j) => j.prod_no);
-  const snaps = Object.fromEntries(jobs.map((j) => [j.prod_no, snapshotOf(j)]));
+  // An undone Reopen puts back the snapshot the job left with.
+  const snaps = Object.fromEntries(jobs.map((j) => [j.prod_no, snapshots?.[j.prod_no] ?? snapshotOf(j)]));
   const before = new Map();
   return edit({
     rows: keys,
     what: 'Not completed',
-    said: keys.length === 1 ? `${keys[0]} completed. In History.` : `${count(keys.length, 'job')} completed. In History.`,
+    said: said !== undefined ? said
+      : keys.length === 1 ? `${keys[0]} completed. In History.` : `${count(keys.length, 'job')} completed. In History.`,
     apply: () => {
       for (const j of jobs) {
         before.set(j.prod_no, state.overrides[j.prod_no]);
@@ -2475,25 +2509,33 @@ function completeJobs(jobs) {
     undo: () => { for (const k of keys) if (state.overrides[k]?.completed) putBack(k, before.get(k)); },
     write: () => Store.setCompleted(keys, true, who, snaps),
     saved: () => { for (const j of jobs) logChange({ action: ACTION.done, text: 'completed' }, j.prod_no, j.inventory_id, jobTitle(j)); },
-  });
+  }).then((ok) => remember(ok, keys.length === 1 ? `${keys[0]} completed` : `${count(keys.length, 'job')} completed`,
+    () => reopenJobs(jobs, { said: null }), () => completeJobs(jobs, { said: null, snapshots: snaps })));
 }
 
 /** Put a completed job back on the board. Its failure is said on both rows: it may be on either. */
-function reopenJob(j) {
-  let before;
+function reopenJob(j) { return reopenJobs([j]); }
+
+function reopenJobs(jobs, { said } = {}) {
+  const keys = jobs.map((j) => j.prod_no);
+  const before = new Map();
   return edit({
-    rows: [j.prod_no, `hist:${j.prod_no}`],
+    rows: keys.flatMap((k) => [k, `hist:${k}`]),
     what: 'Not reopened',
-    said: `${j.prod_no} reopened.`,
+    said: said !== undefined ? said : keys.length === 1 ? `${keys[0]} reopened.` : `${count(keys.length, 'job')} reopened.`,
     apply: () => {
-      before = state.overrides[j.prod_no];
-      const { completed, completedAt, completedBy, snapshot, ...rest } = before ?? {};
-      putBack(j.prod_no, rest);
+      for (const k of keys) {
+        before.set(k, state.overrides[k]);
+        const { completed, completedAt, completedBy, snapshot, ...rest } = before.get(k) ?? {};
+        putBack(k, rest);
+      }
     },
-    undo: () => { if (!state.overrides[j.prod_no]?.completed) putBack(j.prod_no, before); },
-    write: () => Store.setCompleted([j.prod_no], false, Auth.user?.email),
-    saved: () => logChange({ action: ACTION.reopen, text: 'reopened from History' }, j.prod_no, j.inventory_id, jobTitle(j)),
-  });
+    undo: () => { for (const k of keys) if (!state.overrides[k]?.completed) putBack(k, before.get(k)); },
+    write: () => Store.setCompleted(keys, false, Auth.user?.email),
+    saved: () => { for (const j of jobs) logChange({ action: ACTION.reopen, text: 'reopened from History' }, j.prod_no, j.inventory_id, jobTitle(j)); },
+  }).then((ok) => remember(ok, keys.length === 1 ? `${keys[0]} reopened` : `${count(keys.length, 'job')} reopened`,
+    () => completeJobs(jobs, { said: null, snapshots: Object.fromEntries(keys.map((k) => [k, before.get(k)?.snapshot])) }),
+    () => reopenJobs(jobs, { said: null })));
 }
 
 /** Why jobs on the board are not on the sheet, each reason with its number. */
@@ -3502,6 +3544,10 @@ function showLabelForm(scope) {
 }
 
 function wireOverlays() {
+  // Ctrl+Z and Ctrl+Y for the board's own edits, when nothing else has them:
+  // not in a field, not with a dialog open, not on the saved copy, and for a
+  // manager alone (this is wired for one alone).
+  bindUndoKeys({ blocked: () => !Auth.isManager || isHeld() || dialogOpen(), say: (w) => toast(w) });
   wireNewCode();
   wireCustomName();
   $('scopeJob').addEventListener('click', () => showLabelForm('job'));
@@ -3601,6 +3647,8 @@ function saveLabel() {
 /** A decision on an item code, for every job on it; a failure is said on the row it was made from. */
 function setItemOverride(job, patch, what, said = null) {
   const id = job.inventory_id;
+  // What this overwrites, so Ctrl+Z can put it back through this same path.
+  const inverse = inverseOf(state.itemOverrides[id], patch);
   let before;
   return edit({
     rows: [job.prod_no],
@@ -3619,7 +3667,8 @@ function setItemOverride(job, patch, what, said = null) {
     },
     write: () => Store.setItemOverride(id, patch),
     saved: () => logChange(describeItemOverride(patch), null, id),
-  });
+  }).then((ok) => remember(ok, `${id} \u2013 ${describeItemOverride(patch)?.text ?? 'changed'}`,
+    () => setItemOverride(job, inverse, what), () => setItemOverride(job, patch, what)));
 }
 
 function closeLabel() {
@@ -3759,6 +3808,8 @@ function putBack(prodNo, record) {
 }
 
 function setOverride(prodNo, patch, said = null) {
+  // What this overwrites, so Ctrl+Z can put it back through this same path.
+  const inverse = inverseOf(state.overrides[prodNo], patch);
   let before;
   return edit({
     rows: [prodNo],
@@ -3778,7 +3829,22 @@ function setOverride(prodNo, patch, said = null) {
     undo: () => { if (carries(state.overrides[prodNo], patch)) putBack(prodNo, before); },
     write: () => Store.setOverride(prodNo, patch, Auth.user?.email ?? 'local'),
     saved: () => logChange(describeOverride(patch), prodNo),
-  });
+  }).then((ok) => remember(ok, `${prodNo} \u2013 ${describeOverride(patch)?.text ?? 'changed'}`,
+    () => setOverride(prodNo, inverse), () => setOverride(prodNo, patch)));
+}
+
+/**
+ * CTRL+Z AND CTRL+Y (undo.js). An edit that saved is a step, with a way back
+ * and a way forward through the same path it took, so the screen, the server
+ * and the activity log agree whichever way it went. One that did not save is
+ * no step; an undo that does not save leaves the step where it was, its
+ * failure said on its row like any edit's.
+ */
+function remember(ok, label, back, forward) {
+  if (!ok) return ok;
+  const run = (f) => async () => { if (!await f()) throw new Error(`${label}: not saved`); };
+  Undo.record({ label, undo: run(back), redo: run(forward) });
+  return ok;
 }
 
 /**

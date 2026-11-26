@@ -124,7 +124,8 @@ export function ganttLayout(jobs, { asOf = todayDate(), scaleFromAll = false } =
     // which is still open. Worth its own colour: nothing else in the app shows
     // this, because the board sorts by due date and an overdue job just looks
     // like the top row.
-    const isOverdue = utc(e) < utc(asOf) && !job.is_stock;
+    // ...and still open: finished work that ended before today is just finished.
+    const isOverdue = utc(e) < utc(asOf) && !job.is_stock && !job.completed;
     if (isOverdue) overdue += 1;
 
     // +1 so a same-day job still has width; every bar covers whole days.
