@@ -5,6 +5,8 @@
 // `gantt:<category>`. The button belongs to whatever is in the board's place.
 // With History open that is History's categories and nothing else; otherwise
 // it is the board's. It never touches a fold that is not on the screen.
+//
+// A row opened to its controls is a fold of its own: one is open at a time.
 
 export const historyKey = (lane, cat) => `hist:${lane}:${cat}`;
 
@@ -34,4 +36,38 @@ export const anyShut = ({ shown }, collapsed) => shown.some((k) => collapsed.has
 export function toggleAll(scope, collapsed) {
   const open = anyShut(scope, collapsed);
   for (const k of scope.keys) { if (open) collapsed.delete(k); else collapsed.add(k); }
+}
+
+// ---- rows opened to their controls -------------------------------------------
+
+const OPEN_ROWS = '.job.is-open, .lane-row.is-open, .hist-row.is-open';
+
+/**
+ * Open a row to its controls, or shut it. One row is open at a time: opening
+ * one shuts any other, on the board, in History and in the lanes, and the one
+ * opened stays where it was on the screen while the others shut around it.
+ * @param {Element} row
+ * @param {Set<string>} openRows  the open row's key (its data-prod), so a redraw puts it back
+ */
+export function toggleRow(row, openRows) {
+  const open = !row.classList.contains('is-open');
+  const top = row.getBoundingClientRect().top;
+  if (open) {
+    for (const other of document.querySelectorAll(OPEN_ROWS)) if (other !== row) showRow(other, false);
+    openRows.clear();
+  }
+  showRow(row, open);
+  if (row.dataset.prod) { if (open) openRows.add(row.dataset.prod); else openRows.delete(row.dataset.prod); }
+  const moved = row.getBoundingClientRect().top - top;
+  if (open && moved) window.scrollBy(0, moved);
+}
+
+function showRow(row, open) {
+  row.classList.toggle('is-open', open);
+  // The caret says what the row is doing, whichever of the two was clicked.
+  const caret = row.querySelector('.more');
+  if (caret) {
+    caret.textContent = open ? '\u25be' : '\u25b8';
+    caret.setAttribute('aria-expanded', String(open));
+  }
 }

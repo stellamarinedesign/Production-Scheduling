@@ -18,6 +18,29 @@ const STORE = 'handles';
 const KEY = 'stellaSystems';
 
 let remembered = null;          // this session's copy, for a browser that cannot store it
+let picked = null;              // the folder chosen on this page: the picker gave it permission
+
+// A REQUEST HAS A LIMIT. Every Stella app on this site shares the browser's
+// storage, and a request in it can wait behind another page for as long as
+// that page takes; unlimited, the package dialog said Searching for good
+// (26 Nov 2026). A folder that does not come back promptly is no folder: the
+// dialog offers to connect one, and the one connected is kept for the session.
+export const STORE_WITHIN = 1500;
+
+/**
+ * What a promise gives, or `fallback` once `ms` have passed without an answer.
+ * @param {string} [what]  said in the console when the time runs out
+ */
+export function within(promise, ms, fallback, what) {
+  let timer;
+  const late = new Promise((resolve) => {
+    timer = setTimeout(() => {
+      if (what) console.warn(`[package] ${what}: no answer in ${ms / 1000} s`);
+      resolve(fallback);
+    }, ms);
+  });
+  return Promise.race([Promise.resolve(promise).finally(() => clearTimeout(timer)), late]);
+}
 
 function openDb() {
   return new Promise((resolve, reject) => {
@@ -40,13 +63,18 @@ async function idb(mode, fn) {
   } finally { db.close(); }
 }
 
+/** For the tests: no folder remembered or chosen on this page. */
+export function _forgetRoot() { remembered = null; picked = null; }
+
 /** Edge and Chrome can; Firefox and Safari cannot. */
 export const supported = () => typeof window.showDirectoryPicker === 'function';
 
 /** The folder this PC was pointed at, if it was. */
 export async function savedRoot() {
   if (remembered) return remembered;
-  try { remembered = (await idb('readonly', (s) => s.get(KEY))) ?? null; } catch { remembered = null; }
+  try {
+    remembered = (await within(idb('readonly', (s) => s.get(KEY)), STORE_WITHIN, null, 'the saved Stella Systems folder')) ?? null;
+  } catch { remembered = null; }
   return remembered;
 }
 
@@ -58,8 +86,16 @@ export async function savedRoot() {
 export async function rootState() {
   const handle = await savedRoot();
   if (!handle) return { handle: null, state: 'none' };
-  try { return { handle, state: await handle.queryPermission({ mode: 'read' }) }; }
+  let state;
+  try { state = await within(handle.queryPermission({ mode: 'read' }), STORE_WITHIN, null, 'the folder permission'); }
   catch { return { handle, state: 'prompt' }; }
+  if (state !== null) return { handle, state };
+  // No answer. The folder chosen on this page is allowed: choosing it gave it
+  // permission. One saved before is no folder - asked again, the browser does
+  // not answer either - so Connect chooses it afresh, in its place.
+  if (handle === picked) return { handle, state: 'granted' };
+  remembered = null;
+  return { handle: null, state: 'none' };
 }
 
 /** Ask again for a folder chosen before. Needs a click to have started it. */
@@ -75,7 +111,10 @@ export async function chooseRoot() {
     throw Object.assign(new Error(words), { words });
   }
   remembered = handle;
-  try { await idb('readwrite', (s) => s.put(handle, KEY)); } catch { /* kept for this session only */ }
+  picked = handle;
+  try {
+    await within(idb('readwrite', (s) => s.put(handle, KEY)), STORE_WITHIN, null, 'saving the Stella Systems folder');
+  } catch { /* kept for this session only */ }
   return handle;
 }
 
