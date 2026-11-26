@@ -312,6 +312,16 @@ function offerBootstrap(email) {
 
 let storeReady = false;
 
+// ON A REPEAT OPEN THE BOARD IS ASKED FOR BESIDE THE ACCESS LISTS, not after
+// them: the role the saved copy was drawn for is the likeliest answer, and the
+// rules refuse the reads to anybody it turns out not to be. A different answer
+// drops them and starts the page again, as it always has.
+let early = null;
+function dropEarly() {
+  early = null;
+  for (const stop of unsubscribes.splice(0)) { try { stop(); } catch { /* gone already */ } }
+}
+
 async function start(st) {
   if (pageFor !== null && pageFor !== tidyEmail(st.email)) { await afresh(); return; }
   pageFor = tidyEmail(st.email);
@@ -327,6 +337,9 @@ async function start(st) {
     booting('Connecting');
     watch.step('connect');
     await Store.init();
+    if (Store.mode === 'firestore' && savedFor?.role === ROLE.MANAGER) early = loadBoardData();
+    else if (Store.mode === 'firestore' && savedFor?.role === ROLE.FLOOR) early = watchFloor();
+    early?.catch(() => {});
     booting('Checking your access');
     watch.step('access', 'firestore');
     takeAccess(await readAccess(watch));
@@ -341,6 +354,7 @@ async function start(st) {
   // listed was offered the board.
   const stands = Auth.mode === 'firebase' ? standing(state.access, st.email) : 'listed';
   if (stands !== 'listed') {
+    dropEarly();
     if (await startAgain(savedFor)) return;
     releaseHold?.();
     releaseHold = null;
@@ -359,6 +373,7 @@ async function start(st) {
   // The saved copy was drawn for a role. Another answer starts the page again
   // rather than rewiring it under the person holding it.
   if (savedFor && savedFor.role !== st.role) {
+    dropEarly();
     if (await startAgain(savedFor)) return;
     // It reloaded itself a moment ago: go on in this page, as the role it is.
     releaseHold?.();
@@ -390,7 +405,7 @@ async function start(st) {
   watch.step('board', 'firestore');
   let loaded;
   try {
-    loaded = await loadBoardData();
+    loaded = await (early ?? loadBoardData());
   } catch (e) {
     console.error('[board]', e);
     watch.fail();
@@ -724,7 +739,7 @@ async function startFloor() {
   const shownAt = state.source?.retrievedAt ?? '';
   let published;
   try {
-    published = await watchFloor();
+    published = await (early ?? watchFloor());
     // Nothing kept up for the floor yet, or less than this device has already
     // shown: the newest import, as it was published.
     if (!published?.jobs?.length || (published.retrievedAt ?? '') < shownAt) published = await Store.latestBoard();
