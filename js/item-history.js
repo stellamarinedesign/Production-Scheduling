@@ -16,6 +16,8 @@
 
 import { Store } from './store.js';
 import { closeOnBackdrop } from './dialog.js';
+import { failure } from './words.js';
+import { whenWords } from './board-columns.js';
 import { ACTION, activityEntry, whoShort, whenShort } from './activity.js';
 import { jobTitle, toAU, toDateOnly } from './transform.js';
 
@@ -160,8 +162,7 @@ export async function logImportChanges(diff, { board, by, importAt = null, toast
   const entries = [...changed, ...added];
   if (!entries.length) return 0;
   return Store.logActivityBatch(entries).catch((e) => {
-    console.warn('[activity]', e.message);
-    toast?.(`The import's changes could not be logged — ${e.message}`, 8000);
+    toast?.(failure('Import changes not logged', e), 8000);
     return 0;
   });
 }
@@ -205,6 +206,7 @@ export function wireChangeRow(row, prodNo, changes, generation = null) {
   let detail = null;
   const show = (on) => {
     row.classList.toggle('is-open', on);
+    row.setAttribute('aria-expanded', String(on));
     if (on && !detail) {
       detail = el('div', 'flag-row-changes');
       detail.append(renderChangeList(changes));
@@ -213,16 +215,23 @@ export function wireChangeRow(row, prodNo, changes, generation = null) {
     if (detail) detail.hidden = !on;
     if (on) openRows.add(prodNo); else openRows.delete(prodNo);
   };
+  // A button in all but name, so the keyboard opens it too.
+  row.tabIndex = 0;
+  row.setAttribute('role', 'button');
+  row.setAttribute('aria-expanded', 'false');
   row.addEventListener('click', () => show(!row.classList.contains('is-open')));
+  row.addEventListener('keydown', (e) => {
+    if (e.target !== row || (e.key !== 'Enter' && e.key !== ' ')) return;
+    e.preventDefault();
+    show(!row.classList.contains('is-open'));
+  });
   if (openRows.has(prodNo)) show(true);
 }
 
 let overlay = null;
 let showing = null;     // the job the dialog is open for; a slow read for an earlier one is dropped
 
-const lede = (job) => ((job.lane ?? 'production') === 'production'
-  ? `${job.prod_no} — ${jobTitle(job)}, due ${job.due_display}`
-  : `${job.prod_no} — ${jobTitle(job)}, open ${job.age_display || 'since it was raised'}`);
+const lede = (job) => `${job.prod_no} — ${jobTitle(job)}${whenWords(job)}`;
 
 /** The dialog: every change to one job, newest first. */
 export async function openItemHistory(job) {
@@ -240,7 +249,10 @@ export async function openItemHistory(job) {
   } catch (e) {
     if (showing !== job) return;
     list.textContent = '';
-    list.append(el('div', 'ih-none', `Could not load the history — ${e.message}`));
+    const line = el('div', 'ih-none', failure('History not loaded', e));
+    const retry = el('button', 'mini', 'Retry');
+    retry.addEventListener('click', () => openItemHistory(job));
+    list.append(line, retry);
     return;
   }
   if (showing !== job) return;

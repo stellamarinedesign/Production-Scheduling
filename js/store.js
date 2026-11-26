@@ -23,6 +23,7 @@
 import { getFirebase, failureReason, isConfigured } from './firebase.js';
 import { toDateOnly, toISO } from './transform.js';
 import { upgradeCodeMap, LEGACY_MODELS_KEY } from './vessel-codes.js';
+import { normaliseAccess, markLoaded, isLoaded } from './access.js';
 import { isTestMode, storage, wrapFirestore } from './test-mode.js';
 
 const LS_PREFIX = 'stella.board.';
@@ -337,16 +338,30 @@ export const Store = {
    * @param {Object<string,Object>} snapshots  prodNo -> the job as it was
    */
   async setCompleted(prodNos, done, who, snapshots = {}) {
-    for (const prodNo of prodNos) {
-      const patch = done
-        ? {
-          completed: true,
-          completedAt: new Date().toISOString(),
-          completedBy: who ?? null,
-          snapshot: snapshots[prodNo] ?? null,
-        }
-        : { completed: false, completedAt: null, completedBy: null, snapshot: null };
-      await this.setOverride(prodNo, patch, who ?? null);
+    const patchFor = (prodNo) => (done
+      ? {
+        completed: true,
+        completedAt: new Date().toISOString(),
+        completedBy: who ?? null,
+        snapshot: snapshots[prodNo] ?? null,
+      }
+      : { completed: false, completedAt: null, completedBy: null, snapshot: null });
+    // Undone one at a time: a record with nothing left in it has to go, which
+    // is a read. Done, it goes as one batch, so a sweep of the backlog is one
+    // round trip and cannot be left half made.
+    if (this.mode === 'local' || !done) {
+      for (const prodNo of prodNos) await this.setOverride(prodNo, patchFor(prodNo), who ?? null);
+      return;
+    }
+    const { doc, writeBatch } = this._fs;
+    for (const part of chunk(prodNos, BATCH_SIZE)) {
+      const now = new Date().toISOString();
+      const batch = writeBatch(this._db);
+      for (const prodNo of part) {
+        batch.set(doc(this._db, 'jobOverrides', prodNo),
+          { ...patchFor(prodNo), updatedAt: now, touchedBy: who ?? null, touchedAt: now }, { merge: true });
+      }
+      await batch.commit();
     }
   },
 
@@ -493,31 +508,26 @@ export const Store = {
    *
    * In local mode there is no Firestore and no sign-in either, so the single
    * user of a local board is the manager by definition.
-   */
-  async loadManagers() { return (await this.loadAccess()).managers; },
-
-  /**
-   * Both access lists in one read. `engineers` is optional in the document:
-   * a project that has never named one simply has none.
+   *
+   * THREE ANSWERS, AND NO ONE OF THEM IS TAKEN FOR ANOTHER:
+   *
+   *   the lists          the server has the document, and this is it
+   *   `missing: true`    the server has none, and five empty lists
+   *   it throws          refused, or not answered: nothing is known
+   *
+   * A read that failed used to come back as five empty lists, which is what a
+   * board nobody has been given looks like. The board offered itself to whoever
+   * was on no list, and the Accounts panel offered to save from nothing.
    */
   async loadAccess() {
     if (this.mode === 'local') return { managers: ['*'], engineers: [], floor: [], masters: [], testers: [] };
-    try {
-      const { doc } = this._fs;
-      const snap = await this._read(doc(this._db, 'settings', 'access'), 'doc');
-      const d = snap.exists() ? snap.data() : {};
-      const list = (k) => (Array.isArray(d?.[k]) ? d[k] : []);
-      // `floor` is the floor accounts (the rules read it too: unlisted reads
-      // nothing); `masters` are who may change the lists. With no masters the
-      // first manager is one - the same default the rules apply.
-      const out = { managers: list('managers'), engineers: list('engineers'), floor: list('floor'), masters: list('masters'), testers: list('testers') };
-      if (!out.masters.length && out.managers.length) out.masters = [out.managers[0]];
-      return out;
-    } catch (e) {
-      // Fail closed and loudly: an unreadable list must not promote anybody.
-      console.error('[access]', e.message);
-      return { managers: [], engineers: [], floor: [], masters: [], testers: [] };
-    }
+    const { doc } = this._fs;
+    const snap = await this._read(doc(this._db, 'settings', 'access'), 'doc');
+    if (snap.exists()) return markLoaded(normaliseAccess(snap.data()));
+    // Test mode reads from the SDK's cache once it has written, and a document
+    // the cache does not hold is not one the server does not have.
+    if (snap.metadata?.fromCache) throw Object.assign(new Error('the access lists are not in the cache'), { code: 'unavailable' });
+    return { ...normaliseAccess({}), missing: true };
   },
 
   // ---- parts ---------------------------------------------------------------
@@ -744,26 +754,34 @@ export const Store = {
   },
 
   /**
-   * Write the manager list.
-   *
-   * SAFE TO OFFER FROM THE APP, because the Firestore rules are what actually
-   * decide who may write here — they name the manager accounts independently of
-   * this document. A real manager's write succeeds; anybody else is refused by
-   * the server, and the refusal is the point rather than a failure.
+   * Claim the board: the first manager list, where the server has no lists at
+   * all. Asked again here, at the moment of writing, so a claim can only ever
+   * make the document and never write over one. The rules decide the rest: they
+   * let anybody signed in make it, and nobody but a master change it.
    */
   async saveManagers(emails) {
+    if (!emails?.length) throw Object.assign(new Error('an empty manager list'), { code: 'no-manager' });
     if (this.mode === 'local') return;
+    if (!(await this.loadAccess()).missing) throw Object.assign(new Error('there is an access list already'), { code: 'permission-denied' });
     const { doc, setDoc } = this._fs;
     await setDoc(doc(this._db, 'settings', 'access'),
       { managers: emails, updatedAt: new Date().toISOString() }, { merge: true });
   },
 
-  /** All five lists, from the Settings cog. The rules let only a master write this. */
-  async saveAccess({ managers, engineers, floor, masters, testers }) {
+  /**
+   * All five lists, from the Settings cog. The rules let only a master write
+   * this. Lists that did not come from the server are not written over what it
+   * has (see access.js), and neither are lists with no manager in them: the
+   * rules would let that through, and nobody could edit the board after it.
+   */
+  async saveAccess(lists) {
+    if (!isLoaded(lists)) throw Object.assign(new Error('access lists that were not loaded'), { code: 'not-loaded' });
+    const { managers, engineers, floor, masters, testers } = lists;
+    if (!managers.length) throw Object.assign(new Error('access lists with no manager'), { code: 'no-manager' });
     if (this.mode === 'local') return;
     const { doc, setDoc } = this._fs;
     await setDoc(doc(this._db, 'settings', 'access'),
-      { managers, engineers, floor: floor ?? [], masters: masters ?? [], testers: testers ?? [], updatedAt: new Date().toISOString() }, { merge: true });
+      { managers, engineers, floor, masters, testers, updatedAt: new Date().toISOString() }, { merge: true });
   },
 
   /**
@@ -1001,6 +1019,32 @@ export const Store = {
       (fs, db) => fs.query(fs.collection(db, 'imports'),
         fs.orderBy('retrievedAt', 'desc'), fs.limit(1)),
       (snap, meta) => cb(snap.empty ? null : { _id: snap.docs[0].id, ...snap.docs[0].data() }, meta), onError);
+  },
+
+  // ---- the floor's board ---------------------------------------------------
+  //
+  // settings/floor: what a floor screen shows, kept up by the managers' boards
+  // (floor-board.js). Read by anyone listed, written by a manager, under the
+  // rule the other settings documents have.
+
+  async loadFloorBoard() {
+    if (this.mode === 'local') return lsGet('floorBoard', null);
+    const { doc } = this._fs;
+    const snap = await this._read(doc(this._db, 'settings', 'floor'), 'doc');
+    return snap.exists() ? snap.data() : null;
+  },
+
+  async saveFloorBoard(rec) {
+    const stamped = { ...rec, updatedAt: new Date().toISOString() };
+    if (this.mode === 'local') { lsSet('floorBoard', stamped); return; }
+    const { doc, setDoc } = this._fs;
+    await setDoc(doc(this._db, 'settings', 'floor'), stamped);
+  },
+
+  watchFloorBoard(cb, onError) {
+    return this._watch(
+      (fs, db) => fs.doc(db, 'settings', 'floor'),
+      (snap, meta) => cb(snap.exists() ? snap.data() : null, meta), onError);
   },
 
   // ---- import history -----------------------------------------------------

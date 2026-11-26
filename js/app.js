@@ -2,21 +2,26 @@
 
 import { xlsxAdapter } from './adapters/index.js';
 import { buildBoard, byCategory, today, toAU, toDateOnly, jobTitle, CUSTOM_PREFIX,
-         isEmptyCustomName, snapshotOf, isPrintable, retainedRows,
+         isEmptyCustomName, snapshotOf, isPrintable, printJobs, retainedRows,
          diffBoards } from './transform.js';
 import { CATEGORY_ORDER, PRINT_LAYOUT, EXCLUSION_ORDER, EXCLUSION_GROUP_LABEL,
          TM_CATEGORY_ORDER, INTERNAL_CATEGORY_ORDER, LANE_LABEL, WATERMAKER_CATEGORIES,
          SETTABLE_STATUSES, ERP_CLOSER, isPartOrder } from './rules.js';
 import { stellaCode, labelFor, existingBoats, acceptNewCode, applyTemplate,
   setBuilders, buildersConfigured } from './vessel-codes.js';
-import { Auth, ROLE, friendlyAuthError, setManagers, setEngineers, setMasters, setTesters, managerCount, tidyEmail } from './auth.js';
-import { prefs, showTestMode, isNotAvailable, NOT_AVAILABLE, isTestMode } from './test-mode.js';
+import { Auth, ROLE, setManagers, setEngineers, setMasters, setTesters, tidyEmail } from './auth.js';
+import { standing } from './access.js';
+import { signInForm, focusSignIn, readAccess, notListed, offerManager } from './sign-in.js';
+import { prefs, showTestMode, isNotAvailable, NOT_AVAILABLE, isTestMode, carryFlag } from './test-mode.js';
 import { VERSION } from './version.js';
 import { wireHelp } from './help.js';
 import { davitsByBoat, mergeDavits } from './davits.js';
 import { itemFacts, mergeItemFacts } from './vessel-codes.js';
-import { closeOnBackdrop, closeOnEscape, keepFocus, watchDialogs } from './dialog.js';
-import { toast, toastFailed } from './toast.js';
+import { closeOnBackdrop, closeOnEscape, keepFocus, watchDialogs, whenClosed } from './dialog.js';
+import { toast, toastFailed, unsay } from './toast.js';
+import { count, failure, reason } from './words.js';
+import { refuse, accept } from './field.js';
+import { faultLine, setFault, clearFault, notDone, carries } from './faults.js';
 import { wireSettings } from './settings.js';
 import { openPackageDialog } from './package-dialog.js';
 import { plinthControl } from './plinth-control.js';
@@ -33,8 +38,9 @@ import { createReview } from './import-review.js';
 import { startup, keepWatch, deviceCache, recallSession, rememberSession, forgetDevice, hold, isHeld } from './boot.js';
 import { isConfigured } from './firebase.js';
 import './press.js';
-import { boardHead, createdCell, createdNote, historyColumns, historyHead, historyRowClass } from './board-columns.js';
+import { boardHead, createdCell, createdNote, poNote, erpNote, whenWords, historyColumns, historyHead, historyRowClass } from './board-columns.js';
 import { collapseScope, anyShut, toggleAll, historyKey } from './collapse.js';
+import { floorBoard, floorSignature } from './floor-board.js';
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => {
@@ -81,6 +87,23 @@ const saveWaterPage = (on) => prefs.set(WATER_PAGE_KEY, on ? 'on' : 'off');
 const PUBLISHED_KEY = 'stella.board.publishedAt';
 const publishedAt = () => prefs.get(PUBLISHED_KEY) ?? '';
 const markPublished = (at) => prefs.set(PUBLISHED_KEY, at ?? '');
+
+// Jobs an import took off the board whose History record the server has not
+// confirmed. Once the export has let a job go this device is the only place it
+// is, so they are kept here until it has.
+const UNFILED_KEY = 'stella.board.unfiled';
+const loadUnfiled = () => {
+  try { return JSON.parse(prefs.get(UNFILED_KEY) ?? '{}') ?? {}; } catch { return {}; }
+};
+const saveUnfiled = (m) => (Object.keys(m).length ? prefs.set(UNFILED_KEY, JSON.stringify(m)) : prefs.remove(UNFILED_KEY));
+
+// The questions an import has asked on this device, so each is asked once; the
+// panel on the board is the reminder after that.
+const ASKED_KEY = 'stella.board.asked';
+const loadAsked = () => {
+  try { return new Set(JSON.parse(prefs.get(ASKED_KEY) ?? '[]')); } catch { return new Set(); }
+};
+const saveAsked = (set) => prefs.set(ASKED_KEY, JSON.stringify([...set]));
 
 const state = {
   rows: null,
@@ -132,7 +155,8 @@ const watch = startup();
 // can be changed (Pete, 23 Nov 2026): every control that writes, Print board
 // included, with "Latest board not yet loaded" beside them.
 const BOARD_EDITS = [
-  '#importNav', '#completePastDue', '#horizon', '#maxStock', '#autoFit', '#printBtn', '#warnings button',
+  '#importNav', '#completePastDue', '#horizon', '#maxStock', '#autoFit', '#printBtn',
+  '#warnings button', '#warnings select', '#provShare button', '.fault button',
   '.acts button:not(.more)', '.acts select', '.acts input', '.acts-more button', '.acts-more select', '.acts-more input',
 ].join(', ');
 let releaseHold = null;
@@ -142,6 +166,7 @@ let savedFor = null;
 (async function boot() {
   wireAuth();
   watchDialogs();
+  whenClosed(flushDeferredRebuild);
   showTestMode();
 
   // THE DEVICE FIRST. The copy this device last loaded is drawn while sign-in
@@ -243,73 +268,53 @@ function present(st) {
   who.append(chip);
 }
 
+// Whose page this is: the account it was first started for.
+let pageFor = null;
+
+/**
+ * A PAGE IS ONE ACCOUNT'S. Its board, its listeners and what is in its memory
+ * are whoever's it was started for, so signing out, or in as somebody else,
+ * loads it afresh, with nothing left on the device either. It used to be
+ * handed on: the next account went on in the last one's board.
+ */
+async function afresh() {
+  $('appShell').hidden = true;
+  await forgetDevice();
+  Store.clearCache();
+  location.reload();
+}
+
 function showAuth() {
+  if (pageFor !== null) { afresh(); return; }
   $('authView').classList.add('show');
   $('appShell').hidden = true;
+  focusSignIn();
+}
+
+/** The access lists, as the server gave them, wherever they are asked about. */
+function takeAccess(access) {
+  setManagers(access.managers);
+  setEngineers(access.engineers);
+  setMasters(access.masters);
+  setTesters(access.testers);
+  state.access = access;
 }
 
 let started = false;
-/**
- * First run: nobody is a manager yet, so offer to make this account one.
- *
- * The list decides what is DRAWN. The Firestore rules decide what is ALLOWED,
- * and they name the manager accounts independently of this document — so this
- * button is not self-service access. A real manager's write is permitted by the
- * rules and succeeds; anyone else is refused by the server, which is the
- * intended answer rather than a failure to work around.
- *
- * Offered only when the document is MISSING. A list that exists and is empty is
- * somebody's deliberate decision and is left alone.
- *
- * @returns {Promise<boolean>} true when the role changed and start() re-ran.
- */
-async function offerBootstrap(email) {
-  const host = $('floorEmpty');
-  host.hidden = false;
-  host.textContent = '';
-  host.append(el('strong', null, 'No manager list yet'));
-  host.append(el('div', null,
-    'Nobody has been given the manager view, so every signed-in account sees '
-    + 'the read-only board. Whoever is setting this up can claim it here.'));
-
-  const act = el('div', 'boot-actions');
-  const btn = el('button', 'primary', `Make ${email} a manager`);
-  const note = el('div', 'hint');
-  act.append(btn, note);
-  host.append(act);
-
-  return new Promise((resolve) => {
-    btn.addEventListener('click', async () => {
-      btn.disabled = true;
-      note.textContent = 'Saving…';
-      try {
-        await Store.saveManagers([String(email).trim().toLowerCase()]);
-        setManagers(await Store.loadManagers());
-        if (!managerCount()) throw new Error('The list saved but came back empty.');
-        host.hidden = true;
-        started = false;                     // let start() run its manager path
-        await start({ role: Auth.refreshRole(), email, mode: 'firebase' });
-        toast('You are now a manager on this board.');
-        resolve(true);
-      } catch (e) {
-        btn.disabled = false;
-        // A refusal here is the rules doing their job. Say so, and give the
-        // console route, rather than implying the app is broken.
-        note.innerHTML = /permission|insufficient/i.test(e.message)
-          ? 'Firestore refused that write, which means this account is not a '
-            + 'manager in the security rules either. Add it there first, or create '
-            + '<code>settings/access</code> in the Firebase console with a '
-            + '<code>managers</code> array.'
-          : `Could not save — ${e.message}`;
-        resolve(false);
-      }
-    });
+/** First run: nobody is a manager yet, so this account may become one. See sign-in.js. */
+function offerBootstrap(email) {
+  offerManager($('floorEmpty'), email, async (access) => {
+    takeAccess(access);
+    await start({ role: Auth.refreshRole(), email, mode: 'firebase' });
+    toast('You are now a manager on this board.');
   });
 }
 
 let storeReady = false;
 
 async function start(st) {
+  if (pageFor !== null && pageFor !== tidyEmail(st.email)) { await afresh(); return; }
+  pageFor = tidyEmail(st.email);
   $('authView').classList.remove('show');
   $('appShell').hidden = false;
 
@@ -324,14 +329,33 @@ async function start(st) {
     await Store.init();
     booting('Checking your access');
     watch.step('access', 'firestore');
-    const access = await Store.loadAccess();
-    setManagers(access.managers);
-    setEngineers(access.engineers);
-    setMasters(access.masters);
-    setTesters(access.testers);
-    state.access = access;
+    takeAccess(await readAccess(watch));
   }
+  // Called again while the lists are still being read: that call goes on.
+  if (!state.access) return;
   st = { ...st, role: Auth.refreshRole() };
+
+  // ON NO LIST, OR NO LISTS. Neither goes any further, and nothing of a board
+  // stays on the screen or on the device. The two used to look alike, and so
+  // did a read that had failed (see Store.loadAccess): an account nobody had
+  // listed was offered the board.
+  const stands = Auth.mode === 'firebase' ? standing(state.access, st.email) : 'listed';
+  if (stands !== 'listed') {
+    if (await startAgain(savedFor)) return;
+    releaseHold?.();
+    releaseHold = null;
+    state.rows = null;
+    state.source = null;
+    hideBoard();
+    $('engineerHome').hidden = true;
+    present(st);
+    $('whoami').textContent = st.email ?? '';      // without the chip: it has no role
+    booting(false);
+    watch.done();
+    if (stands === 'missing') offerBootstrap(st.email);
+    else notListed($('floorEmpty'), tidyEmail(st.email));
+    return;
+  }
   // The saved copy was drawn for a role. Another answer starts the page again
   // rather than rewiring it under the person holding it.
   if (savedFor && savedFor.role !== st.role) {
@@ -356,15 +380,6 @@ async function start(st) {
   // Floor accounts read the last published board and render the printed sheet.
   // No upload, no controls, no edit affordances — that is the whole point of
   // the role, and the rules deny those writes regardless.
-  // An empty list means every signed-in account gets the floor view. That is
-  // the right default, and it is also what a missing `settings/access` document
-  // looks like — so say which, rather than leaving a manager wondering why
-  // their own board has gone read-only.
-  if (st.role === ROLE.FLOOR && Auth.mode === 'firebase' && !managerCount()) {
-    watch.done();
-    if (await offerBootstrap(st.email)) return;   // claimed; start() re-ran
-  }
-
   if (st.role === ROLE.FLOOR) { await startFloor(); booting(false); return; }
   if (st.role === ROLE.ENGINEER) { $('engineerHome').hidden = false; booting(false); watch.done(); return; }
 
@@ -400,6 +415,7 @@ async function start(st) {
   boardConfirmed = true;
   saveBoardCopy();
   await settled;
+  checkFloor();
 }
 
 /**
@@ -419,15 +435,10 @@ function enterManager({ settings, codeMap, overrides, itemOverrides, packages })
   state.packages = packages ?? {};
   state.plinths = state.packages[PLINTHS_KEY] ?? null;
 
-  $('horizon').value = state.settings.horizonWeeks;
-  $('horizonVal').textContent = `${state.settings.horizonWeeks} weeks`;
-  $('maxStock').value = state.settings.maxStock ?? '';
-  setAutoFit(state.settings.autoFit, { save: false });
+  showSettings();
 
   $('provVersion').textContent = `v${VERSION}`;
-  $('provStore').textContent = Store.mode === 'firestore'
-    ? 'Edits sync to Firestore'
-    : `Local only — ${Store.reason}`;
+  $('provStore').textContent = Store.mode === 'firestore' ? 'Saved for everyone' : 'Saved on this device only';
   $('provStore').style.color = Store.mode === 'firestore' ? '' : 'var(--red-bright)';
 
   if (managerWired) return;
@@ -514,8 +525,7 @@ const unsubscribes = [];
 let rebuildTimer = null;
 let rebuildDeferred = false;
 
-const dialogOpen = () => ['labelOverlay', 'hideOverlay', 'hullOverlay', 'completeOverlay', 'newCodeOverlay']
-  .some((id) => $(id)?.classList.contains('show'));
+const dialogOpen = () => Boolean(document.querySelector('.overlay.show'));
 
 function scheduleRebuild() {
   if (dialogOpen()) { rebuildDeferred = true; return; }
@@ -585,10 +595,7 @@ function startLiveSync() {
     state.settings = { ...state.settings, ...v };
     if (JSON.stringify(state.settings) === before) return;
     setBuilders(state.settings.builders);
-    $('horizon').value = state.settings.horizonWeeks;
-    $('horizonVal').textContent = `${state.settings.horizonWeeks} weeks`;
-    $('maxStock').value = state.settings.maxStock ?? '';
-    setAutoFit(state.settings.autoFit, { save: false, render: false });
+    showSettings();
     scheduleRebuild();
   }, failed));
 
@@ -600,6 +607,7 @@ function startLiveSync() {
     if (!rows?.length) return;
     state.rows = rows;
     state.source = sourceOf(rec);
+    state.share = null;                        // the board in hand is the shared one
     Store.cacheRows(rows, state.source);
     markPublished(rec.retrievedAt);
     scheduleRebuild();
@@ -625,7 +633,15 @@ function toastNewer(rec) {
     : 'Board updated from a newer export.', 5000);
 }
 
-window.addEventListener('beforeunload', () => {
+// A reviewed import not yet applied, or an edit the server does not have yet
+// because there is no connection, would go with the page: the browser asks.
+window.addEventListener('beforeunload', (e) => {
+  const link = Store.link();
+  const unsent = link.unsent && (link.lost || navigator.onLine === false);
+  if (staged || unsent) e.preventDefault();
+});
+window.addEventListener('pagehide', (e) => {
+  if (e.persisted) return;                    // kept, and shown again as it was
   for (const stop of unsubscribes) { try { stop(); } catch {} }
 });
 
@@ -668,8 +684,9 @@ async function loadLastBoard(published) {
     if (published && !publishedRows?.length) {
       $('dropZone').querySelector('strong').textContent =
         'A board was published, but without its source data';
-      $('dropZone').querySelector('.hint').innerHTML =
-        `<b>${published.sourceLabel ?? 'An export'}</b> was published`
+      // Text, not markup: a file name and an address are not ours to trust.
+      $('dropZone').querySelector('.hint').textContent =
+        `${published.sourceLabel ?? 'An export'} was published`
         + `${published.uploadedBy ? ` by ${published.uploadedBy}` : ''}, but before the app `
         + `stored the raw rows alongside it. Whoever has the file need only open `
         + `their board once and it will be shared automatically — or drop it here.`;
@@ -679,8 +696,14 @@ async function loadLastBoard(published) {
 
   state.rows = pick.rows;
   state.source = pick.source;
+  // This device holds an export the others never got: an import that could not
+  // be shared. Said until somebody shares it.
+  if (Auth.isManager && Store.mode === 'firestore' && localAt > remoteAt && !isTestMode()) {
+    state.share = { words: 'Not shared with the other managers.' };
+  }
   rebuild();
   if (shownAt && (pick.source.retrievedAt ?? '') > shownAt) toastNewer(pick.source);
+  retryUnfiled();
   // A code added since the last load still needs answering.
   if (Auth.isManager) queueImportQuestions();
 
@@ -693,28 +716,18 @@ async function loadLastBoard(published) {
     && pick.rows.length
     && !publishedRows?.length
     && publishedAt() !== pick.source.retrievedAt;
-  if (needsRows) await publish(pick.rows, 'shared with the other managers');
+  if (needsRows) await shareBoard();
 }
 
 async function startFloor() {
-  // An account on no list reads nothing - the rules see to that - so say so
-  // here rather than letting the first read fail as if the board were empty.
-  const email = tidyEmail(Auth.user?.email);
-  if (Auth.mode === 'firebase' && state.access && !state.access.floor.includes(email)) {
-    hideBoard();
-    const host = $('floorEmpty');
-    host.textContent = '';
-    host.append(el('strong', null, 'This account is not on the access list yet'));
-    host.append(el('div', null, `Signed in as ${email}, but nobody has given it a role. `
-      + 'Ask a master user to add it under their cog; it works from your next page load.'));
-    host.hidden = false;
-    watch.done();
-    return;
-  }
   watch.step('board', 'firestore');
+  const shownAt = state.source?.retrievedAt ?? '';
   let published;
   try {
-    published = await Store.latestBoard();
+    published = await watchFloor();
+    // Nothing kept up for the floor yet, or less than this device has already
+    // shown: the newest import, as it was published.
+    if (!published?.jobs?.length || (published.retrievedAt ?? '') < shownAt) published = await Store.latestBoard();
   } catch (e) {
     console.error('[floor]', e);
     watch.fail();
@@ -723,17 +736,84 @@ async function startFloor() {
   if (!published?.jobs?.length) {
     hideBoard();
     $('floorEmpty').hidden = false;
-    watch.done();
-    return;
-  }
-  // The saved copy on screen stays unless the server's is another export.
-  const shownAt = state.source?.retrievedAt ?? null;
-  if (published.retrievedAt !== shownAt) {
-    showFloor(published);
-    if (shownAt && (published.retrievedAt ?? '') > shownAt) toast('Board updated from a newer export.', 5000);
+  } else {
+    floorChanged(published, { first: true });
   }
   watch.done();
-  if (Store.mode === 'firestore') deviceCache.set('floor', floorCopy(published));
+  keepWatch({ what: 'Board', onLink: (cb) => Store.onLink(cb) });
+}
+
+/** The floor's board, kept live. Resolves with the server's first answer: null when there is none yet. */
+function watchFloor() {
+  return new Promise((resolve, reject) => {
+    let loaded = false;
+    unsubscribes.push(Store.watchFloorBoard((rec, meta) => {
+      if (loaded) { if (rec?.jobs?.length) floorChanged(rec); return; }
+      if (!meta.confirmed) return;
+      loaded = true;
+      resolve(rec);
+    }, (e) => { if (!loaded) reject(e); }));
+  });
+}
+
+/**
+ * Draw a floor board that differs from the one on screen, and keep it for the
+ * next open. The server's first answer is taken as it is; after that nothing
+ * goes back to an older export.
+ */
+function floorChanged(rec, { first = false } = {}) {
+  const shown = state.board ? floorSignature({ jobs: floorShown, retrievedAt: state.source?.retrievedAt }) : null;
+  const shownAt = state.source?.retrievedAt ?? '';
+  if (!first && (rec.retrievedAt ?? '') < shownAt) return;
+  if (floorSignature(rec) !== shown) keepFocus(() => showFloor(rec));
+  if (shownAt && (rec.retrievedAt ?? '') > shownAt) toast('Board updated from a newer export.', 5000);
+  if (Store.mode === 'firestore') deviceCache.set('floor', floorCopy(rec));
+}
+
+// ---- and the managers' side of it --------------------------------------------
+
+let floorTimer = null;
+let floorSent = null;       // the signature of what the floor was last given
+let floorAt = '';           // and the export it was of
+
+/** A moment after an edit the server has taken, so a run of them is one write. */
+function shareFloorSoon() {
+  if (Store.mode !== 'firestore' || !Auth.isManager || isTestMode()) return;
+  clearTimeout(floorTimer);
+  floorTimer = setTimeout(shareFloor, 1500);
+}
+
+/** Give the floor the board as it stands: every job, whatever this device has put away. */
+async function shareFloor() {
+  // A board the other managers do not have is not the floor's either.
+  if (!state.rows || state.share) return;
+  const rec = floorBoard(buildBoard(state.rows, {
+    codeMap: state.codeMap, asOf: today(), overrides: state.overrides, itemOverrides: state.itemOverrides,
+    maxStock: state.settings.maxStock, horizonWeeks: state.settings.horizonWeeks,
+  }), state.source);
+  const sig = floorSignature(rec);
+  // Nor is an export older than the one the floor has.
+  if (sig === floorSent || (rec.retrievedAt ?? '') < floorAt) return;
+  try {
+    await Store.saveFloorBoard(rec);
+    floorSent = sig;
+    floorAt = rec.retrievedAt ?? '';
+    state.floorFault = null;
+  } catch (e) {
+    state.floorFault = failure('Floor screens not updated', e);
+  }
+  renderShare();
+}
+
+/** At the open: an edit whose moment never came - a tab shut, a connection lost - is made good. */
+async function checkFloor() {
+  if (Store.mode !== 'firestore' || !Auth.isManager || isTestMode()) return;
+  try {
+    const rec = await Store.loadFloorBoard();
+    floorSent = floorSignature(rec);
+    floorAt = rec?.retrievedAt ?? '';
+  } catch (e) { console.warn('[floor]', e.message); return; }
+  shareFloor();
 }
 
 /** What the floor keeps on the device: the published jobs, not the raw rows it never reads. */
@@ -750,8 +830,10 @@ function hideBoard() {
 
 /** The floor's board: the published jobs, drawn as the manager's table cut to the printed columns. */
 let floorWired = false;
+let floorShown = [];
 function showFloor(published) {
-  state.board = { jobs: published.jobs, meta: published.meta, warnings: {}, excluded: [] };
+  floorShown = published.jobs;
+  state.board = { jobs: published.jobs, meta: published.meta ?? {}, warnings: {}, excluded: [] };
   state.source = {
     sourceLabel: published.sourceLabel,
     sourceId: published.sourceId,
@@ -765,7 +847,7 @@ function showFloor(published) {
   // The version stamp is how a stale copy is told apart from a missing fix,
   // and the floor's phones are where stale copies live.
   $('provVersion').textContent = `v${VERSION}`;
-  $('provStore').textContent = Store.mode === 'firestore' ? 'Read from Firestore' : 'Local only';
+  $('provStore').textContent = Store.mode === 'firestore' ? 'Read-only' : 'Saved on this device only';
   // The same table the manager reads, cut to the printed columns: production
   // number, vessel, due date. It used to be the print preview — a picture of
   // an A4 page, which on a phone is a picture of an A4 page. Only the current
@@ -781,46 +863,7 @@ function showFloor(published) {
 }
 
 function wireAuth() {
-  const submit = async () => {
-    $('loginErr').textContent = '';
-    $('loginBtn').disabled = true;
-    try {
-      await Auth.signIn($('loginEmail').value, $('loginPass').value);
-      $('loginPass').value = '';
-    } catch (e) {
-      $('loginErr').textContent = friendlyAuthError(e);
-    } finally {
-      $('loginBtn').disabled = false;
-    }
-  };
-  $('loginBtn').addEventListener('click', submit);
-
-  // Lets somebody set a password nobody else has seen — including whoever
-  // created their account. The account itself still comes from the console.
-  $('resetBtn').addEventListener('click', async () => {
-    const email = $('loginEmail').value.trim();
-    const err = $('loginErr');
-    if (!email) { err.textContent = 'Type your email address above first.'; return; }
-    $('resetBtn').disabled = true;
-    try {
-      await Auth.sendPasswordReset(email);
-      err.style.color = 'var(--text-dim)';
-      // Firebase answers identically for an address that has no account, so
-      // promising "it has been sent" would be a lie for a typo. Say what was
-      // actually done, and where to look.
-      err.textContent = `If ${email} has an account, a link to set a password is on its `
-        + `way. It can take a minute, and it may land in junk mail.`;
-    } catch (e) {
-      if (isNotAvailable(e)) { toast(NOT_AVAILABLE); return; }
-      err.style.color = '';
-      err.textContent = friendlyAuthError(e);
-    } finally {
-      $('resetBtn').disabled = false;
-    }
-  });
-  for (const id of ['loginEmail', 'loginPass']) {
-    $(id).addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
-  }
+  $('signIn').append(signInForm());
   wireSettings($('settingsBtn'));
 }
 
@@ -833,7 +876,16 @@ function wireUpload() {
   const input = $('fileInput');
 
   zone.addEventListener('click', () => input.click());
-  input.addEventListener('change', () => input.files[0] && load(input.files[0]));
+  zone.addEventListener('keydown', (e) => {
+    if (e.target !== zone || (e.key !== 'Enter' && e.key !== ' ')) return;
+    e.preventDefault();
+    input.click();
+  });
+  input.addEventListener('change', () => {
+    const f = input.files[0];
+    input.value = '';                         // so the same file can be picked twice
+    if (f) load(f);
+  });
 
   ['dragenter', 'dragover'].forEach((ev) =>
     zone.addEventListener(ev, (e) => { e.preventDefault(); zone.classList.add('dragover'); }));
@@ -846,18 +898,27 @@ function wireUpload() {
 
 }
 
+/** What the import page has to say of the file: being read, or why it was not. */
+function importState(words, { bad = false } = {}) {
+  const n = $('importState');
+  n.textContent = words ?? '';
+  n.classList.toggle('bad', bad);
+  n.hidden = !words;
+}
+
 async function load(file) {
   // Without the builders every vessel code reads as none, and the review would
   // describe a board with every boat missing. Refused here and in `publish`.
-  if (!buildersConfigured()) { toast(`${NO_BUILDERS} The export was not loaded.`, 10000); return; }
+  if (!buildersConfigured()) { importState(`${file.name} not loaded: ${NO_BUILDERS}.`, { bad: true }); return; }
 
   let src;
+  importState(`Reading ${file.name}\u2026`);
   try {
-    toast(`Reading ${file.name}…`);
     src = await xlsxAdapter.fetch({ file });
   } catch (e) {
-    toast(`Could not read that file — ${e.message}`, 6000);
     console.error(e);
+    importState(`${file.name} not read: ${e.words ?? reason(e)}. The Production Order Maintenance export (.xlsx) is expected.`,
+      { bad: true });
     return;
   }
 
@@ -879,13 +940,13 @@ async function load(file) {
       }),
     };
   } catch (e) {
-    toast(`Could not build a board from that file — ${e.message}`, 6000);
     console.error(e);
+    importState(`${file.name} not loaded: no board could be built from its rows. Report it, with the file.`, { bad: true });
     return;
   }
 
+  importState(null);
   showImportPage(true);
-  toast(`${src.rows.length} rows read — review and apply.`);
 }
 
 /** Commit the staged import: this is the point of no return. */
@@ -925,58 +986,99 @@ async function commitImport() {
   showImportPage(false);
   rebuild();
   showTab('edit');
-  toast(`${keep.length} open rows in — ${state.board.meta.job_count} production orders.`);
-  queueImportQuestions();
-
-  // Publishing is a SEPARATE failure from parsing. Both used to sit in one try,
-  // so a save that was refused reported "could not read that file" — which
-  // points at the spreadsheet and hides the fact that the board never reached
-  // anybody else.
-  // Learn the davit fittings from the WHOLE file, before the closed rows are
-  // dropped. A fitting is a fact about a boat, not about this week's work.
-  try {
-    const merged = mergeDavits(await Store.loadDavits(), davitsByBoat(src.rows));
-    await Store.saveDavits(merged);
-    // Same reasoning for the products themselves: hulls and descriptions
-    // accumulate, so the cheat sheet is a total list rather than a view of what
-    // happens to be open.
-    await Store.saveItemFacts(mergeItemFacts(await Store.loadItemFacts(), itemFacts(src.rows)));
-  } catch (e) {
-    console.warn('[reference]', e.message);
-  }
-
-  // Work that came off the board goes to History rather than nowhere.
-  //
-  // It rides the same completion record a person makes by hand, because it is
-  // the same kind of fact and History already knows how to render one. What it
-  // carries that a hand-made one does not is WHY: the ERP's own closing status,
-  // so a cancelled job is never filed as a finished one. Reopen puts it back.
-  if (leaving.length) {
-    try {
-      const snaps = Object.fromEntries(leaving.map((j) => [j.prod_no, {
-        ...snapshotOf(j),
-        closed_status: j.leaving_status,
-        closed_why: j.leaving_why,
-      }]));
-      await Store.setCompleted(leaving.map((j) => j.prod_no), true, ERP_CLOSER, snaps);
-      state.overrides = await Store.loadOverrides();
-      rebuild();
-      toast(`${leaving.length} job${leaving.length === 1 ? '' : 's'} came off the board `
-        + '- all of them are in History.', 6000);
-    } catch (e) {
-      // Worth saying out loud: silence here is exactly the disappearance this
-      // is here to prevent.
-      toast(`${leaving.length} jobs left the board and could not be saved to `
-        + `History - ${e.message}`, 8000);
-    }
-  }
+  queueImportQuestions({ all: true });
 
   // What the ERP moved on each job, and the jobs it added, into each job's
   // change history. After the commit and never awaited: see logImportChanges.
   logImportChanges(diff, { board: state.board, by: Auth.user?.email ?? 'local',
-    importAt: state.source.retrievedAt, toast });
+    importAt: state.source.retrievedAt, toast: toastFailed });
 
-  await publish(keep, 'shared with the other managers');
+  // THREE SEPARATE WRITES, EACH WITH ITS OWN FAILURE, all at once: a tab shut
+  // while they ran one after another lost whichever had not begun. They used
+  // to share a try, so a share that was refused reported "could not read that
+  // file", which points at the spreadsheet and hides that the board reached
+  // nobody else.
+  const orders = state.board.meta.job_count;
+  const [shared, filed] = await Promise.all([
+    shareBoard({ quiet: true }),
+    // Work that came off the board goes to History rather than nowhere.
+    //
+    // It rides the same completion record a person makes by hand, because it is
+    // the same kind of fact and History already knows how to render one. What it
+    // carries that a hand-made one does not is WHY: the ERP's own closing status,
+    // so a cancelled job is never filed as a finished one. Reopen puts it back.
+    fileInHistory(Object.fromEntries(leaving.map((j) => [j.prod_no, {
+      ...snapshotOf(j), closed_status: j.leaving_status, closed_why: j.leaving_why,
+    }]))),
+    learnFrom(src.rows),
+  ]);
+  // One closing word for the lot. What failed has its own, where it can be retried.
+  if (shared && filed) {
+    toast(`Export imported and shared: ${count(orders, 'production order')}`
+      + `${leaving.length ? `, ${count(leaving.length, 'job')} moved to History` : ''}.`, 6000);
+  }
+}
+
+/**
+ * Learn the davit fittings from the WHOLE file, the closed rows included: a
+ * fitting is a fact about a boat, not about this week's work. The same
+ * reasoning for the products themselves: hulls and descriptions accumulate, so
+ * the cheat sheet is a total list rather than a view of what happens to be
+ * open. Both come round again with the next import, so a failure is quiet.
+ */
+async function learnFrom(rows) {
+  try {
+    const [davits, facts] = await Promise.all([Store.loadDavits(), Store.loadItemFacts()]);
+    await Promise.all([
+      Store.saveDavits(mergeDavits(davits, davitsByBoat(rows))),
+      Store.saveItemFacts(mergeItemFacts(facts, itemFacts(rows))),
+    ]);
+  } catch (e) {
+    console.warn('[reference]', e.message);
+  }
+}
+
+/**
+ * Put jobs an import took off the board into History. On the device until the
+ * server has them, and tried again at the next open if it never did.
+ * @param {Object<string, Object>} snaps  prodNo -> the job as it was
+ */
+async function fileInHistory(snaps) {
+  const keys = Object.keys(snaps);
+  if (!keys.length) return true;
+  saveUnfiled({ ...loadUnfiled(), ...snaps });
+  const at = new Date().toISOString();
+  const before = new Map(keys.map((k) => [k, state.overrides[k]]));
+  for (const k of keys) {
+    state.overrides[k] = { ...(state.overrides[k] ?? {}), completed: true, completedAt: at,
+      completedBy: ERP_CLOSER, snapshot: snaps[k], touchedBy: ERP_CLOSER, touchedAt: at };
+  }
+  state.unfiled = null;
+  rebuild();
+  try {
+    await Store.setCompleted(keys, true, ERP_CLOSER, snaps);
+  } catch (e) {
+    for (const k of keys) if (state.overrides[k]?.completedAt === at) putBack(k, before.get(k));
+    state.unfiled = failure('Not moved to History', e);
+    rebuild();
+    toastFailed(`${count(keys.length, 'job')} not moved to History: ${reason(e)}.`);
+    return false;
+  }
+  const left = loadUnfiled();
+  for (const k of keys) delete left[k];
+  saveUnfiled(left);
+  return true;
+}
+
+/** At the next open: what an earlier import could not file, tried again. */
+function retryUnfiled() {
+  if (!Auth.isManager) return;
+  const left = loadUnfiled();
+  // Filed after all, or back in the export: no longer anything to do.
+  const open = new Set([...(state.board?.jobs ?? []), ...(state.board?.internal ?? []), ...(state.board?.tm ?? [])].map((j) => j.prod_no));
+  for (const k of Object.keys(left)) if (state.overrides[k]?.completed || open.has(k)) delete left[k];
+  saveUnfiled(left);
+  fileInHistory(left);
 }
 
 /**
@@ -990,12 +1092,42 @@ const FIRESTORE_DOC_LIMIT = 1048576;
 
 const utf8Bytes = (str) => new TextEncoder().encode(String(str ?? '')).length;
 
-const NO_BUILDERS = 'Vessel codes cannot be read: no boat builder is set in the board settings.';
+const NO_BUILDERS = 'no boat builder is set in the board settings';
 
-async function publish(rows, what) {
+/**
+ * Share the board in hand with the other managers and the floor, and keep
+ * saying so in the strip above the board until it has been: a board nobody
+ * else can see looks exactly like one everybody can.
+ */
+async function shareBoard({ quiet = false } = {}) {
+  state.share = { sharing: true };
+  renderShare();
+  const words = await publish(state.rows);
+  state.share = words ? { words } : null;
+  renderShare();
+  if (words) toastFailed(words);
+  else if (!quiet) toast('Board shared with the other managers.');
+  return !words;
+}
+
+/** The sharing line: in progress, or why not, with the button that tries again. */
+function renderShare() {
+  const n = $('provShare');
+  n.textContent = '';
+  const s = state.share ?? (state.floorFault ? { words: state.floorFault, floor: true } : null);
+  n.hidden = !s;
+  if (!s) return;
+  if (s.sharing) { n.append(el('span', null, 'Sharing\u2026')); return; }
+  const again = el('button', 'mini', s.floor ? 'Retry' : 'Share board');
+  again.addEventListener('click', () => (s.floor ? shareFloor() : shareBoard()));
+  n.append(el('span', 'prov-bad', s.words), again);
+}
+
+/** @returns {Promise<string|null>} why it was not shared, in words, or null when it was */
+async function publish(rows) {
   // The floor renders the published jobs as they are, so a board built without
   // vessel codes must not reach it.
-  if (!buildersConfigured()) { toast(`${NO_BUILDERS} The board was not shared.`, 10000); return false; }
+  if (!buildersConfigured()) return `Not shared: ${NO_BUILDERS}.`;
   try {
     const packed = packRows(rows);
     // Check before writing rather than letting the server refuse: a size error
@@ -1007,13 +1139,16 @@ async function publish(rows, what) {
     // character — and this export is full of them, every "—" in a description
     // being three bytes and one unit. Measured wrong, the guard would wave
     // through exactly the payload it exists to catch.
-    const size = utf8Bytes(packed) + utf8Bytes(JSON.stringify(state.board.jobs ?? []));
+    // The whole board: the Part orders toggle is how this device looks at it.
+    const whole = state.showPartOrders ? state.board
+      : buildBoard(rows, { codeMap: state.codeMap, asOf: today(), overrides: state.overrides,
+        itemOverrides: state.itemOverrides, maxStock: state.settings.maxStock,
+        horizonWeeks: state.fit?.weeks ?? state.settings.horizonWeeks });
+    const size = utf8Bytes(packed) + utf8Bytes(JSON.stringify(whole.jobs ?? []));
     if (size > FIRESTORE_DOC_LIMIT * 0.9) {
-      toast(`This export is too large to share — ${(size / 1048576).toFixed(2)} MB `
-        + `against a 1 MB limit. The board is on this device only. `
-        + `Narrow the ERP inquiry, or ask for the export to be split.`, 12000);
       console.error('[publish] payload too large', size);
-      return false;
+      return `Not shared: the export is too large, ${(size / 1048576).toFixed(2)} MB of 1 MB. `
+        + 'Narrow the ERP inquiry and import it again.';
     }
     await Store.recordImport({
       retrievedAt: state.source.retrievedAt,
@@ -1023,8 +1158,8 @@ async function publish(rows, what) {
       maxStock: state.settings.maxStock ?? null,
       // The full job list, not a summary: floor devices render from this and
       // never see the spreadsheet.
-      jobs: state.board.jobs,
-      meta: state.board.meta,
+      jobs: whole.jobs,
+      meta: whole.meta,
       uploadedBy: Auth.user?.email ?? null,
       // The raw export as well, so the OTHER manager picks up the same data
       // rather than being asked to upload the same file again. The jobs array
@@ -1033,13 +1168,11 @@ async function publish(rows, what) {
       rowsJson: packed,
     });
     markPublished(state.source.retrievedAt);
-    if (what) toast(`Board ${what}.`);
-    return true;
+    shareFloorSoon();
+    return null;
   } catch (e) {
     console.error('[publish]', e);
-    toast(`Board is on this device, but could not be shared — ${e.message}. `
-      + `Others will not see it.`, 8000);
-    return false;
+    return failure('Not shared with the other managers', e);
   }
 }
 
@@ -1071,7 +1204,8 @@ function wireCollapseAll() {
   $('partOrders').addEventListener('click', () => {
     state.showPartOrders = !state.showPartOrders;
     saveShowPartOrders(state.showPartOrders);
-    rebuild();
+    // The floor has no rows to build from: its board is filtered instead.
+    if (state.rows) rebuild(); else keepFocus(renderBoard);
   });
 }
 
@@ -1083,7 +1217,10 @@ function toggleRow(row) {
   if (row.dataset.prod) { if (open) openRows.add(row.dataset.prod); else openRows.delete(row.dataset.prod); }
   // The caret says what the row is doing, whichever of the two was clicked.
   const caret = row.querySelector('.more');
-  if (caret) caret.textContent = open ? '\u25be' : '\u25b8';
+  if (caret) {
+    caret.textContent = open ? '\u25be' : '\u25b8';
+    caret.setAttribute('aria-expanded', String(open));
+  }
 }
 
 // Once per page. Both boot paths call this, and a second listener would undo
@@ -1107,23 +1244,11 @@ function wireRowTaps() {
 
 function wireControls() {
   const horizon = $('horizon');
-  horizon.addEventListener('input', () => {
-    $('horizonVal').textContent = `${horizon.value} week${horizon.value === '1' ? '' : 's'}`;
-  });
-  horizon.addEventListener('change', async () => {
-    state.settings.horizonWeeks = Number(horizon.value);
-    await Store.saveSettings({ horizonWeeks: state.settings.horizonWeeks });
-    rebuild();
-  });
-
-  $('maxStock').addEventListener('change', async (e) => {
-    const v = e.target.value === '' ? null : Math.max(0, Number(e.target.value));
-    state.settings.maxStock = v;
-    await Store.saveSettings({ maxStock: v });
-    rebuild();
-  });
-
-  $('autoFit').addEventListener('click', () => setAutoFit(!state.settings.autoFit));
+  horizon.addEventListener('input', () => { $('horizonVal').textContent = count(Number(horizon.value), 'week'); });
+  horizon.addEventListener('change', () => setBoardSetting('horizon', { horizonWeeks: Number(horizon.value) }));
+  $('maxStock').addEventListener('change', (e) =>
+    setBoardSetting('maxStock', { maxStock: e.target.value === '' ? null : Math.max(0, Number(e.target.value)) }));
+  $('autoFit').addEventListener('click', () => setBoardSetting('autoFit', { autoFit: !state.settings.autoFit }));
 
   for (const t of TABS) {
     const cap = t[0].toUpperCase() + t.slice(1);
@@ -1151,12 +1276,18 @@ function wireControls() {
       state.gantt[key] = !state.gantt[key];
       saveGanttPrefs(state.gantt);
       paint();
-      renderGanttView();
+      renderGanttView({ arriving: true });
     });
   };
   ganttToggle('ganttPacked', 'packed');
   ganttToggle('ganttAll', 'all');
   $('printBtn').addEventListener('click', () => { showTab('print'); window.print(); });
+  // Ctrl+P from another tab prints the sheet of the list being read, drawn for
+  // the paper, as the Print tab would have: the preview otherwise holds whatever
+  // it was last given.
+  window.addEventListener('beforeprint', () => {
+    if (state.tab !== 'print' && state.board && !state.importPage) renderPrintSheet();
+  });
   for (const [key, cfg] of Object.entries(SHEET)) {
     $(cfg.btn).addEventListener('click', () => setPrintLane(key));
   }
@@ -1177,14 +1308,38 @@ function setWaterPage(on) {
   if (state.tab === 'print') renderPrintSheet();
 }
 
-function setAutoFit(on, { save = true, render = true } = {}) {
-  state.settings.autoFit = on;
+/** The board's settings on their controls. */
+function showSettings() {
+  const { horizonWeeks, maxStock, autoFit } = state.settings;
+  $('horizon').value = horizonWeeks;
+  $('horizonVal').textContent = count(horizonWeeks, 'week');
+  $('maxStock').value = maxStock ?? '';
   const b = $('autoFit');
-  b.textContent = on ? 'Auto-fit on' : 'Auto-fit off';
-  b.classList.toggle('on', on);
-  b.setAttribute('aria-pressed', String(on));
-  if (save) Store.saveSettings({ autoFit: on });
-  if (save && render) rebuild();
+  b.textContent = autoFit ? 'Auto-fit on' : 'Auto-fit off';
+  b.classList.toggle('on', autoFit);
+  b.setAttribute('aria-pressed', String(autoFit));
+}
+
+/**
+ * A setting every manager shares: the sheet redraws at once and the write
+ * follows. Refused, the control goes back and says why under itself.
+ */
+async function setBoardSetting(id, patch) {
+  const before = Object.fromEntries(Object.keys(patch).map((k) => [k, state.settings[k]]));
+  const line = $(id).closest('.ctrl').querySelector('.ctrl-err');
+  line.hidden = true;
+  Object.assign(state.settings, patch);
+  showSettings();
+  rebuild();
+  try {
+    await Store.saveSettings(patch);
+  } catch (e) {
+    if (carries(state.settings, patch)) Object.assign(state.settings, before);
+    showSettings();
+    rebuild();
+    line.textContent = failure('Not saved', e);
+    line.hidden = false;
+  }
 }
 
 const TABS = ['edit', 'gantt', 'internal', 'tm', 'print'];
@@ -1218,7 +1373,7 @@ function showTab(which) {
   // The Gantt measures itself to scroll to today, and the print preview
   // measures itself to fit the page. Neither can do that while off-canvas, so
   // both are drawn on arrival rather than on rebuild.
-  if (which === 'gantt') renderGanttView();
+  if (which === 'gantt') renderGanttView({ arriving: true });
   // The print host cannot be measured while it is off-canvas, so the sheet is
   // drawn on arrival rather than on rebuild.
   if (which === 'print') renderPrintSheet();
@@ -1427,17 +1582,21 @@ function renderProvenance() {
 
   const days = Math.floor((Date.now() - when.getTime()) / 86400000);
   const age = $('provAge');
-  age.textContent = days <= 0 ? 'today' : `${days} day${days === 1 ? '' : 's'} old`;
+  age.textContent = days <= 0 ? 'today' : `${count(days, 'day')} old`;
   age.classList.toggle('stale', days >= 7);
-  if (days >= 7) age.textContent += ' — upload a fresh export';
+  // The floor has no export to upload.
+  if (days >= 7 && Auth.isManager) age.textContent += ' — upload a fresh export';
+  renderShare();
 }
 
-function panel({ cls = '', title, count, open = false, build }) {
+function panel({ cls = '', title, count: n, open = false, build }) {
   const d = el('details', `panel ${cls}`);
+  d.dataset.panel = title;
   d.open = open;
   const s = el('summary');
+  s.dataset.focus = `panel:${title}`;
   s.append(el('span', null, title));
-  if (count !== undefined) s.append(el('span', 'count', String(count)));
+  if (n !== undefined) s.append(el('span', 'count', String(n)));
   d.append(s);
   const body = el('div', 'body');
   build(body);
@@ -1445,10 +1604,39 @@ function panel({ cls = '', title, count, open = false, build }) {
   return d;
 }
 
+/** To one code on the vessel codes page. */
+function codeLink(code) {
+  const a = el('a', 'textlink', 'Open on vessel codes');
+  a.href = carryFlag(`vessel-codes#${encodeURIComponent(code)}`);
+  return a;
+}
+
 function renderWarnings() {
   const host = $('warnings');
+  // What was opened or shut stays so through a redraw: every edit draws this again.
+  const was = new Map([...host.querySelectorAll('details.panel')].map((d) => [d.dataset.panel, d.open]));
   host.textContent = '';
   const w = state.board.warnings;
+
+  // Jobs an import took off the board that did not reach History. They are on
+  // this device and nowhere else, so this comes before everything.
+  const unfiled = Object.entries(loadUnfiled());
+  if (state.unfiled && unfiled.length) {
+    host.append(panel({
+      cls: 'alert', title: 'Jobs not yet in History', count: unfiled.length, open: true,
+      build: (b) => {
+        b.append(el('div', null, state.unfiled));
+        for (const [prodNo, snap] of unfiled) {
+          const r = el('div', 'xrow');
+          r.append(el('span', 'id', prodNo), el('span', null, snap?.label ?? ''), el('span', 'why', snap?.closed_why ?? ''));
+          b.append(r);
+        }
+        const again = el('button', 'mini', 'Retry');
+        again.addEventListener('click', () => fileInHistory(loadUnfiled()));
+        b.append(again);
+      },
+    }));
+  }
 
   // Column problems from the adapter come first — they invalidate everything.
   for (const msg of state.source?.warnings ?? []) {
@@ -1467,8 +1655,8 @@ function renderWarnings() {
       count: w.unmapped.length, open: true,
       build: (b) => {
         b.append(el('div', null,
-          'These rows matched no prefix in the category map, so they are off the board. ' +
-          'Add a rule in js/rules.js — do not leave them excluded.'));
+          'These rows match no category, so they are off the board until a rule is added. '
+          + 'Report them to the design office.'));
         for (const e of w.unmapped) {
           const r = el('div', 'xrow');
           r.append(el('span', 'id', e.prod_no), el('span', null, e.inventory_id), el('span', 'why', e.description));
@@ -1489,12 +1677,15 @@ function renderWarnings() {
           + 'their raw ERP description. Upstream does not manage these '
           + 'consistently — they need answering by hand.'));
         for (const n of w.newCodes) {
-          const r = el('div', 'xrow');
+          const r = el('div', 'xrow has-act');
           r.append(el('span', 'id', n.code),
-            el('span', null, `${n.count} job(s) · ${n.items.join(', ')}`));
-          const a = el('button', 'mini', 'Decide now');
+            el('span', null, `${count(n.count, 'job')} · ${n.items.join(', ')}`), el('span', 'why', ''));
+          const a = el('button', 'mini', 'Resolve');
+          a.dataset.focus = `panel:code:${n.code}`;
           a.addEventListener('click', () => startCodeRun([n]));
           r.append(a);
+          const fault = faultLine(`code:${n.code}`, rebuild);
+          if (fault) r.append(fault);
           b.append(r);
         }
       },
@@ -1512,14 +1703,13 @@ function renderWarnings() {
           + 'does not read as a boat. They print the customer name until '
           + 'somebody says otherwise.'));
         for (const j of w.customNames) {
-          const r = el('div', 'xrow');
+          const r = el('div', 'xrow has-act');
           r.append(el('span', 'id', j.prod_no),
             el('span', null, jobTitle(j)),
             el('span', 'why', j.name_options.description.raw || 'no description'));
-          const a = el('button', 'mini', 'Decide now');
-          a.addEventListener('click', () => {
-            startNameRun([j]);
-          });
+          const a = el('button', 'mini', 'Resolve');
+          a.dataset.focus = `panel:name:${j.prod_no}`;
+          a.addEventListener('click', () => startNameRun([j]));
           r.append(a);
           b.append(r);
         }
@@ -1533,11 +1723,12 @@ function renderWarnings() {
       cls: 'alert', title: 'Vessel code conflict', count: w.codeConflicts.length, open: true,
       build: (b) => {
         for (const c of w.codeConflicts) {
-          b.append(el('div', null,
+          const line = el('div', null,
             `${c.codes.join(' and ')} are the same boat (model ${c.models.join(', ')}) ` +
             `but are confirmed to different display codes: ` +
-            `${c.values.map((v) => `${v.code}→${v.display}`).join(', ')}. ` +
-            `Fix it on the vessel codes page.`));
+            `${c.values.map((v) => `${v.code}→${v.display}`).join(', ')}. `);
+          line.append(codeLink(c.codes[0]));
+          b.append(line);
         }
       },
     }));
@@ -1548,8 +1739,9 @@ function renderWarnings() {
       title: 'Vessel codes awaiting confirmation', count: w.codeUndecided.length,
       build: (b) => {
         for (const u of w.codeUndecided) {
-          b.append(el('div', null,
-            `${u.codes.join(', ')} — showing ${u.provisional}, nobody has confirmed it.`));
+          const line = el('div', null, `${u.codes.join(', ')} — showing ${u.provisional}, not confirmed. `);
+          line.append(codeLink(u.codes[0]));
+          b.append(line);
         }
       },
     }));
@@ -1563,9 +1755,15 @@ function renderWarnings() {
       build: (b) => {
         b.append(el('div', null, 'Confirm these before the floor starts them, or hide them.'));
         for (const j of w.onHold) {
-          const r = el('div', 'xrow');
+          const r = el('div', 'xrow has-act');
           r.append(el('span', 'id', j.prod_no), el('span', null, jobTitle(j)),
             el('span', 'why', j.status_manual ? 'put on hold here' : `due ${j.due_display}`));
+          const acts = el('span', 'xacts');
+          const hide = el('button', 'mini', 'Hide');
+          hide.dataset.focus = `panel:hold:${j.prod_no}`;
+          hide.addEventListener('click', () => openHideDialog(j));
+          acts.append(statusControl(j), hide);
+          r.append(acts);
           b.append(r);
         }
       },
@@ -1577,9 +1775,13 @@ function renderWarnings() {
       title: 'Hidden from the printed board', count: w.hidden.length,
       build: (b) => {
         for (const j of w.hidden) {
-          const r = el('div', 'xrow');
+          const r = el('div', 'xrow has-act');
           r.append(el('span', 'id', j.prod_no), el('span', null, jobTitle(j)),
             el('span', 'why', j.hidden_reason || 'no reason given'));
+          const show = el('button', 'mini', 'Show');
+          show.dataset.focus = `panel:hidden:${j.prod_no}`;
+          show.addEventListener('click', () => unhide(j));
+          r.append(show);
           b.append(r);
         }
       },
@@ -1620,16 +1822,21 @@ function renderWarnings() {
       }
     },
   }));
+  for (const d of host.querySelectorAll('details.panel')) {
+    if (was.has(d.dataset.panel)) d.open = was.get(d.dataset.panel);
+  }
 }
+
+/** What the floor sees: what the printed sheet shows, less the part orders it has put away. */
+const floorJobs = () => state.board.jobs.filter((j) => !j.hidden && !j.completed
+  && (state.showPartOrders || !j.part_order));
 
 function renderBoard() {
   const host = $('board');
   host.textContent = '';
   // The manager sees hidden jobs greyed, so they can be brought back. The
   // floor sees what the printed sheet shows — not hidden, not finished.
-  const jobs = Auth.isManager
-    ? state.board.jobs
-    : state.board.jobs.filter((j) => !j.hidden && !j.completed);
+  const jobs = Auth.isManager ? state.board.jobs : floorJobs();
   const groups = byCategory(jobs, { includeHidden: Auth.isManager });
 
   const counts = Object.fromEntries(
@@ -1685,12 +1892,12 @@ function renderBoard() {
   const pastDue = state.board.warnings.pastDue?.length ?? 0;
   $('boardCount').textContent = `${state.board.meta.job_count} on the board`
     + (pastDue ? ` · ${pastDue} past due` : '');
-  $('completePastDue').disabled = !pastDue;
+  $('completePastDue').hidden = !pastDue;
   showCollapseAll();
   // The toggle says what it holds: how many part orders are on the board, or
   // how many it is keeping off it.
   const po = $('partOrders');
-  const n = state.board.meta.part_orders ?? 0;
+  const n = Auth.isManager ? (state.board.meta.part_orders ?? 0) : state.board.jobs.filter((j) => j.part_order).length;
   const on = state.showPartOrders;
   po.textContent = !n ? 'Part orders: none' : on ? `Part orders: ${n} shown` : `Part orders: ${n} hidden`;
   po.classList.toggle('on', on);
@@ -1700,8 +1907,7 @@ function renderBoard() {
 
 /** The folds the Collapse all button acts on now. */
 function boardFolds() {
-  const jobs = Auth.isManager ? state.board.jobs
-    : state.board.jobs.filter((j) => !j.hidden && !j.completed);
+  const jobs = Auth.isManager ? state.board.jobs : floorJobs();
   const groups = byCategory(jobs, { includeHidden: Auth.isManager });
   const done = (state.board.completed ?? []).filter((j) => (j.lane ?? 'production') === 'production');
   return collapseScope({
@@ -1710,6 +1916,8 @@ function boardFolds() {
     order: CATEGORY_ORDER,
     count: (c) => (groups.get(c) ?? []).length,
     historyCount: (c) => done.filter((j) => j.category === c).length,
+    extra: historyOpen.has('production')
+      ? [...new Set(done.map((j) => j.category))].filter((c) => !CATEGORY_ORDER.includes(c)) : [],
   });
 }
 
@@ -1764,6 +1972,7 @@ function statusControl(j) {
   const wrap = el('span', `st${j.status_manual ? ' is-manual' : ''}`);
   const sel = document.createElement('select');
   sel.className = 'st-select';
+  sel.setAttribute('aria-label', `Status of ${j.prod_no}`);
   for (const opt of SETTABLE_STATUSES) {
     const o = document.createElement('option');
     o.value = opt;
@@ -1780,16 +1989,14 @@ function statusControl(j) {
   return wrap;
 }
 
-async function setStatus(j, value) {
+function setStatus(j, value) {
   if (value === j.erp_status) {
-    await setOverride(j.prod_no, { status: null, statusFrom: null });
-    toast(`${j.prod_no}: hand-set status removed \u2014 ${value}.`);
+    setOverride(j.prod_no, { status: null, statusFrom: null }, `${j.prod_no}: hand-set status removed \u2014 ${value}.`);
     return;
   }
   // `statusFrom` is what makes this expire: it records the ERP value being
   // corrected, so the override drops itself once the export disagrees.
-  await setOverride(j.prod_no, { status: value, statusFrom: j.erp_status });
-  toast(`${j.prod_no} set to ${value}.`);
+  setOverride(j.prod_no, { status: value, statusFrom: j.erp_status }, `${j.prod_no} set to ${value}.`);
 }
 
 function jobRow(j, { full = false } = {}) {
@@ -1858,16 +2065,21 @@ function jobRow(j, { full = false } = {}) {
   hide.addEventListener('click', () => (j.hidden ? unhide(j) : openHideDialog(j)));
   acts.append(hide);
   const more = el('button', 'mini more', openRows.has(j.prod_no) ? '\u25be' : '\u25b8');
-  more.title = 'Label, part, status, done';
-  more.setAttribute('aria-label', 'More');
+  more.setAttribute('aria-label', `Controls for ${j.prod_no}`);
+  more.setAttribute('aria-expanded', String(openRows.has(j.prod_no)));
   more.addEventListener('click', () => toggleRow(row));
   acts.append(more);
   row.append(acts);
 
   const fold = el('span', 'acts-more');
-  // The created date, where the screen has no room for its column.
+  // The PO and the created date, where the screen has no room for their columns.
+  const po = poNote(j);
+  if (po) fold.append(po);
   const created = createdNote(j);
   if (created) fold.append(created);
+  // What the ERP says where a person has said otherwise.
+  const erp = erpNote(j);
+  if (erp) fold.append(erp);
   const pkg = el('button', 'mini', 'Package');
   pkg.addEventListener('click', () => openPackageDialog(j, {
     packages: state.packages,
@@ -1885,7 +2097,8 @@ function jobRow(j, { full = false } = {}) {
   // Part or not, for every job on this code. The code's shape decides by
   // default; this is the manager's say for a lettered kit that is a part, or
   // a numbered code that is a unit.
-  const part = el('button', `mini${j.part_order ? ' on' : ''}`, 'Part');
+  const part = el('button', `mini${j.part_order ? ' on' : ''}`, 'Part order');
+  part.setAttribute('aria-pressed', String(Boolean(j.part_order)));
   part.title = j.part_order ? 'A part order: the Part orders toggle holds it back. Click to make it a unit.'
     : 'A unit. Click to mark it a part order, for every job on this code.';
   part.addEventListener('click', () => togglePartOrder(j));
@@ -1893,12 +2106,17 @@ function jobRow(j, { full = false } = {}) {
 
   fold.append(statusControl(j));
 
+  // On a phone the hull is a line of the row, too small to press: changed here.
+  const hullEdit = el('button', 'mini hull-edit', j.hull ? 'Edit hull' : 'Add hull');
+  hullEdit.addEventListener('click', () => openHullDialog(j));
+  fold.append(hullEdit);
+
   const done = el('button', 'mini', 'Complete');
   done.title = 'Mark completed \u2014 off the board for good, reversible from History';
   done.addEventListener('click', () => openCompleteDialog([j]));
   fold.append(done);
 
-  const changes = el('button', 'mini', 'Changes');
+  const changes = el('button', 'mini', 'Change history');
   changes.addEventListener('click', () => openItemHistory(j));
   fold.append(changes);
 
@@ -1906,10 +2124,12 @@ function jobRow(j, { full = false } = {}) {
   if (isDavit(j)) fold.append(plinthControl(j, state.plinths, (p) => setOverride(j.prod_no, { plinth: p }), state.packages));
 
   row.append(fold);
+  const fault = faultLine(j.prod_no, rebuild);
+  if (fault) row.append(fault);
   return row;
 }
 
-function renderGanttView() {
+function renderGanttView({ arriving = false } = {}) {
   const { packed, all } = state.gantt;
 
   // "Everything" drops the horizon and puts completed work back, so the chart
@@ -1937,6 +2157,8 @@ function renderGanttView() {
     asOf: today(),
     mode: packed ? 'packed' : 'rows',
     pxPerDay: all ? 8 : null,
+    // Today is where it opens; after that it stays where it was scrolled to.
+    toToday: arriving,
     // Held while the board is the saved copy, like every other control that writes.
     onBarClick: Auth.isManager && !isHeld() ? (r) => openCompleteDialog([r]) : null,
     isCollapsed: (cat) => collapsed.has(`gantt:${cat}`),
@@ -1944,12 +2166,12 @@ function renderGanttView() {
       const key = `gantt:${cat}`;
       if (collapsed.has(key)) collapsed.delete(key); else collapsed.add(key);
       saveCollapsed(collapsed);
-      renderGanttView();
+      keepFocus(renderGanttView);
     },
   });
 
   $('ganttHint').textContent = all
-    ? `Completed work included \u2014 ${g.rowCount} bars, scroll sideways.`
+    ? `Completed work included \u2014 ${count(g.rowCount, 'bar')}, scroll sideways.`
     : 'Every open production order. Click a bar to mark it complete.';
 }
 
@@ -1995,9 +2217,9 @@ function renderRecent() {
   $('recentChanges').setAttribute('aria-pressed', String(recentOpen));
   $(HISTORY_BODY.production).hidden = recentOpen || historyOpen.has('production');
   host.hidden = !recentOpen;
-  host.textContent = '';
   showCollapseAll();
   if (recentOpen) renderActivityLog(host, { master: Auth.isMaster });
+  else host.textContent = '';
 }
 
 function renderHistory(lane = 'production') {
@@ -2021,9 +2243,13 @@ function renderHistory(lane = 'production') {
 
   // Grouped by board category, same order as everywhere else, so History reads
   // like the orders view rather than as one long undifferentiated list.
-  const cats = HISTORY_CATS[lane];
+  const cats = [...HISTORY_CATS[lane]];
   const byCat = new Map(cats.map((c) => [c, []]));
-  for (const j of done) byCat.get(j.category)?.push(j);
+  // One completed before records were kept has no category: last, not left out.
+  for (const j of done) {
+    if (!byCat.has(j.category)) { cats.push(j.category); byCat.set(j.category, []); }
+    byCat.get(j.category).push(j);
+  }
 
   for (const cat of cats) {
     const rows = byCat.get(cat) ?? [];
@@ -2094,15 +2320,11 @@ function renderHistory(lane = 'production') {
         const acts = el('span', 'acts');
         const reopen = el('button', 'mini', 'Reopen');
         reopen.title = 'Put it back on the board';
-        reopen.addEventListener('click', async () => {
-          await Store.setCompleted([j.prod_no], false, Auth.user?.email);
-          logChange({ action: ACTION.reopen, text: 'reopened from History' }, j.prod_no, j.inventory_id, jobTitle(j));
-          state.overrides = await Store.loadOverrides();
-          rebuild();
-          toast(`${j.prod_no} reopened.`);
-        });
+        reopen.addEventListener('click', () => reopenJob(j));
         acts.append(reopen);
         row.append(acts);
+        const fault = faultLine(foldKey, rebuild);
+        if (fault) row.append(fault);
         table.append(row);
       }
       block.append(table);
@@ -2132,22 +2354,24 @@ const dueOrAge = (j) =>
   ((j.lane ?? 'production') === 'production' ? j.due_display : (j.age_display || '—'));
 
 function openCompleteDialog(jobs) {
-  // Stock is listed but starts unticked. Its ERP dates are written once and
-  // never revised, so "past its end date" says nothing about whether the work
-  // is done — every stock build on the 21/08 export is months past a date that
-  // was never meant to hold. Ticking it by default would sweep live work off
-  // the board. Customer orders are the opposite: a passed date usually does
-  // mean finished.
-  completing = jobs.map((j) => ({ job: j, ticked: !j.is_stock }));
+  // In a sweep, stock is listed but starts unticked. Its ERP dates are written
+  // once and never revised, so "past its end date" says nothing about whether
+  // the work is done — every stock build on the 21/08 export is months past a
+  // date that was never meant to hold. Ticking it by default would sweep live
+  // work off the board. Customer orders are the opposite: a passed date usually
+  // does mean finished. A single job was chosen by name, stock or not.
+  const single = jobs.length === 1;
+  completing = jobs.map((j) => ({ job: j, ticked: single || !j.is_stock }));
+  $('completeList').hidden = single;
+  $('completeOverlay').querySelector('.c-actions-top').hidden = single;
 
   // A side-lane job has no due date worth the name - the ERP stamps start and
   // end to the day it was raised - so say how long it has been open instead.
   const one = jobs[0];
-  const when = one && (one.lane ?? 'production') === 'production'
-    ? `due ${one.due_display}`
-    : `open ${one?.age_display || 'since it was raised'}`;
+  // From a Gantt bar, the bar's own dates: on a touch screen this is where they are read.
+  const when = one?.startDisplay && one?.endDisplay ? `, ${one.startDisplay} \u2013 ${one.endDisplay}` : whenWords(one);
   $('completeLede').textContent = jobs.length === 1
-    ? `${one.prod_no} — ${jobTitle(one)}, ${when}.`
+    ? `${one.prod_no} — ${jobTitle(one)}${when}.`
     : `${jobs.length} jobs are past their end date and still open. Untick anything `
       + `still in the shop. Stock builds start unticked — their dates are set once `
       + `and never revised, so a passed date says nothing about them.`;
@@ -2179,29 +2403,78 @@ function renderCompleteList() {
 function updateCompleteCount() {
   const n = completing.filter((e) => e.ticked).length;
   $('completeCount').textContent = `${n} of ${completing.length} ticked`;
+  $('completeConfirm').textContent = completing.length === 1 ? 'Complete job' : `Complete ${count(n, 'job')}`;
   $('completeConfirm').disabled = n === 0;
 }
 
-async function confirmComplete() {
-  const picked = completing.filter((e) => e.ticked).map((e) => e.job.prod_no);
-  if (!picked.length) return;
-  $('completeConfirm').disabled = true;
-  try {
-    // The snapshot travels with the completion so History can render this job
-    // long after the ERP stops exporting it.
-    const snaps = Object.fromEntries(
-      completing.filter((e) => e.ticked).map((e) => [e.job.prod_no, snapshotOf(e.job)]));
-    await Store.setCompleted(picked, true, Auth.user?.email, snaps);
-    for (const p of picked) logChange({ action: ACTION.done, text: 'marked done' }, p);
-    state.overrides = await Store.loadOverrides();
-    $('completeOverlay').classList.remove('show');
-    rebuild();
-    toast(`${picked.length} marked complete. Stored in History.`);
-  } catch (e) {
-    toast(`Could not save — ${e.message}`, 6000);
-  } finally {
-    $('completeConfirm').disabled = false;
-  }
+function confirmComplete() {
+  const jobs = completing.filter((e) => e.ticked).map((e) => e.job);
+  if (!jobs.length) return;
+  $('completeOverlay').classList.remove('show');
+  completeJobs(jobs);
+  flushDeferredRebuild();
+}
+
+/**
+ * Mark jobs complete: one write for all of them, so it happens or it does not.
+ * The snapshot travels with the completion so History can render the job long
+ * after the ERP stops exporting it.
+ */
+function completeJobs(jobs) {
+  const who = Auth.user?.email ?? null;
+  const at = new Date().toISOString();
+  const keys = jobs.map((j) => j.prod_no);
+  const snaps = Object.fromEntries(jobs.map((j) => [j.prod_no, snapshotOf(j)]));
+  const before = new Map();
+  return edit({
+    rows: keys,
+    what: 'Not completed',
+    said: keys.length === 1 ? `${keys[0]} completed. In History.` : `${count(keys.length, 'job')} completed. In History.`,
+    apply: () => {
+      for (const j of jobs) {
+        before.set(j.prod_no, state.overrides[j.prod_no]);
+        state.overrides[j.prod_no] = { ...(state.overrides[j.prod_no] ?? {}), completed: true, completedAt: at,
+          completedBy: who, snapshot: snaps[j.prod_no], touchedBy: who, touchedAt: at };
+      }
+    },
+    undo: () => { for (const k of keys) if (state.overrides[k]?.completed) putBack(k, before.get(k)); },
+    write: () => Store.setCompleted(keys, true, who, snaps),
+    saved: () => { for (const j of jobs) logChange({ action: ACTION.done, text: 'completed' }, j.prod_no, j.inventory_id, jobTitle(j)); },
+  });
+}
+
+/** Put a completed job back on the board. Its failure is said on both rows: it may be on either. */
+function reopenJob(j) {
+  let before;
+  return edit({
+    rows: [j.prod_no, `hist:${j.prod_no}`],
+    what: 'Not reopened',
+    said: `${j.prod_no} reopened.`,
+    apply: () => {
+      before = state.overrides[j.prod_no];
+      const { completed, completedAt, completedBy, snapshot, ...rest } = before ?? {};
+      putBack(j.prod_no, rest);
+    },
+    undo: () => { if (!state.overrides[j.prod_no]?.completed) putBack(j.prod_no, before); },
+    write: () => Store.setCompleted([j.prod_no], false, Auth.user?.email),
+    saved: () => logChange({ action: ACTION.reopen, text: 'reopened from History' }, j.prod_no, j.inventory_id, jobTitle(j)),
+  });
+}
+
+/** Why jobs on the board are not on the sheet, each reason with its number. */
+function offSheetWords(b, heldBack) {
+  const onSheet = new Set(printJobs(b).map((j) => j.prod_no));
+  const off = (b.jobs ?? []).filter((j) => !j.hidden && !j.completed && !onSheet.has(j.prod_no));
+  const water = off.filter((j) => WATERMAKER_CATEGORIES.includes(j.category)).length;
+  const stock = off.filter((j) => j.is_stock && !WATERMAKER_CATEGORIES.includes(j.category)).length;
+  const later = off.length - water - stock;
+  const parts = [
+    water && count(water, 'watermaker'),
+    later && `${later} past the horizon`,
+    stock && `${stock} stock over the cap`,
+    heldBack && `${count(heldBack, 'part order')} held back`,
+  ].filter(Boolean);
+  return parts.length ? `(not on it: ${parts.join(', ')})` : '';
 }
 
 function renderFitStatus() {
@@ -2213,9 +2486,9 @@ function renderFitStatus() {
   if (state.laneFit) {
     const l = state.laneFit;
     box.classList.toggle('trimmed', Boolean(l.trimmedFrom));
-    box.append(el('b', null, `${l.rows} of ${l.total} jobs`));
+    box.append(el('b', null, `${l.rows} of ${count(l.total, 'job')}`));
     box.append(el('span', null, '\u00b7'));
-    if (!l.measured) box.append(el('span', null, 'could not measure the sheet'));
+    if (!l.measured) box.append(el('span', null, 'sheet not measured; reload the page'));
     else if (l.trimmedFrom) {
       box.append(el('span', null, 'trimmed to hold one page \u2014 the '));
       box.append(el('b', null, `${l.total - l.rows} newest`));
@@ -2240,20 +2513,17 @@ function renderFitStatus() {
   box.append(el('span', null, `·`));
   const printed = shown.meta.print_count;
   const total = shown.meta.job_count;
-  const rows = el('b', null, `${printed} of ${total} jobs`);
+  box.append(el('b', null, `${printed} of ${count(total, 'job')}`));
   const heldBack = shown.meta.part_orders_hidden ?? 0;
-  rows.title = (total === printed ? ''
-    : `${total - printed} on the board but off the sheet — watermakers, `
-      + 'work past the horizon, or stock beyond the cap')
-    + (heldBack ? `${total === printed ? '' : '. '}${heldBack} part order${heldBack === 1 ? '' : 's'} held back by the Part orders toggle` : '');
-  box.append(rows);
+  const off = offSheetWords(shown, heldBack);
+  if (off) box.append(el('span', null, off));
   box.append(el('span', null, `·`));
 
   // The warehouse copy: on A4 the same board, paged rather than fitted; on A3
   // one sheet with a horizon of its own, and the type stepped down only when
   // the floor of the horizon would not hold it.
   if (v) {
-    if (!v.measured) box.append(el('span', null, 'the warehouse copy could not be measured'));
+    if (!v.measured) box.append(el('span', null, 'warehouse copy not measured; reload the page'));
     else if (v.onePage) {
       const type = v.shrunk ? ` with the type at ${v.pt}pt` : '';
       if (!state.settings.autoFit) {
@@ -2340,39 +2610,79 @@ let ncUndo = [];
  * one changes labels, and a custom job asked about beforehand could be asked
  * again about a different name.
  */
-function queueImportQuestions() {
+function queueImportQuestions({ all = false } = {}) {
   if (!Auth.isManager) return;
-  const codes = state.board?.warnings?.newCodes ?? [];
-  if (codes.length) { startCodeRun(codes); return; }
-  queueCustomNames();
+  const { codes, names } = unasked(all);
+  if (codes.length) { startCodeRun(codes, { names }); return; }
+  if (names.length) startNameRun(names);
 }
 
-/** Begin a resolve run over `items` — one of them, or all of them. */
-function startCodeRun(items) {
+/**
+ * What an import still needs answered: all of it once the import has been
+ * applied, and afterwards only what this device has not asked before. Being
+ * asked the same ten questions at every open taught people to dismiss them;
+ * the panel on the board goes on listing them.
+ */
+function unasked(all) {
+  const pending = {
+    codes: state.board?.warnings?.newCodes ?? [],
+    names: state.board?.warnings?.customNames ?? [],
+  };
+  const asked = all ? new Set() : loadAsked();
+  const keyOf = { codes: (n) => `code:${n.code}`, names: (j) => `name:${j.prod_no}` };
+  const out = {};
+  for (const k of ['codes', 'names']) out[k] = pending[k].filter((x) => !asked.has(keyOf[k](x)));
+  // Only what is still pending is worth remembering.
+  saveAsked(new Set(['codes', 'names'].flatMap((k) => pending[k].map(keyOf[k]))));
+  return out;
+}
+
+/**
+ * Begin a resolve run over `items` — one of them, or all of them. `names` are
+ * the custom jobs to ask about after it.
+ */
+let ncNames = [];
+function startCodeRun(items, { names = [] } = {}) {
   ncQueue = items;
   ncIndex = 0;
   ncUndo = [];
+  ncNames = names;
   showNewCode();
 }
 
 function endCodeRun({ chain = true } = {}) {
+  const names = chain ? ncNames : [];
   ncQueue = [];
   ncUndo = [];
+  ncNames = [];
   $('newCodeOverlay').classList.remove('show');
   rebuild();                   // a new code can rename jobs, so ask from the rebuilt board
   flushDeferredRebuild();
-  if (chain) queueCustomNames();
+  if (!names.length) return;
+  const ask = new Set(names.map((j) => j.prod_no));
+  const still = (state.board?.warnings?.customNames ?? []).filter((j) => ask.has(j.prod_no));
+  if (still.length) startNameRun(still);
 }
 
 /** Put back every code accepted during this run, newest first. */
-async function cancelCodeRun() {
-  const undone = ncUndo.length;
-  for (const { code, before } of [...ncUndo].reverse()) {
-    if (before) { state.codeMap[code] = before; await Store.saveCode(code, before); }
-    else { delete state.codeMap[code]; await Store.deleteCode(code); }
-  }
+function cancelCodeRun() {
+  const undone = [...ncUndo].reverse();
   endCodeRun({ chain: false });
-  toast(undone ? `Undone — ${undone} code${undone > 1 ? 's' : ''} put back.` : 'Nothing to undo.');
+  if (!undone.length) return;
+  const after = new Map(undone.map(({ code }) => [code, state.codeMap[code]]));
+  edit({
+    rows: undone.map(({ code }) => `code:${code}`),
+    what: 'Codes not put back',
+    said: `${count(undone.length, 'code')} put back.`,
+    apply: () => {
+      for (const { code, before } of undone) {
+        if (before) state.codeMap[code] = before; else delete state.codeMap[code];
+      }
+    },
+    undo: () => { for (const [code, entry] of after) state.codeMap[code] = entry; },
+    write: () => Promise.all(undone.map(({ code, before }) =>
+      (before ? Store.saveCode(code, before) : Store.deleteCode(code)))),
+  });
 }
 
 function showNewCode() {
@@ -2381,16 +2691,16 @@ function showNewCode() {
 
   // Only meaningful mid-run. Resolving a single row has nothing to skip and
   // nothing to abandon — Decide later already closes it.
-  const more = ncQueue.length > 1;
-  $('ncSkipRest').hidden = !more;
-  $('ncCancelRun').hidden = !more;
-  $('ncSkipRest').textContent = `Skip the remaining ${ncQueue.length - ncIndex - 1}`;
-  $('ncCancelRun').textContent = ncUndo.length
-    ? `Cancel & undo ${ncUndo.length}` : 'Cancel';
+  const rest = ncQueue.length - ncIndex - 1;
+  $('ncSkipRest').hidden = rest < 1;
+  $('ncSkipRest').textContent = `Skip the remaining ${rest}`;
+  // Only while there is something to undo: before that it is Skip by another name.
+  $('ncCancelRun').hidden = !ncUndo.length;
+  $('ncCancelRun').textContent = `Cancel & undo ${ncUndo.length}`;
 
   $('ncProgress').textContent = ncQueue.length > 1 ? `${ncIndex + 1} of ${ncQueue.length}` : '';
   $('ncLede').textContent =
-    `This export carries ${item.count} job(s) under a vessel code the board has `
+    `This export carries ${count(item.count, 'job')} under a vessel code the board has `
     + `never seen. Choose what the floor should read.`;
 
   const d = $('ncDerived');
@@ -2431,33 +2741,44 @@ function showNewCode() {
     o.textContent = `${b.display}  (${b.codes.join(', ')})`;
     sel.append(o);
   }
+  // No boat on file yet: nothing to add it to.
+  sel.closest('.scope-opt').hidden = !sel.options.length;
 
   $('ncCustom').value = '';
+  accept($('ncCustom'));
+  accept(sel);
   $('newCodeOverlay').classList.add('show');
 }
 
-async function chooseNewCode(mode) {
+function chooseNewCode(mode) {
   const item = ncQueue[ncIndex];
   const choice = { mode };
-  if (mode === 'existing') choice.boat = $('ncExisting').value;
+  if (mode === 'existing') {
+    choice.boat = $('ncExisting').value;
+    if (!choice.boat) { refuse($('ncExisting'), 'No boat chosen.'); return; }
+  }
   if (mode === 'custom') {
     choice.value = $('ncCustom').value.trim();
-    if (!choice.value) { toast('Enter a code, or choose another option.'); return; }
+    if (!choice.value) { refuse($('ncCustom'), 'A code is required.'); return; }
   }
 
   const entry = acceptNewCode(item.code, choice, item);
-  ncUndo.push({ code: item.code, before: state.codeMap[item.code] ?? null });
-  state.codeMap[item.code] = entry;
-  await Store.saveCode(item.code, entry);
-  // Restage per answer, not only when the queue empties: the import review is
-  // sitting behind this dialog and a resolved code should leave its list as
-  // soon as it is resolved.
-  restage();
-
-  const shown = mode === 'existing'
-    ? `${item.code} joined ${$('ncExisting').selectedOptions[0].textContent.trim()}`
-    : `${item.code} will print as "${entry.display}"`;
-  toast(shown);
+  const before = state.codeMap[item.code] ?? null;
+  ncUndo.push({ code: item.code, before });
+  edit({
+    rows: [`code:${item.code}`],
+    what: `${item.code} not saved`,
+    said: mode === 'existing'
+      ? `${item.code} joined ${$('ncExisting').selectedOptions[0].textContent.trim()}`
+      : `${item.code} will print as "${entry.display}"`,
+    apply: () => { state.codeMap[item.code] = entry; },
+    undo: () => { if (before) state.codeMap[item.code] = before; else delete state.codeMap[item.code]; },
+    write: () => Store.saveCode(item.code, entry),
+    // Restage per answer, not only when the queue empties: the import review is
+    // sitting behind this dialog and a resolved code should leave its list as
+    // soon as it is resolved. The board itself waits for the run to end.
+    draw: () => { if (dialogOpen()) { restage(); rebuildDeferred = true; } else rebuild(); },
+  });
 
   ncIndex += 1;
   showNewCode();
@@ -2580,13 +2901,15 @@ function laneRow(j, lane) {
   if (created) acts.append(created);
   const lbl = el('button', 'mini', 'Label');
   lbl.addEventListener('click', () => openLabelEditor(j));
-  const hide = el('button', 'mini', j.hidden ? 'Unhide' : 'Hide');
+  const hide = el('button', 'mini', j.hidden ? 'Show' : 'Hide');
   hide.addEventListener('click', () => (j.hidden ? unhide(j) : openHideDialog(j)));
   const done = el('button', 'mini', 'Complete');
   done.title = 'Mark completed \u2014 reversible from History';
   done.addEventListener('click', () => openCompleteDialog([j]));
   acts.append(lbl, hide, statusControl(j), done);
   row.append(acts);
+  const fault = faultLine(j.prod_no, rebuild);
+  if (fault) row.append(fault);
   return row;
 }
 
@@ -2657,6 +2980,8 @@ function renderImport() {
     key, n, note, label: IMPORT_DETAIL[key].label, detail: () => importDetail(b, key, diff),
   });
 
+  const problems = exportProblems(staged.src);
+  const empty = !(b.meta.job_count + b.meta.internal_count + b.meta.tm_count);
   host.append(review.render({
     title: 'Review this import',
     lede: `${staged.src.sourceLabel} \u2014 ${staged.src.rows.length} rows from the `
@@ -2680,15 +3005,23 @@ function renderImport() {
     concerns: importConcerns(b, staged.src),
     clean: 'Nothing outstanding \u2014 every row classified cleanly.',
     actions: {
-      apply: { label: 'Apply this import', run: commitImport },
-      cancel: {
-        label: 'Cancel',
-        run: () => { staged = null; renderImport(); toast('Import cancelled \u2014 nothing changed.'); },
+      apply: {
+        label: 'Apply this import',
+        run: commitImport,
+        blocked: empty ? 'No open jobs in this file, so there is nothing to apply.' : null,
       },
-      hint: 'You can apply with these outstanding \u2014 they will still be waiting on the board.',
+      cancel: {
+        label: 'Discard import',
+        run: () => { staged = null; renderImport(); toast('Import discarded. Nothing changed.'); },
+      },
+      risky: problems.length > 0,
+      hint: problems.length ? null : 'You can apply with these outstanding \u2014 they will still be waiting on the board.',
     },
   }));
 }
+
+/** What is wrong with the file itself: columns missing, no rows. */
+const exportProblems = (src) => (src.warnings ?? []).filter((w) => !w.startsWith('Note:'));
 
 /**
  * One line on what changes, above the detail that proves it.
@@ -2726,7 +3059,7 @@ function importConcerns(b, src) {
   const out = [];
   const many = (n, one, more) => (n === 1 ? one : more);
 
-  const problems = (src.warnings ?? []).filter((w) => !w.startsWith('Note:'));
+  const problems = exportProblems(src);
   if (problems.length) {
     out.push({
       id: 'export', level: 'bad',
@@ -2781,8 +3114,7 @@ function importConcerns(b, src) {
     out.push({
       id: 'unmapped', level: 'bad',
       title: `Unmapped item ${many(byCode.size, 'code', 'codes')}`,
-      note: 'Off the board entirely until a prefix rule exists in js/rules.js. '
-        + 'This one needs a developer, not a decision.',
+      note: 'Off the board until a category rule is added. Report them to the design office.',
       rows: [...byCode].map(([code, rows]) => ({
         key: code,
         main: `${rows.length} ${many(rows.length, 'row', 'rows')}`,
@@ -2820,7 +3152,7 @@ function importConcerns(b, src) {
         key: j.prod_no,
         main: jobTitle(j),
         detail: j.inventory_id,
-        action: { label: j.hidden ? 'Unhide' : 'Hide', run: () => (j.hidden ? unhide(j) : openHideDialog(j)) },
+        action: { label: j.hidden ? 'Show' : 'Hide', run: () => (j.hidden ? unhide(j) : openHideDialog(j)) },
       })),
     });
   }
@@ -2953,13 +3285,6 @@ let cnQueue = [];
 let cnIndex = 0;
 let cnUndo = [];
 
-function queueCustomNames() {
-  if (!Auth.isManager) return;
-  const pending = state.board?.warnings?.customNames ?? [];
-  if (!pending.length) return;
-  startNameRun(pending);
-}
-
 function startNameRun(items) {
   cnQueue = items;
   cnIndex = 0;
@@ -2975,13 +3300,11 @@ function endNameRun() {
 }
 
 /** Put back every name set during this run. */
-async function cancelNameRun() {
-  const undone = cnUndo.length;
-  for (const { prodNo, before } of [...cnUndo].reverse()) {
-    await setOverride(prodNo, { labelOverride: before ?? null });
-  }
+function cancelNameRun() {
+  const undone = [...cnUndo].reverse();
   endNameRun();
-  toast(undone ? `Undone — ${undone} name${undone > 1 ? 's' : ''} put back.` : 'Nothing to undo.');
+  for (const { prodNo, before } of undone) setOverride(prodNo, { labelOverride: before ?? null });
+  if (undone.length) toast(`${count(undone.length, 'name')} put back.`);
 }
 
 function showCustomName() {
@@ -2989,11 +3312,11 @@ function showCustomName() {
   if (!job) { endNameRun(); return; }
   const o = job.name_options;
 
-  const more = cnQueue.length > 1;
-  $('cnSkipRest').hidden = !more;
-  $('cnCancelRun').hidden = !more;
-  $('cnSkipRest').textContent = `Skip the remaining ${cnQueue.length - cnIndex - 1}`;
-  $('cnCancelRun').textContent = cnUndo.length ? `Cancel & undo ${cnUndo.length}` : 'Cancel';
+  const rest = cnQueue.length - cnIndex - 1;
+  $('cnSkipRest').hidden = rest < 1;
+  $('cnSkipRest').textContent = `Skip the remaining ${rest}`;
+  $('cnCancelRun').hidden = !cnUndo.length;
+  $('cnCancelRun').textContent = `Cancel & undo ${cnUndo.length}`;
 
   $('cnProgress').textContent = cnQueue.length > 1 ? `${cnIndex + 1} of ${cnQueue.length}` : '';
   $('cnLede').textContent =
@@ -3026,20 +3349,20 @@ function showCustomName() {
   // visible and editable, and "Use this" is never a silent duplicate of the
   // customer option.
   $('cnCustom').value = CUSTOM_PREFIX;
+  accept($('cnCustom'));
   $('customNameOverlay').classList.add('show');
 }
 
-async function chooseCustomName(mode) {
+function chooseCustomName(mode) {
   const job = cnQueue[cnIndex];
   const o = job.name_options;
   const label = mode === 'description' ? o.description.label
     : mode === 'customer' ? o.customer.label
       : $('cnCustom').value.trim();
-  if (isEmptyCustomName(label)) { toast('Type a name, or choose a column.'); return; }
+  if (isEmptyCustomName(label)) { refuse($('cnCustom'), 'A name is required.'); return; }
 
   cnUndo.push({ prodNo: job.prod_no, before: state.overrides[job.prod_no]?.labelOverride ?? null });
-  await setOverride(job.prod_no, { labelOverride: label });
-  toast(`${job.prod_no} will read "${label}"`);
+  setOverride(job.prod_no, { labelOverride: label }, `${job.prod_no} will read "${label}"`);
 
   cnIndex += 1;
   showCustomName();
@@ -3138,6 +3461,7 @@ function showLabelForm(scope) {
     $('lblInput').value = state.board.resolved.display.get(code) ?? code;
     $('lblHint').textContent = `Applies to ${group.codes.join(', ')} — every product on this boat.`;
   }
+  accept($('lblInput'));
   $('lblInput').focus();
   $('lblInput').select();
 }
@@ -3152,17 +3476,16 @@ function wireOverlays() {
   $('lblCancel').addEventListener('click', closeLabel);
   $('lblSave').addEventListener('click', saveLabel);
   $('lblInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveLabel(); });
-  $('lblReset').addEventListener('click', async () => {
+  $('lblReset').addEventListener('click', () => {
     const scope = $('lblForm').dataset.scope;
     const job = editing;
-    if (scope === 'item') {
-      await setItemOverride(job.inventory_id, { label: null, displayCode: null });
-      toast(`${job.inventory_id} back to the code of its boat.`);
-    } else {
-      await setOverride(job.prod_no, { labelOverride: null });
-      toast(`${job.prod_no} label reset.`);
-    }
     closeLabel();
+    if (scope === 'item') {
+      setItemOverride(job, { label: null, displayCode: null }, 'Label not reset',
+        `${job.inventory_id} back to the ${stellaCode(job.inventory_id) ? 'code of its boat' : 'ERP description'}.`);
+    } else {
+      setOverride(job.prod_no, { labelOverride: null }, `${job.prod_no} label reset.`);
+    }
   });
 
   $('completeCancel').addEventListener('click', () => {
@@ -3178,6 +3501,7 @@ function wireOverlays() {
     flushDeferredRebuild();
   });
   $('hideSave').addEventListener('click', saveHide);
+  $('hideReason').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveHide(); });
   $('hullCancel').addEventListener('click', () => {
     $('hullOverlay').classList.remove('show');
     flushDeferredRebuild();
@@ -3198,47 +3522,69 @@ function wireOverlays() {
   closeOnEscape($('customNameOverlay'), () => endNameRun());
 }
 
-async function saveLabel() {
+function saveLabel() {
   const value = $('lblInput').value.trim();
-  if (!value) { toast('That cannot be empty.'); return; }
+  if (!value) {
+    refuse($('lblInput'), $('lblForm').dataset.scope === 'code' || $('lblSave').textContent === 'Save display code'
+      ? 'A display code is required.' : 'A label is required.');
+    return;
+  }
   const scope = $('lblForm').dataset.scope;
   const job = editing;
+  closeLabel();
 
   if (scope === 'job') {
-    await setOverride(job.prod_no, { labelOverride: value });
-    toast(`${job.prod_no} relabelled.`);
+    setOverride(job.prod_no, { labelOverride: value }, `${job.prod_no} relabelled.`);
 
   } else if (scope === 'item') {
     const code = stellaCode(job.inventory_id);
     const patch = code ? { displayCode: value, label: null } : { label: value, displayCode: null };
-    await setItemOverride(job.inventory_id, patch);
-    toast(code
+    setItemOverride(job, patch, 'Label not saved', code
       ? `${job.inventory_id} now prints "${applyTemplate(job.inventory_id, value)}".`
       : `${job.inventory_id} now prints "${value}".`);
 
   } else {
     const code = stellaCode(job.inventory_id);
     const group = state.board.resolved.groups.find((g) => g.codes.includes(code));
-    // Confirming one member confirms the boat — the group displays as one.
-    for (const c of group.codes) {
-      state.codeMap[c] = { ...(state.codeMap[c] ?? {}), display: value, _confirmed: true };
-      await Store.saveCode(c, { display: value, _confirmed: true });
-    }
-    rebuild();
-    toast(`Boat ${group.boat ?? group.codes[0]} (${group.codes.join(', ')}) now displays "${value}".`);
+    const before = new Map(group.codes.map((c) => [c, state.codeMap[c]]));
+    edit({
+      rows: [job.prod_no],
+      what: 'Display code not saved',
+      said: `Boat ${group.boat ?? group.codes[0]} (${group.codes.join(', ')}) now displays "${value}".`,
+      // Confirming one member confirms the boat — the group displays as one.
+      apply: () => {
+        for (const c of group.codes) state.codeMap[c] = { ...(state.codeMap[c] ?? {}), display: value, _confirmed: true };
+      },
+      undo: () => {
+        for (const [c, entry] of before) { if (entry) state.codeMap[c] = entry; else delete state.codeMap[c]; }
+      },
+      write: () => Promise.all(group.codes.map((c) => Store.saveCode(c, { display: value, _confirmed: true }))),
+    });
   }
-  closeLabel();
 }
 
-async function setItemOverride(inventoryId, patch) {
-  const next = { ...(state.itemOverrides[inventoryId] ?? {}), ...patch };
-  for (const k of ['label', 'displayCode', 'partOrder']) if (next[k] === null) delete next[k];
-  if (next.label || next.displayCode || next.partOrder != null) state.itemOverrides[inventoryId] = next;
-  else delete state.itemOverrides[inventoryId];
-
-  await Store.setItemOverride(inventoryId, patch);
-  logChange(describeItemOverride(patch), null, inventoryId);
-  rebuild();
+/** A decision on an item code, for every job on it; a failure is said on the row it was made from. */
+function setItemOverride(job, patch, what, said = null) {
+  const id = job.inventory_id;
+  let before;
+  return edit({
+    rows: [job.prod_no],
+    what,
+    said,
+    apply: () => {
+      before = state.itemOverrides[id];
+      const next = { ...(before ?? {}), ...patch };
+      for (const k of ['label', 'displayCode', 'partOrder']) if (next[k] === null) delete next[k];
+      if (next.label || next.displayCode || next.partOrder != null) state.itemOverrides[id] = next;
+      else delete state.itemOverrides[id];
+    },
+    undo: () => {
+      if (!carries(state.itemOverrides[id], patch)) return;
+      if (before) state.itemOverrides[id] = before; else delete state.itemOverrides[id];
+    },
+    write: () => Store.setItemOverride(id, patch),
+    saved: () => logChange(describeItemOverride(patch), null, id),
+  });
 }
 
 function closeLabel() {
@@ -3260,7 +3606,8 @@ let hulling = null;
  */
 function openHullDialog(job) {
   hulling = job;
-  $('hullLede').textContent = `${job.prod_no} \u2014 ${jobTitle(job)}, due ${job.due_display}.`;
+  accept($('hullInput'));
+  $('hullLede').textContent = `${job.prod_no} \u2014 ${jobTitle(job)}${whenWords(job)}.`;
   $('hullInput').value = job.hull ?? '';
   $('hullHint').textContent = job.hull_auto
     ? `The ERP's order text says ${job.hull_auto}. What is typed here shows instead, for this job only, and survives the next upload.`
@@ -3271,7 +3618,7 @@ function openHullDialog(job) {
   $('hullInput').select();
 }
 
-async function saveHull(raw) {
+function saveHull(raw) {
   if (!hulling) return;
   const value = String(raw ?? '').trim().toUpperCase().replace(/\s+/g, '');
   const job = hulling;
@@ -3280,13 +3627,14 @@ async function saveHull(raw) {
   // Typing the ERP's own hull, or nothing, is a return to the ERP's.
   if (!value || value === job.hull_auto) {
     if (job.hull_manual) {
-      await setOverride(job.prod_no, { hullOverride: null });
-      toast(`${job.prod_no}: hand-set hull removed${job.hull_auto ? ` \u2014 ${job.hull_auto}` : ''}.`);
-    } else flushDeferredRebuild();
+      setOverride(job.prod_no, { hullOverride: null },
+        `${job.prod_no}: hand-set hull removed${job.hull_auto ? ` \u2014 ${job.hull_auto}` : ''}.`);
+    }
+    flushDeferredRebuild();
     return;
   }
-  await setOverride(job.prod_no, { hullOverride: value });
-  toast(`${job.prod_no}: hull ${value}.`);
+  setOverride(job.prod_no, { hullOverride: value }, `${job.prod_no}: hull ${value}.`);
+  flushDeferredRebuild();
 }
 
 /**
@@ -3294,50 +3642,108 @@ async function saveHull(raw) {
  * decides unless the manager has said otherwise; saying what the shape already
  * says clears the override rather than pinning it.
  */
-async function togglePartOrder(job) {
+function togglePartOrder(job) {
   const auto = isPartOrder(job.inventory_id);
   const next = !job.part_order;
-  await setItemOverride(job.inventory_id, { partOrder: next === auto ? null : next });
-  toast(next
+  setItemOverride(job, { partOrder: next === auto ? null : next }, 'Part mark not saved', next
     ? `${job.inventory_id} is a part order: every job on it follows the Part orders toggle.`
     : `${job.inventory_id} is a unit: the Part orders toggle leaves it alone.`);
 }
 
 function openHideDialog(job) {
   hiding = job;
-  $('hideLede').textContent = (job.lane ?? 'production') === 'production'
-    ? `${job.prod_no} — ${jobTitle(job)}, due ${job.due_display}.`
-    : `${job.prod_no} — ${jobTitle(job)}, open ${job.age_display || 'since it was raised'}.`;
+  $('hideLede').textContent = `${job.prod_no} — ${jobTitle(job)}${whenWords(job)}.`;
   $('hideReason').value = '';
   $('hideOverlay').classList.add('show');
   $('hideReason').focus();
 }
 
-async function saveHide() {
-  await setOverride(hiding.prod_no, { hidden: true, hiddenReason: $('hideReason').value.trim() || null });
-  $('hideOverlay').classList.remove('show');
-  toast(`${hiding.prod_no} hidden from the printed board.`);
+function saveHide() {
+  const job = hiding;
+  if (!job) return;
   hiding = null;
+  $('hideOverlay').classList.remove('show');
+  setOverride(job.prod_no, { hidden: true, hiddenReason: $('hideReason').value.trim() || null },
+    `${job.prod_no} hidden from the printed board.`);
+  flushDeferredRebuild();
 }
 
-async function unhide(job) {
-  await setOverride(job.prod_no, { hidden: false, hiddenReason: null });
-  toast(`${job.prod_no} back on the board.`);
+function unhide(job) {
+  setOverride(job.prod_no, { hidden: false, hiddenReason: null }, `${job.prod_no} back on the board.`);
 }
 
-async function setOverride(prodNo, patch) {
-  const next = { ...(state.overrides[prodNo] ?? {}), ...patch };
-  if (patch.labelOverride === null) delete next.labelOverride;
-  if (patch.hullOverride === null) delete next.hullOverride;
-  if (patch.plinth === null) delete next.plinth;
-  if (patch.status === null) { delete next.status; delete next.statusFrom; }
-  if (next.hidden === false) { delete next.hidden; delete next.hiddenReason; }
-  if (Object.keys(next).length) state.overrides[prodNo] = next;
+// ---------------------------------------------------------------------------
+// saving
+//
+// THE SCREEN FIRST, THE WRITE BEHIND IT. A Firestore write resolves when the
+// server has it, which offline is when the connection returns, so nothing on
+// screen waits for one: no dialog stays up, no row stays as it was. A write
+// the server refuses puts the row back as it was and says why on it, with a
+// Retry (faults.js). The log line follows the write it describes.
+// ---------------------------------------------------------------------------
+
+/**
+ * @param {object} e
+ * @param {string[]} e.rows   the rows it is about, where a failure is said
+ * @param {string} e.what     what has not been done if it fails: "Hull not saved"
+ * @param {string} [e.said]   in passing, once the screen has changed
+ * @param {() => void} e.apply
+ * @param {() => void} e.undo
+ * @param {() => Promise} e.write
+ * @param {() => void} [e.saved]
+ * @param {() => void} [e.draw]   how the change is drawn; the whole board unless said
+ * @returns {Promise<boolean>} whether it saved
+ */
+async function edit(e) {
+  const { rows, what, said, apply, undo, write, saved, draw = rebuild } = e;
+  for (const k of rows) clearFault(k);
+  if (e.failed) unsay(e.failed);                // this is its Retry
+  apply();
+  draw();
+  if (said) toast(said);
+  try {
+    await write();
+  } catch (err) {
+    undo();
+    const words = failure(what, err);
+    for (const k of rows) setFault(k, words, () => edit(e));
+    if (dialogOpen()) rebuildDeferred = true; else rebuild();
+    e.failed = /^(hist|code):/.test(rows[0]) || rows.length > 1 ? words : `${rows[0]} \u2013 ${words}`;
+    toastFailed(e.failed);
+    return false;
+  }
+  saved?.();
+  shareFloorSoon();
+  return true;
+}
+
+/** A job's record as it was; nothing left in it is no record. */
+function putBack(prodNo, record) {
+  if (record && Object.keys(record).length) state.overrides[prodNo] = record;
   else delete state.overrides[prodNo];
+}
 
-  await Store.setOverride(prodNo, patch, Auth.user?.email ?? 'local');
-  logChange(describeOverride(patch), prodNo);
-  rebuild();
+function setOverride(prodNo, patch, said = null) {
+  let before;
+  return edit({
+    rows: [prodNo],
+    what: notDone(patch),
+    said,
+    apply: () => {
+      before = state.overrides[prodNo];
+      const next = { ...(before ?? {}), ...patch };
+      if (patch.labelOverride === null) delete next.labelOverride;
+      if (patch.hullOverride === null) delete next.hullOverride;
+      if (patch.plinth === null) delete next.plinth;
+      if (patch.status === null) { delete next.status; delete next.statusFrom; }
+      if (next.hidden === false) { delete next.hidden; delete next.hiddenReason; }
+      putBack(prodNo, next);
+    },
+    // The live listener may have put the server's own value back already.
+    undo: () => { if (carries(state.overrides[prodNo], patch)) putBack(prodNo, before); },
+    write: () => Store.setOverride(prodNo, patch, Auth.user?.email ?? 'local'),
+    saved: () => logChange(describeOverride(patch), prodNo),
+  });
 }
 
 /**

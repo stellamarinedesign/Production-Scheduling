@@ -90,6 +90,8 @@ function shutOut(overlay) {
   for (let n = overlay; n && n !== document.body; n = n.parentElement) {
     for (const s of n.parentElement?.children ?? []) {
       if (s === n || s.inert || s.id === 'toast' || /^(SCRIPT|STYLE|LINK|IFRAME)$/.test(s.tagName)) continue;
+      // Hubinator's screens are drawn over the page by the hub, not the board.
+      if (/shub/.test(String(s.className))) continue;
       s.inert = true;
       shut.push(s);
     }
@@ -112,6 +114,11 @@ function opened(overlay) {
   if (!overlay.contains(document.activeElement)) box.focus({ preventScroll: true });
 }
 
+const allClosed = new Set();
+
+/** Called each time the last dialog on screen closes. */
+export function whenClosed(cb) { allClosed.add(cb); }
+
 function closed(i) {
   const [d] = open.splice(i, 1);
   for (const n of d.shut) n.inert = false;
@@ -127,9 +134,11 @@ function sync() {
     const o = open[i].overlay;
     if (!o.isConnected || !o.classList.contains('show')) closed(i);
   }
+  const any = open.length > 0;
   for (const o of document.querySelectorAll('.overlay.show')) {
     if (!open.some((d) => d.overlay === o)) opened(o);
   }
+  if (!any && !open.length) for (const cb of allClosed) cb();
 }
 
 /** Once per page: every dialog on it now, and every one added to the body later. */
@@ -155,6 +164,8 @@ export function watchDialogs() {
   }, true);
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape' || e.defaultPrevented) return;
+    // Hubinator's own screens and password dialog answer their own Escape.
+    if (e.target.closest?.('.shub') || document.querySelector('.shub-screen, .shub-scrim')) return;
     const close = closers.get(open[open.length - 1]?.overlay);
     if (!close) return;
     e.preventDefault();

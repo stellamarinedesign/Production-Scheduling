@@ -94,6 +94,12 @@ export function normaliseRefs(XLSX, sheet) {
   return out;
 }
 
+/** An error that carries the plain words for it: what is wrong with the file. */
+const unreadable = (words, why) => {
+  if (why) console.warn('[xlsx]', why.message);
+  return Object.assign(new Error(words), { words });
+};
+
 export const xlsxAdapter = {
   id: 'xlsx',
   label: 'Upload ERP export',
@@ -111,7 +117,7 @@ export const xlsxAdapter = {
     try {
       wb = XLSX.read(await file.arrayBuffer(), { cellDates: true });
     } catch (e) {
-      throw new Error(`Could not read that file as a spreadsheet — ${e.message}`);
+      throw unreadable('not a spreadsheet', e);
     }
 
     // Which sheet holds the rows, in order of preference.
@@ -124,10 +130,8 @@ export const xlsxAdapter = {
     // whole table and never the pre-sorted sheets. 'Data' is the older export.
     const name = SHEET_PREFERENCE.find((n) => wb.Sheets[n]);
     if (!name) {
-      throw new Error(
-        `No ${SHEET_PREFERENCE.map((n) => `'${n}'`).join(' or ')} sheet — is this the ` +
-        `right export? Found: ${wb.SheetNames.join(', ') || 'nothing'}`,
-      );
+      throw unreadable(`no ${SHEET_PREFERENCE.map((n) => `"${n}"`).join(' or ')} sheet in it `
+        + `(found ${wb.SheetNames.map((n) => `"${n}"`).join(', ') || 'none'})`);
     }
     const sheet = wb.Sheets[name];
 
@@ -137,11 +141,8 @@ export const xlsxAdapter = {
     try {
       raw = XLSX.utils.sheet_to_json(normaliseRefs(XLSX, sheet), { defval: null });
     } catch (e) {
-      throw new Error(
-        `Could not read the '${name}' sheet of ${file.name} — ${e.message}. `
-        + `The file opens in Excel but is not written the way the spec requires; `
-        + `re-saving it from Excel usually fixes it.`,
-      );
+      throw unreadable(`its "${name}" sheet is not written as a spreadsheet should be. `
+        + 'Re-saving it from Excel usually corrects that', e);
     }
 
     // NARROWED HERE AND NOWHERE ELSE, before the rows are returned to a single

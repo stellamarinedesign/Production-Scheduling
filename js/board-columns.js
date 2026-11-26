@@ -80,6 +80,15 @@ export function historyHead(lane) {
   return hdr;
 }
 
+/**
+ * When a job is due, as a dialog says it after its name: `, due 02/11/2026`.
+ * A stock build has no date to keep, and a side lane's job has only an age.
+ */
+export function whenWords(j) {
+  if ((j?.lane ?? 'production') !== 'production') return `, open ${j?.age_display || 'since it was raised'}`;
+  return j?.is_stock || !j?.due_display ? '' : `, due ${j.due_display}`;
+}
+
 /** The created date in its column; blank when the ERP gave none. */
 export const createdCell = (j) => el('span', 'created', j?.created_display ?? '');
 
@@ -89,3 +98,18 @@ export const createdCell = (j) => el('span', 'created', j?.created_display ?? ''
  */
 export const createdNote = (j) =>
   (j?.created_display ? el('span', 'created-note', `Created: ${j.created_display}`) : null);
+
+/** The PO among the folded controls, where its column gives way. Null when there is none. */
+export const poNote = (j) => (j?.customer_po ? el('span', 'created-note po-note', `PO: ${j.customer_po}`) : null);
+
+/**
+ * What the ERP says, among the folded controls, where a person has said
+ * otherwise: it was in a tooltip, which a finger cannot open. Null when nobody has.
+ */
+export function erpNote(j) {
+  const said = [
+    j?.status_manual && j.erp_status ? `status ${j.erp_status}` : null,
+    j?.hull_manual ? `hull ${j.hull_auto || 'none'}` : null,
+  ].filter(Boolean);
+  return said.length ? el('span', 'erp-note', `ERP: ${said.join(', ')}`) : null;
+}

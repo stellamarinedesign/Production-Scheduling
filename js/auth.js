@@ -18,6 +18,7 @@
 // gets the floor view rather than the run of the board. That is the same
 // fail-closed default as before, now covering the not-yet-loaded case too.
 import { isTestMode, enterTestMode, notAvailable, NOT_AVAILABLE } from './test-mode.js';
+import { failure } from './words.js';
 
 let managerEmails = [];
 let engineerEmails = [];
@@ -82,6 +83,7 @@ export const Auth = {
   mode: 'local',        // 'firebase' | 'local'
   user: null,
   role: ROLE.NONE,
+  unlisted: false,      // the server has said this account is on no list (sign-in.js)
 
   /**
    * @param {(state: {role, email, mode}) => void} onChange
@@ -153,6 +155,12 @@ export const Auth = {
     return this._setRole(this.user ? roleFor(this.user.email) : ROLE.NONE);
   },
 
+  /** Firebase, where there is any yet: the copy saved on the device can be up before it, or without it. */
+  _firebase() {
+    if (!this._fb) throw Object.assign(new Error('Firebase has not loaded'), { code: 'unavailable' });
+    return this._fb;
+  },
+
   /** The role, and with it the mode: a tester is in test mode from the moment the role is known. */
   _setRole(role) {
     this.role = role;
@@ -162,13 +170,13 @@ export const Auth = {
 
   async signIn(email, password) {
     if (this.mode === 'local') throw new Error('Local mode — no sign-in required.');
-    const { fa, auth } = this._fb;
+    const { fa, auth } = this._firebase();
     await fa.signInWithEmailAndPassword(auth, email.trim(), password);
   },
 
   async signOut() {
     if (this.mode === 'local') return;
-    const { fa, auth } = this._fb;
+    const { fa, auth } = this._firebase();
     await fa.signOut(auth);
   },
 
@@ -188,7 +196,7 @@ export const Auth = {
   async sendPasswordReset(email) {
     if (isTestMode()) throw notAvailable();
     if (this.mode === 'local') throw new Error('Local mode — there are no accounts.');
-    const { fa, auth } = this._fb;
+    const { fa, auth } = this._firebase();
     await fa.sendPasswordResetEmail(auth, email.trim());
   },
 
@@ -203,7 +211,7 @@ export const Auth = {
   async changePassword(current, next) {
     if (isTestMode()) throw notAvailable();
     if (this.mode === 'local') throw new Error('Local mode \u2014 there are no accounts.');
-    const { fa, auth } = this._fb;
+    const { fa, auth } = this._firebase();
     const user = auth.currentUser;
     if (!user?.email) throw new Error('Not signed in.');
     await fa.reauthenticateWithCredential(user, fa.EmailAuthProvider.credential(user.email, current));
@@ -220,11 +228,13 @@ export const Auth = {
   async createAccount(email, password) {
     if (isTestMode()) throw notAvailable();
     if (this.mode === 'local') throw new Error('Local mode \u2014 there are no accounts.');
+    const { fa } = this._firebase();
     const { secondaryAuth } = await import('./firebase.js');
     const auth2 = await secondaryAuth();
-    const { fa } = this._fb;
     await fa.createUserWithEmailAndPassword(auth2, tidyEmail(email), password);
-    await fa.signOut(auth2);
+    // Made, whatever becomes of this: an error from here would be shown in
+    // place of the password.
+    try { await fa.signOut(auth2); } catch (e) { console.warn('[accounts]', e.message); }
   },
 
   /** The manager view: a manager, or a tester, whose board keeps nothing. */
@@ -243,19 +253,25 @@ export const Auth = {
   get canImportParts() { return this.isManager; },
 };
 
-/** Firebase's error codes are not sentences. Make them ones. */
-export function friendlyAuthError(e) {
-  const code = e?.code ?? '';
+/** Was it the password, or the address it was given for? Firebase says the same for both. */
+export const isWrongPassword = (e) => /invalid-credential|invalid-login-credentials|wrong-password|user-not-found/
+  .test(String(e?.code ?? ''));
+
+/**
+ * Firebase's error codes are not sentences. Make them ones; a code with none of
+ * its own is said as any other failure is (words.js), never in Firebase's words.
+ * @param {string} [what]  what was not done: "Not signed in"
+ */
+export function friendlyAuthError(e, what = 'Not done') {
+  const code = String(e?.code ?? '');
   if (code === 'test-mode') return NOT_AVAILABLE;
-  if (code.includes('invalid-credential') || code.includes('wrong-password')
-      || code.includes('user-not-found')) return 'Wrong email or password.';
-  if (code.includes('weak-password')) return 'Firebase wants a stronger password \u2014 at least six characters.';
-  if (code.includes('operation-not-allowed')) return 'Making accounts from the app is switched off in the Firebase console (Authentication, Sign-in method, Email/Password, "Enable create").';
-  if (code.includes('email-already-in-use')) return 'That address already has a Firebase user.';
+  if (isWrongPassword(e)) return 'Wrong email or password.';
+  if (code.includes('weak-password') || code.includes('password-does-not-meet')) return 'A stronger password is needed.';
+  if (code.includes('operation-not-allowed') || code.includes('admin-restricted')) return 'Making sign-ins from the app is switched off.';
+  if (code.includes('email-already-in-use')) return 'That address already has a sign-in.';
   if (code.includes('requires-recent-login')) return 'Sign out, sign in again, and then change it.';
   if (code.includes('invalid-email')) return 'That does not look like an email address.';
   if (code.includes('too-many-requests')) return 'Too many attempts — wait a minute and try again.';
-  if (code.includes('network-request-failed')) return 'No connection to Firebase. Check the network.';
   if (code.includes('user-disabled')) return 'That account has been disabled.';
-  return e?.message ?? 'Sign-in failed.';
+  return failure(what, e);
 }
