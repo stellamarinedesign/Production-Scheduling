@@ -136,6 +136,7 @@
     "./js/ask.js": "./js/ask.js?v=2026-11-27.9",
     "./js/auth.js": "./js/auth.js?v=2026-11-27.9",
     "./js/board-columns.js": "./js/board-columns.js?v=2026-11-27.9",
+    "./js/board-shell.js": "./js/board-shell.js?v=2026-11-27.9",
     "./js/boot.js": "./js/boot.js?v=2026-11-27.9",
     "./js/busy.js": "./js/busy.js?v=2026-11-27.9",
     "./js/code-edits.js": "./js/code-edits.js?v=2026-11-27.9",
@@ -224,6 +225,7 @@
 <link rel="modulepreload" href="js/board-columns.js?v=2026-11-27.9">
 <link rel="modulepreload" href="js/collapse.js?v=2026-11-27.9">
 <link rel="modulepreload" href="js/floor-board.js?v=2026-11-27.9">
+<link rel="modulepreload" href="js/board-shell.js?v=2026-11-27.9">
 <link rel="modulepreload" href="js/adapters/xlsx.js?v=2026-11-27.9">
 <link rel="modulepreload" href="js/busy.js?v=2026-11-27.9">
 <link rel="modulepreload" href="js/admin-contact.js?v=2026-11-27.9">
@@ -334,33 +336,50 @@
 
   <!-- ============ BOARD ============ -->
   <div id="boardWrap" hidden>
-
-
+    <!-- THE VIEWS DOWN A SIDEBAR, as material ordering's manager page has its
+         own: the four views; then Print, a destination rather than a view, in
+         a section of its own; then the two records, what is hidden from print
+         and the rows the import left out. On a phone the same panel slides in
+         from the menu beside the view's name (board-shell.js). This is a
+         scheduling board that can be printed, not a print tool, so the paper
+         settings stay behind Print. -->
+    <div class="bd">
+      <nav class="bd-side" id="bdSide" aria-label="Views">
+        <div class="bd-side-head"><b class="brand-head">Production Board</b>
+          <button class="cog" id="bdSideClose" aria-label="Close"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+        <div class="side-sec">
+          <button class="side-item" id="tabEditBtn" aria-current="page"><span class="nm">Current orders</span></button>
+          <button class="side-item" id="tabGanttBtn"><span class="nm">Gantt</span></button>
+          <button class="side-item" id="tabInternalBtn"><span class="nm">Internal Factory Jobs</span></button>
+          <button class="side-item" id="tabTmBtn"><span class="nm">Time &amp; Materials Jobs</span></button>
+        </div>
+        <div class="side-sec">
+          <button class="side-item" id="tabPrintBtn"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><path d="M6 14h12v7H6z"/></svg><span class="nm">Print</span></button>
+        </div>
+        <div class="side-sec side-records">
+          <button class="side-item quiet" id="tabHiddenBtn" hidden><span class="nm">Hidden from print</span></button>
+          <button class="side-item quiet" id="tabExcludedBtn" hidden><span class="nm">Excluded rows</span></button>
+        </div>
+      </nav>
+      <div class="bd-scrim" id="bdScrim"></div>
+      <div class="bd-main">
+    <div class="view-head"><button class="cog" id="bdMenu" aria-label="Views" aria-expanded="false" aria-controls="bdSide"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><h2 class="brand-head" id="viewTitle">Current orders</h2></div>
     <div class="held-note held-block">Latest board not yet loaded</div>
     <div id="warnings"></div>
 
-    <!-- Print sits alone on the right. This is a scheduling board that can be
-         printed, not a print tool — so the paper settings live behind that tab
-         and are out of the way of everything else. -->
-    <div class="tabs">
-      <button class="tab" id="tabEditBtn" aria-current="page">Current orders</button>
-      <button class="tab" id="tabGanttBtn">Gantt</button>
-      <button class="tab" id="tabInternalBtn">Internal Factory Jobs</button>
-      <button class="tab" id="tabTmBtn">Time &amp; Materials Jobs</button>
-      <span class="tab-spacer"></span>
-      <button class="tab" id="tabPrintBtn">Print</button>
-    </div>
-
     <section id="tabEdit">
       <div class="view-bar">
+        <span class="vb-group">
         <button class="mini manager-only" id="completePastDue">Complete past due…</button>
         <span class="held-note">Latest board not yet loaded</span>
         <button class="mini" id="collapseAll">Collapse all</button>
         <button class="mini on" id="partOrders" aria-pressed="true" title="Orders for numbered parts - glands, rope kits, a head rest - on the board, the Gantt and the sheet, or held back. Units are never touched.">Part orders</button>
-        <span class="spacer"></span>
+        </span>
+        <span class="vb-group vb-end">
         <span class="hint" id="boardCount"></span>
         <button class="mini quiet manager-only" id="recentChanges">Activity log</button>
         <button class="mini quiet manager-only" id="historyEdit" data-lane="production">History</button>
+        </span>
       </div>
       <div id="board"></div>
       <div id="historyProduction" class="history-panel" hidden></div>
@@ -466,6 +485,13 @@
       <div id="printRoot"><div id="printPreview"></div><div id="printSecond" hidden></div></div>
     </section>
 
+    <!-- The records: what is hidden from print, and the rows the import left
+         out. Lists to look up, not warnings, so they wait in the sidebar. -->
+    <section id="tabHidden" class="offstage"><div class="rec" id="recHidden"></div></section>
+    <section id="tabExcluded" class="offstage"><div class="rec" id="recExcluded"></div></section>
+
+      </div>
+    </div>
   </div>
 
   <!-- An engineer's account is for the reference pages. The board is not

@@ -44,6 +44,7 @@ import './press.js';
 import { boardHead, createdCell, createdNote, poNote, erpNote, whenWords, historyColumns, historyHead, historyRowClass } from './board-columns.js';
 import { collapseScope, anyShut, toggleAll, historyKey, toggleRow } from './collapse.js';
 import { floorBoard, floorSignature } from './floor-board.js';
+import { wireBoardShell, sideLabel, fillRecord } from './board-shell.js';
 
 const $ = (id) => document.getElementById(id);
 const el = (tag, cls, text) => {
@@ -1299,6 +1300,7 @@ function wireControls() {
     const cap = t[0].toUpperCase() + t.slice(1);
     $(`tab${cap}Btn`).addEventListener('click', () => showTab(t));
   }
+  wireBoardShell();
   $('importNav').addEventListener('click', () => showImportPage(true));
   $('boardNav').addEventListener('click', () => showImportPage(false));
   for (const b of document.querySelectorAll('[id^=history][data-lane]')) {
@@ -1387,7 +1389,7 @@ async function setBoardSetting(id, patch) {
   }
 }
 
-const TABS = ['edit', 'gantt', 'internal', 'tm', 'print'];
+const TABS = ['edit', 'gantt', 'internal', 'tm', 'print', 'hidden', 'excluded'];
 
 /** The print sheet each content tab corresponds to. Gantt has no sheet. */
 const SHEET_FOR_TAB = { edit: 'production', internal: 'internal', tm: 'tm' };
@@ -1697,7 +1699,7 @@ function renderWarnings() {
   if (w.unmapped.length) {
     host.append(panel({
       cls: 'alert', title: 'Unmapped inventory codes — these need a category rule',
-      count: w.unmapped.length, open: true,
+      count: w.unmapped.length,
       build: (b) => {
         b.append(el('div', null,
           'These rows match no category, so they are off the board until a rule is added. '
@@ -1715,7 +1717,7 @@ function renderWarnings() {
   // since. The board falls back to raw ERP text for these, so it is not cosmetic.
   if (w.newCodes?.length) {
     host.append(panel({
-      cls: 'alert', title: 'Vessel codes awaiting a decision', count: w.newCodes.length, open: true,
+      cls: 'warn', title: 'Vessel codes awaiting a decision', count: w.newCodes.length,
       build: (b) => {
         b.append(el('div', null,
           'These jobs are on the board but have no agreed code, so they print '
@@ -1741,7 +1743,7 @@ function renderWarnings() {
   // or arrived since. Not cosmetic: the floor reads this off the board.
   if (w.customNames?.length) {
     host.append(panel({
-      cls: 'alert', title: 'Custom jobs awaiting a name', count: w.customNames.length, open: true,
+      cls: 'warn', title: 'Custom jobs awaiting a name', count: w.customNames.length,
       build: (b) => {
         b.append(el('div', null,
           'These are one-offs with no model code, and the Description column '
@@ -1765,7 +1767,7 @@ function renderWarnings() {
   // Two hand-confirmed answers for one boat. Never resolved silently.
   if (w.codeConflicts.length) {
     host.append(panel({
-      cls: 'alert', title: 'Vessel code conflict', count: w.codeConflicts.length, open: true,
+      cls: 'alert', title: 'Vessel code conflict', count: w.codeConflicts.length,
       build: (b) => {
         for (const c of w.codeConflicts) {
           const line = el('div', null,
@@ -1796,7 +1798,7 @@ function renderWarnings() {
   // actually appear — an On Hold job outside the horizon is already gone.
   if (w.onHold.length) {
     host.append(panel({
-      cls: 'alert', title: 'On hold, but showing on the board', count: w.onHold.length, open: true,
+      cls: 'warn', title: 'On hold, but showing on the board', count: w.onHold.length,
       build: (b) => {
         b.append(el('div', null, 'Confirm these before the floor starts them, or hide them.'));
         for (const j of w.onHold) {
@@ -1815,10 +1817,8 @@ function renderWarnings() {
     }));
   }
 
-  if (w.hidden.length) {
-    host.append(panel({
-      title: 'Hidden from the printed board', count: w.hidden.length,
-      build: (b) => {
+  // The records are views of their own under the sidebar (board-shell.js).
+  fillRecord('recHidden', 'tabHiddenBtn', 'Hidden from print', w.hidden.length, (b) => {
         for (const j of w.hidden) {
           const r = el('div', 'xrow has-act');
           r.append(el('span', 'id', j.prod_no), el('span', null, jobTitle(j)),
@@ -1829,16 +1829,12 @@ function renderWarnings() {
           r.append(show);
           b.append(r);
         }
-      },
-    }));
-  }
+  });
 
   // Nothing disappears silently: if a job is missing, this says why. Grouped so
   // the horizon cut — the one the manager acts on, by widening it — is first.
-  host.append(panel({
-    title: 'Excluded rows', count: state.board.excluded.length,
-    build: (b) => {
-      b.append(el('div', null,
+  fillRecord('recExcluded', 'tabExcludedBtn', 'Excluded rows', state.board.excluded.length, (b) => {
+      b.append(el('div', 'rec-lede',
         `${state.board.meta.row_count} rows in the export, ${state.board.meta.job_count} on the board.`));
 
       const byKind = new Map();
@@ -1865,8 +1861,7 @@ function renderWarnings() {
           b.append(r);
         }
       }
-    },
-  }));
+  });
   for (const d of host.querySelectorAll('details.panel')) {
     if (was.has(d.dataset.panel)) d.open = was.get(d.dataset.panel);
   }
@@ -1927,12 +1922,9 @@ function renderBoard() {
   $('emptyState').hidden = any;
   $('stockNote').textContent = `${state.board.jobs.filter((j) => j.is_stock).length} stock`;
 
-  $('tabInternalBtn').textContent = state.board.meta.internal_count
-    ? `Internal Factory Jobs (${state.board.meta.internal_count})`
-    : 'Internal Factory Jobs';
-  $('tabTmBtn').textContent = state.board.meta.tm_count
-    ? `Time & Materials Jobs (${state.board.meta.tm_count})`
-    : 'Time & Materials Jobs';
+  sideLabel($('tabEditBtn'), 'Current orders', state.board.meta.job_count);
+  sideLabel($('tabInternalBtn'), 'Internal Factory Jobs', state.board.meta.internal_count);
+  sideLabel($('tabTmBtn'), 'Time & Materials Jobs', state.board.meta.tm_count);
 
   const pastDue = state.board.warnings.pastDue?.length ?? 0;
   $('boardCount').textContent = `${state.board.meta.job_count} on the board`
@@ -2156,7 +2148,12 @@ function jobRow(j, { full = false } = {}) {
   hullEdit.addEventListener('click', () => openHullDialog(j));
   fold.append(hullEdit);
 
-  const done = el('button', 'mini', 'Complete');
+  // On a phone the row's own Hide is out of reach; the fold carries one too.
+  const hideTwin = el('button', 'mini hide-twin', j.hidden ? 'Show' : 'Hide');
+  hideTwin.addEventListener('click', () => (j.hidden ? unhide(j) : openHideDialog(j)));
+  fold.append(hideTwin);
+
+  const done = el('button', 'mini act-done', 'Complete');
   done.title = 'Mark completed \u2014 off the board for good, reversible from History';
   done.addEventListener('click', () => openCompleteDialog([j]));
   fold.append(done);
