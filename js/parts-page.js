@@ -1928,6 +1928,9 @@ async function copyFailed(btn, label) {
  * failed. The button reads "✓ Copied" for a moment and goes back to itself.
  */
 function flash(btn, label, text, cls, ms = 1600) {
+  // The button keeps its width while it says so, so nothing beside it moves
+  // under the finger (M39).
+  btn.style.minWidth = `${btn.getBoundingClientRect().width}px`;
   btn.textContent = text;
   btn.classList.add(cls);
   btn.disabled = true;
@@ -1935,6 +1938,7 @@ function flash(btn, label, text, cls, ms = 1600) {
     btn.textContent = label;
     btn.classList.remove(cls);
     btn.disabled = false;
+    btn.style.minWidth = '';
   }, ms);
 }
 
