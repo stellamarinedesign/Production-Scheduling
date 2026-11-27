@@ -1032,6 +1032,9 @@ body.role-floor .bd { grid-template-columns: minmax(0, 1fr); }
   background: var(--surface); border-right: 1px solid var(--border);
 }
 .bd-main { min-width: 0; max-width: 1720px; padding: 16px 22px 60px; }
+/* Past its widest, the column sits in the middle of the room beside the sidebar,
+   not against it (Pete, 27 Nov 2026). Screen only: print is untouched. */
+@media screen { .bd-main { width: 100%; justify-self: center; } }
 /* PAPER IS PAPER: an A4 preview is 794px wide because A4 is. Beside the sidebar
    a narrow window has less than that, so the preview scrolls in its own box
    and the page stays put. Screen only: the printer gets the sheet as it was. */
