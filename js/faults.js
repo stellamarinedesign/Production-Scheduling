@@ -5,6 +5,11 @@
 // the row has moved on. The row goes back to what it was, and the reason
 // stands on it with a Retry until it is dealt with. A passing message alone
 // would be missed, and a missed one is an edit somebody believes they made.
+//
+// "Notify the admin." in the words is an email to the admin once its address
+// has been read (admin-contact.js).
+
+import { sayWithNotify } from './admin-contact.js';
 
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
@@ -29,7 +34,9 @@ export function faultLine(key, redraw) {
   if (!f) return null;
   const line = el('div', 'fault');
   line.setAttribute('role', 'alert');
-  line.append(el('span', 'fault-words', f.words));
+  const words = el('span', 'fault-words');
+  sayWithNotify(words, f.words);
+  line.append(words);
   if (f.retry) {
     const retry = el('button', 'mini', 'Retry');
     retry.addEventListener('click', () => { faults.delete(key); f.retry(); });

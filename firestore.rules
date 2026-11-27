@@ -90,6 +90,14 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // "Notify the admin": the address it emails (js/admin-contact.js). Read
+    // by any signed-in account, listed or not: the one on no list is who
+    // needs it. Written with the service-account key only.
+    match /contact/admin {
+      allow read:  if signedIn();
+      allow write: if false;
+    }
+
     // The accounts and their roles. Read by anyone listed; written by a
     // master. The first time, when it does not exist, anyone signed in may
     // read that it is missing and claim it; a signed-out visitor may not.
