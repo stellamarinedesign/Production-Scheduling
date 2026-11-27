@@ -20,7 +20,7 @@
   width: 1123px;                 /* A4 landscape at 96dpi */
   min-height: 794px;
   padding: 48px;                 /* the 0.5in margin above */
-  box-shadow: 0 6px 30px rgba(0,0,0,.55);
+  box-shadow: var(--shadow-paper);
 }
 
 #codesSheet .cs-head {

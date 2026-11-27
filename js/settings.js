@@ -26,6 +26,7 @@ import { toastFailed } from './toast.js';
 import { busy } from './busy.js';
 import { failure } from './words.js';
 import { VERSION } from './version.js';
+import { THEMES, themeNow, setTheme } from './theme.js';
 
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
@@ -57,6 +58,7 @@ function open() {
   if (!overlay) build();
   overlay.classList.add('show');
   renderAccount();
+  for (const b of overlay.querySelectorAll('#themePick button')) b.setAttribute('aria-pressed', String(b.dataset.theme === themeNow()));
   // The accounts section exists for a master and for nobody else: not
   // hidden, not greyed, simply absent.
   overlay.querySelector('#stAccounts').hidden = !(Auth.mode === 'firebase' && Auth.isMaster);
@@ -82,6 +84,29 @@ function build() {
   card.id = 'stAccount';
   account.append(card);
   box.append(account);
+
+  // The theme: this device's, for everyone signed in (UX stage two, G1).
+  const theme = el('div', 'settings-section');
+  const themeLabel = el('div', 'settings-label', 'Theme');
+  themeLabel.id = 'stThemeLabel';
+  const pick = el('div', 'ctrl-row');
+  pick.id = 'themePick';
+  pick.setAttribute('role', 'group');
+  pick.setAttribute('aria-labelledby', 'stThemeLabel');
+  for (const [value, words] of THEMES) {
+    const b = el('button', 'mini', words);
+    b.type = 'button';
+    b.dataset.theme = value;
+    b.addEventListener('click', () => {
+      setTheme(value);
+      for (const x of pick.children) x.setAttribute('aria-pressed', String(x === b));
+    });
+    pick.append(b);
+  }
+  const themeCard = el('div', 'settings-card');
+  themeCard.append(pick);
+  theme.append(themeLabel, themeCard);
+  box.append(theme);
 
   const accounts = el('div', 'settings-section');
   accounts.id = 'stAccounts';

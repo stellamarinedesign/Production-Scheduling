@@ -62,7 +62,66 @@
   --touch-min:   44px;
   --side-w:      256px;   /* the board's sidebar: its longest label and its count */
   --row-hover: color-mix(in srgb, var(--bg2) 55%, var(--surface));   /* a row in a card, under the pointer or the finger */
+  /* A wash over a surface: white on the dark page, the ink on Workshop's. */
+  --wash-1: rgba(255, 255, 255, .05);   /* the Gantt's week lines */
+  --wash-2: rgba(255, 255, 255, .07);   /* a skeleton's bars */
+  --wash-3: rgba(255, 255, 255, .18);   /* a finished bar's progress */
+  --wash-4: rgba(255, 255, 255, .28);   /* a bar's progress */
+  /* A sheet of paper on the screen. Print takes it off. */
+  --shadow-paper: 0 6px 30px rgba(0, 0, 0, .55);
 }
+
+/* THE WORKSHOP THEME (UX stage two, G1): the family's light look, for bright
+   offices and the workshop floor, chosen per device under the cog (theme.js).
+   Design scheduling's values, which the hub's own screens wear too, so the
+   hub's sign-in and cards inside the board match the page around them. Values
+   only: every rule reads these. Screen only: paper keeps its own colours,
+   whichever theme the screen wears. */
+@media screen {
+  :root[data-theme="workshop"] {
+    color-scheme: light;
+    --ground: #ffffff;   --bg: #f5f4f0;   --bg2: #eceae4;   --surface: #ffffff;
+    --border: #d4d2c8;   --border2: #b8b6ac;
+    --text: #1a1a18;     --text2: #5a5a54; --text3: #6f6f68;
+    --accent: #1a1a18;   --accent-text: #f5f4f0;
+    --link: #1d4ed8;
+    --red: #dc2626;      --red-bg: #fef2f2;   --red-text: #b91c1c;
+    --amber: #d97706;    --amber-bg: #fffbeb; --amber-text: #b45309;
+    --green: #16a34a;    --green-bg: #f0fdf4; --green-text: #15803d;
+    --focus: #2563eb;
+    --select-bg: #eff6ff; --select-text: #1d4ed8;
+    --toast-bg: var(--green-text); --toast-warn-bg: var(--red-text);
+    --scrim: rgba(26, 26, 24, .35);
+    --shadow-panel: 0 1px 2px rgba(0, 0, 0, .06), 0 4px 12px rgba(0, 0, 0, .07), 0 16px 40px rgba(0, 0, 0, .12);
+    --shadow-float: 0 1px 2px rgba(0, 0, 0, .06), 0 6px 16px rgba(0, 0, 0, .08), 0 20px 48px rgba(0, 0, 0, .12);
+    --radius: 6px;       --radius-lg: 10px;
+    /* Upsdell Red stays red where the board draws it as a line or a band. */
+    --red-deep: #af1f24;
+    --wash-1: rgba(26, 26, 24, .06);
+    --wash-2: rgba(26, 26, 24, .07);
+    --wash-3: rgba(26, 26, 24, .10);
+    --wash-4: rgba(26, 26, 24, .14);
+    /* White paper on a white page: a hairline holds its edge. */
+    --shadow-paper: 0 0 0 1px var(--border), 0 4px 18px rgba(0, 0, 0, .08);
+  }
+  /* The header and the test strip stay dark bands, as design scheduling's
+     header does in Workshop: its near-black, no red rule, no mark, the name
+     in plain case. */
+  :root[data-theme="workshop"] :is(header, .test-mode) {
+    color-scheme: dark;
+    --surface: #1a1a18;  --bg: #262624;   --bg2: #333331;
+    --border: #454542;   --border2: #5e5e5a;
+    --text: #f5f4f0;     --text2: #d2d2ce; --text3: #9ca3af;
+    --white: #f5f4f0;    --text-dim: #9ca3af;
+    color: var(--text);
+  }
+  :root[data-theme="workshop"] header { border-bottom: 0; }
+  :root[data-theme="workshop"] header .logo { display: none; }
+  :root[data-theme="workshop"] header h1 { text-transform: none; letter-spacing: .02em; }
+}
+/* A change of theme lands at once, every colour together, none fading on its
+   own (theme.js takes this off on the next frame). */
+.theme-switching *, .theme-switching *::before, .theme-switching *::after { transition: none !important; }
 
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; }
@@ -262,11 +321,11 @@ main { padding: 16px 22px 60px; max-width: 1720px; margin: 0 auto; }
 .ctrl-err { font-size: var(--fs-sm); color: var(--red-text); line-height: 1.5; max-width: 34ch; }
 .ctrl-row { min-height: var(--ctl); }
 /* Which sheet, and which paper: one switch each, its pieces joined. */
-#sheetPick, #paperPick { gap: 0; }
-:is(#sheetPick, #paperPick) button.mini { border-radius: 0; margin-left: -1px; }
-:is(#sheetPick, #paperPick) button.mini:first-child { border-radius: var(--radius) 0 0 var(--radius); margin-left: 0; }
-:is(#sheetPick, #paperPick) button.mini:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
-:is(#sheetPick, #paperPick) button.mini[aria-pressed="true"] { z-index: 1; }
+#sheetPick, #paperPick, #themePick { gap: 0; }
+:is(#sheetPick, #paperPick, #themePick) button.mini { border-radius: 0; margin-left: -1px; }
+:is(#sheetPick, #paperPick, #themePick) button.mini:first-child { border-radius: var(--radius) 0 0 var(--radius); margin-left: 0; }
+:is(#sheetPick, #paperPick, #themePick) button.mini:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
+:is(#sheetPick, #paperPick, #themePick) button.mini[aria-pressed="true"] { z-index: 1; }
 .ctrl .val { font-size: 13px; color: var(--white); font-variant-numeric: tabular-nums; }
 .ctrl-row { display: flex; align-items: center; gap: 10px; }
 input[type=range] { width: 190px; accent-color: var(--text2); }
@@ -741,7 +800,7 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
   width: 794px;                 /* A4 at 96dpi */
   min-height: 1123px;           /* ...and the matching page height */
   padding: 60px 57px 47px;      /* 0.625in top, 0.59in sides, 0.49in bottom */
-  box-shadow: 0 6px 30px rgba(0,0,0,.55);
+  box-shadow: var(--shadow-paper);
 }
 @media print { #printPreview, #printSecond { min-height: 0; } }
 
@@ -818,7 +877,7 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 #printRoot .page {
   width: 1123px; height: 794px; box-sizing: border-box;   /* landscape A4 at 96dpi */
   padding: 60px 57px 51px;      /* the @page margins, with 4px of safety at the foot */
-  margin: 0 auto; background: #fff; box-shadow: 0 6px 30px rgba(0,0,0,.55);
+  margin: 0 auto; background: #fff; box-shadow: var(--shadow-paper);
 }
 /* The A3 copy: one portrait sheet drawn at A3 itself, so the page is A3-sized
    and nothing is zoomed on the way to the printer. The width of a landscape
@@ -1590,7 +1649,7 @@ button.linkish:disabled { opacity: .5; cursor: default; }
   color: var(--text-dim); overflow: hidden; white-space: nowrap;
 }
 
-.g-week { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,.05); }
+.g-week { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--wash-1); }
 .g-today {
   position: absolute; top: 0; bottom: 0; width: 2px;
   background: var(--red); opacity: .85; z-index: 2;
@@ -1643,7 +1702,7 @@ button.linkish:disabled { opacity: .5; cursor: default; }
 .g-bar.clip-end { border-right-style: dashed; border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .g-bar.clip-start::before,
 .g-bar.clip-end::after {
-  font-size: 10px; color: #fff; opacity: .9; flex-shrink: 0; padding: 0 2px;
+  font-size: 10px; color: var(--text); opacity: .9; flex-shrink: 0; padding: 0 2px;
 }
 .g-bar.clip-start::before { content: "‹"; }
 .g-bar.clip-end::after { content: "›"; margin-left: auto; }
@@ -1836,11 +1895,11 @@ button.linkish:disabled { opacity: .5; cursor: default; }
    the eventual source. */
 .g-fill {
   position: absolute; left: 0; top: 0; bottom: 0;
-  background: rgba(255,255,255,.28); pointer-events: none;
+  background: var(--wash-4); pointer-events: none;
 }
 .g-bar.is-done { background: var(--green-bg); border-color: var(--green); }
 .g-bar.is-done .g-bar-text { color: var(--green-text); }
-.g-bar.is-done .g-fill { background: rgba(255,255,255,.18); }
+.g-bar.is-done .g-fill { background: var(--wash-3); }
 .g-row.is-done .g-label .g-name { color: var(--text-dim); text-decoration: line-through; }
 
 /* Bars carry their own state classes in packed mode, where the row cannot. */
@@ -2104,7 +2163,7 @@ button.c-catchip[aria-expanded="true"]::after, button.c-item[aria-expanded="true
 .skeleton { padding: 8px 2px 24px; }
 .sk-line {
   position: relative; overflow: hidden; height: 12px; margin: 13px 0;
-  background: rgba(255, 255, 255, .07);
+  background: var(--wash-2);
 }
 /* The family's skeletons stand still: the size of what is coming, no sweep. */
 .sk-tabs { height: 30px; margin: 6px 0 22px; }
