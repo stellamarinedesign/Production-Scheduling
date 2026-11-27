@@ -10,12 +10,17 @@
 import { fillChecklistXml, styleTabsFrom, stampPlan, widenThinLines } from '../packages.js';
 
 // Pinned: a silent major-version change here would change the files written.
-const JSZIP_URL = 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js';
-const PDFLIB_URL = 'https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js';
+// Kept in this repository (vendor/), copied unchanged from npm's own packages
+// with their licences: a script loaded from another site would run where it
+// could read every Stella app's saved sign-in on the device (Pete, 27 Nov
+// 2026). Each folder names its version and carries no ?v=.
+const kept = (path) => new URL(`../../vendor/${path}`, import.meta.url).href;
+const JSZIP_URL = kept('jszip-3.10.1/jszip.min.js');
+const PDFLIB_URL = kept('pdf-lib-1.17.1/pdf-lib.min.js');
 // pdf.js reads a checklist PDF's text to find the box. pdf-lib writes but
 // cannot read text.
-const PDFJS_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs';
-const PDFJS_WORKER_URL = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs';
+const PDFJS_URL = kept('pdfjs-dist-4.10.38/pdf.min.mjs');
+const PDFJS_WORKER_URL = kept('pdfjs-dist-4.10.38/pdf.worker.min.mjs');
 
 const loading = {};
 
