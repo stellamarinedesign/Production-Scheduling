@@ -25,6 +25,7 @@ import { isTestMode, openTestMode } from './test-mode.js';
 import { toastFailed } from './toast.js';
 import { busy } from './busy.js';
 import { failure } from './words.js';
+import { VERSION } from './version.js';
 
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
@@ -69,7 +70,11 @@ function build() {
   overlay = el('div', 'overlay');
   overlay.id = 'settingsOverlay';
   const box = el('div', 'box wide settings');
-  box.append(el('h3', null, 'Settings'));
+  // The build on screen, at the top right: where to look when a fix seems
+  // not to have arrived (the page's own strip no longer carries it).
+  const head = el('div', 'box-head');
+  head.append(el('h3', null, 'Settings'), el('span', 'box-ver', `v${VERSION}`));
+  box.append(head);
 
   const account = el('div', 'settings-section');
   account.append(el('div', 'settings-label', 'Account'));

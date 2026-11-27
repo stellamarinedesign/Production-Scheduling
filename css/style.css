@@ -8,36 +8,80 @@
    Matches the Stella Drawings app.
    ============================================================ */
 
+/* THE STELLA FAMILY'S TOKENS, as design scheduling carries them and the hub's
+   core copies them (the hub draws its sign-in, cards and password dialog
+   inside these pages on its own copy, so these must match it). Fixed: they
+   change only with Pete's approval. The board's older names follow as
+   aliases, so nothing that uses them moves. */
 :root {
-  --black-night: #0E0A0A;
-  --shadow-grey: #282827;
-  --band:        #1c1c1b;
-  --line:        #454542;
-  --text-dim:    #b0b0ab;
-  --white:       #FFFFFF;
-  --red-bright:  #EA372E;
-  --red-deep:    #AF1F24;
-  --warn-bg:     #2b100e;
+  color-scheme: dark;
+  --ground: #0e0a0a;   /* Black Night: the page */
+  --bg: #1c1c1b;       /* Band: fields, hover, insets */
+  --bg2: #333331;      /* Chip Grey: chips, the chosen item, a step lighter than a card */
+  --surface: #282827;  /* Shadow Grey: the header, cards, dialogs */
+  --border: #454542;   /* Rule Grey: every hairline */
+  --border2: #5e5e5a;  /* Strong Rule: outlines that must hold at a glance */
+  --text: #ffffff;
+  --text2: #d2d2ce;    /* Ash */
+  --text3: #b0b0ab;    /* Muted Ash */
+  --accent: #af1f24;   /* Upsdell Red: the one filled button in a view */
+  --accent-text: #ffffff;
+  --link: #ff7369;     /* Link Coral */
+  --red: #ea372e;      --red-bg: #2b100e;   --red-text: #ff7369;    /* Burning Star Red: lines and markers */
+  --amber: #d97706;    --amber-bg: #2b1f08; --amber-text: #f2b84b;
+  --green: #5fb85f;    --green-bg: #13261a; --green-text: #7fd47f;
+  --focus: #ea372e;
+  --select-bg: var(--accent); --select-text: var(--accent-text);
+  /* What is chosen (a pressed toggle, the current item): grey, with a red line
+     where there is room for one. Pete, 27 Nov 2026, for every Stella app. */
+  --sel-bg: var(--bg2); --sel-text: var(--text); --sel-line: var(--red);
+  --toast-bg: #1f7a3a; --toast-warn-bg: #af1f24;
+  --scrim: rgba(0, 0, 0, .55);
+  --shadow-panel: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 12px rgba(0, 0, 0, .25), 0 16px 40px rgba(0, 0, 0, .4);
+  /* The licensed faces are never shipped: Friz Quadrata and Sweet Sans show
+     where they are installed, Georgia and the system face elsewhere. */
+  --font: "Sweet Sans Pro", "Sweet Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-head: "Friz Quadrata Pro", "Friz Quadrata BT", "Friz Quadrata", Georgia, serif;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace;
+  --fs-micro: 11px; --fs-sm: 13px; --fs-base: 14.5px; --fs-md: 16px; --fs-lg: 19px;
+  --radius: 8px; --radius-lg: 11px; --radius-inner: 6px;
+  --ctl: 36px;          /* a control at a desk */
+  --ctl-sm: 30px;       /* a small one, drawn */
+  --hit: 36px;          /* what a small one can be hit by at a desk */
+  --ok: var(--green); --warn: var(--amber);
+  /* the board's older names */
+  --black-night: var(--ground);
+  --shadow-grey: var(--surface);
+  --band:        var(--bg);
+  --line:        var(--border);
+  --text-dim:    var(--text3);
+  --white:       var(--text);
+  --red-bright:  var(--red);
+  --red-deep:    var(--accent);
+  --warn-bg:     var(--red-bg);
   --touch-min:   44px;
 }
-
-/* Brand webfonts (licensed) — drop files into fonts/ and uncomment:
-@font-face { font-family:"Friz Quadrata Pro";
-  src:url("../fonts/FrizQuadrataPro.woff2") format("woff2"); font-display:swap; }
-@font-face { font-family:"Sweet Sans Pro"; font-weight:400;
-  src:url("../fonts/SweetSansPro-Light.woff2") format("woff2"); font-display:swap; }
-*/
 
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; }
 body {
-  font-family: "Sweet Sans Pro", "Sweet Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
-  background: var(--black-night);
-  color: var(--white);
-  font-size: 15px;
+  font-family: var(--font);
+  background: var(--ground);
+  color: var(--text);
+  font-size: var(--fs-base);
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
 }
-.brand-head { font-family: "Friz Quadrata Pro", "Friz Quadrata", Georgia, serif; }
+.brand-head { font-family: var(--font-head); font-weight: 700; }
+/* THE SHEETS KEEP WHAT THEY HAD. They inherited the page's 15px and its
+   proportional figures, and they are measured to fit the paper at those, so
+   they are pinned to them here: print does not move with the screen. */
+#printRoot, #codesPrintRoot { font-size: 15px; font-variant-numeric: normal; }
+#codesPrintRoot { font-family: "Sweet Sans Pro", "Sweet Sans", -apple-system, "Segoe UI", Roboto, sans-serif; }
+::selection { background: var(--select-bg); color: var(--select-text); }
+/* Focus is a ring of its own, 2px outside the control: never the border, which
+   is where a refused value turns red. */
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
 
 /* `hidden` has to actually hide. The UA rule `[hidden]{display:none}` loses to
@@ -47,34 +91,69 @@ body {
    on the custom-name dialog would have done the same on a blank cell. */
 [hidden] { display: none !important; }
 
-/* ---------- header ---------- */
+/* ---------- header ----------
+   The family's bar: Shadow Grey on the 3px red rule, the mark and the page's
+   name, then its links as tabs. A link is muted until it is the page you are
+   on, which turns white and heavier over a red line, lifted clear of the rule
+   so the two never merge. The heavier width is held from the start
+   (data-label), so nothing beside it moves. */
 header {
-  border-bottom: 3px solid var(--red-bright);
-  background: var(--shadow-grey);
-  padding: 11px 18px 10px;
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  min-height: 56px; padding: 0 16px 0 12px;
+  background: var(--surface); border-bottom: 3px solid var(--red);
 }
-header .logo { height: 30px; }
-header h1 { font-size: 19px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
-header .sub { font-size: 12.5px; color: var(--text-dim); letter-spacing: .05em; }
-header .spacer { margin-left: auto; }
-header nav { display: flex; gap: 8px; }
+header .logo { width: 40px; height: 32px; object-fit: contain; flex: none; }
+header h1 {
+  font-size: var(--fs-lg); line-height: 1.25; letter-spacing: .1em; text-transform: uppercase; white-space: nowrap;
+}
+header .sub { display: none; }
+header .spacer { margin-left: auto; order: 2; }
+header .who { order: 3; }
+header .hd-end { order: 4; }
+header nav { display: flex; align-self: stretch; margin-left: 4px; }
 /* Import and Board switch a display rather than a document, so they are buttons
    where Vessel codes is a link. They are the same control to a reader, so they
    share one rule — a <button> inherits none of an <a>'s box, so listing the
    class alongside is what keeps it from rendering as a bare square. */
 header nav a,
 header nav .navlink {
-  background: none; color: var(--text-dim); text-decoration: none;
-  font-family: inherit; font-size: 13px; font-weight: 600; letter-spacing: .04em;
-  border: 1.5px solid var(--line); border-radius: 8px;
-  padding: 7px 13px; cursor: pointer; line-height: 1.2;
+  position: relative; display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
+  background: none; border: 0; padding: 0 12px; cursor: pointer;
+  color: var(--text3); text-decoration: none; white-space: nowrap;
+  font-family: inherit; font-size: var(--fs-base); font-weight: 500; line-height: 1.2;
+  transition: color var(--dur-fast) var(--ease-out);
 }
-header nav a:hover,
-header nav .navlink:hover { border-color: var(--red-bright); color: var(--white); }
+header nav a::after,
+header nav .navlink::after { content: attr(data-label); height: 0; overflow: hidden; visibility: hidden; font-weight: 700; }
+header nav a::before,
+header nav .navlink::before {
+  content: ""; position: absolute; left: 12px; right: 12px; bottom: 6px; height: 3px; border-radius: 2px;
+  background: transparent; transition: background-color var(--dur-fast) var(--ease-out);
+}
 header nav a[aria-current="page"],
-header nav .navlink[aria-current="page"] {
-  background: var(--red-deep); border-color: var(--red-bright); color: var(--white);
+header nav .navlink[aria-current="page"] { color: var(--text); font-weight: 700; }
+header nav a[aria-current="page"]::before,
+header nav .navlink[aria-current="page"]::before { background: var(--sel-line); }
+@media (hover: hover) {
+  header nav a:hover,
+  header nav .navlink:hover { color: var(--text); }
+}
+/* Between a phone and a desk the account's name gives way first. */
+@media screen and (max-width: 1099px) { header .who { display: none; } }
+/* A phone: one line for the mark, the name and the cog, then the links on a
+   strip of their own that scrolls sideways and fades where there is more. */
+@media screen and (max-width: 760px) {
+  header { padding: 0 4px 0 12px; column-gap: 8px; row-gap: 0; }
+  header h1 { font-size: 15px; }
+  header .spacer { min-height: 56px; }
+  header nav {
+    order: 5; flex: 0 0 calc(100% + 16px); margin: 0 -4px 0 -12px; padding: 0 4px; height: 44px;
+    overflow-x: auto; overflow-y: hidden; scrollbar-width: none; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08);
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+            mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+  header nav::-webkit-scrollbar { display: none; }
+  header nav a, header nav .navlink { flex: none; }
 }
 
 /* Wide: the orders view is two columns of six, and a landscape iPad is
@@ -163,10 +242,8 @@ main { padding: 16px 22px 60px; max-width: 1720px; margin: 0 auto; }
 .boot-actions .hint { font-size: 12.5px; color: var(--text-dim); line-height: 1.6; max-width: 60ch; }
 .boot-actions .hint code { color: var(--white); }
 
-#provVersion, #pageVersion {
-  color: var(--text-dim); opacity: .6; font-variant-numeric: tabular-nums;
-  margin-left: 14px; cursor: help;
-}
+/* The build on screen is in Settings, at the top right (Pete, 27 Nov 2026). */
+#provVersion, #pageVersion { display: none; }
 
 /* ---------- drop zone ---------- */
 #dropZone, .drop-zone {
@@ -193,19 +270,24 @@ main { padding: 16px 22px 60px; max-width: 1720px; margin: 0 auto; }
 .ctrl .val { font-size: 13px; color: var(--white); font-variant-numeric: tabular-nums; }
 .ctrl-row { display: flex; align-items: center; gap: 10px; }
 input[type=range] { width: 190px; accent-color: var(--red-bright); }
+/* A field: Band, a hairline, 8px corners, 36px at a desk. Focus is the ring
+   (above); the edge only changes for a value that is refused. */
 input[type=text], input[type=number], input[type=search], input[type=email],
 input[type=password], select, textarea {
-  background: var(--black-night); border: 2px solid var(--line); border-radius: 9px;
-  color: var(--white); font-size: 15px; font-family: inherit;
-  padding: 9px 12px; outline: none; transition: border-color var(--dur-fast);
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--text); font-size: var(--fs-base); font-family: inherit;
+  min-height: var(--ctl); padding: 0 12px; caret-color: var(--focus);
+  transition: border-color var(--dur-fast);
 }
-input:focus, select:focus, textarea:focus { border-color: var(--red-bright); }
+select { padding: 0 8px; }
+textarea { padding: 8px 12px; }
+::placeholder { color: var(--text3); opacity: 1; }
 input[type=number] { width: 84px; }
 /* A value that is refused: red, one short shake, and why in words beneath it
    until something is typed (field.js). */
-.field-err { color: var(--red-bright); font-size: 12.5px; line-height: 1.5; margin-top: 6px; }
+.field-err { color: var(--red-text); font-size: var(--fs-sm); line-height: 1.5; margin-top: 6px; }
 :is(input, select, textarea).is-refused {
-  border-color: var(--red-bright); animation: refuse var(--dur-shake) ease-in-out;
+  border-color: var(--red-text); animation: refuse var(--dur-shake) ease-in-out;
 }
 @keyframes refuse {
   0%, 100% { transform: none; }
@@ -226,36 +308,50 @@ input[type=number] { width: 84px; }
 }
 .controls .spacer { margin-left: auto; }
 
+/* BUTTONS, the family's three: the one filled in a view (primary), outlined
+   for everything else (ghost, which the family calls secondary), and small
+   (mini) for a button in a row or a strip. A small one is drawn 30px and can
+   be hit across 36px; on a phone or a touch screen every one is 44px. */
+button.primary, button.ghost, button.mini {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border-radius: var(--radius); font-family: inherit; font-weight: 600; white-space: nowrap; cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+}
 button.primary {
-  background: var(--red-deep); border: none; border-radius: 9px;
-  color: var(--white); font-size: 15px; font-weight: 700; font-family: inherit;
-  letter-spacing: .03em; padding: 11px 22px; cursor: pointer; min-height: var(--touch-min);
+  background: var(--accent); border: 1px solid var(--accent); color: var(--accent-text);
+  font-size: 14px; min-height: var(--ctl); padding: 0 16px;
 }
-button.primary:hover { background: var(--red-bright); }
-button.primary:disabled { background: var(--line); color: var(--text-dim); cursor: default; }
+button.primary:disabled { background: transparent; border: 1px dashed var(--border); color: var(--text3); cursor: default; }
 button.ghost {
-  background: none; border: 2px solid var(--line); border-radius: 9px;
-  color: var(--white); font-size: 14px; font-weight: 600; font-family: inherit;
-  padding: 9px 16px; cursor: pointer; min-height: var(--touch-min);
+  background: transparent; border: 1px solid var(--border2); color: var(--text2);
+  font-size: 14px; min-height: var(--ctl); padding: 0 14px;
 }
-button.ghost:hover { border-color: var(--red-bright); }
 button.mini {
-  background: none; border: 1.5px solid var(--line); border-radius: 7px;
-  color: var(--white); font-family: inherit; font-size: 12px; font-weight: 600;
-  padding: 5px 9px; cursor: pointer; white-space: nowrap;
+  background: transparent; border: 1px solid var(--border2); color: var(--text2);
+  font-size: var(--fs-sm); min-height: var(--ctl-sm); padding: 0 10px;
 }
-button.mini:hover { border-color: var(--red-bright); }
-button.mini.on { background: var(--red-deep); border-color: var(--red-bright); }
+button.mini::after { content: ""; position: absolute; inset: calc((var(--ctl-sm) - var(--hit)) / 2) 0; }
+@media (hover: hover) {
+  button.primary:not(:disabled):hover { filter: brightness(1.12); }
+  button.ghost:not(:disabled):hover, button.mini:not(:disabled):hover { background: var(--bg); color: var(--text); }
+}
+/* Chosen, or on: grey, white. */
+button.mini.on, button.mini[aria-pressed="true"] { background: var(--sel-bg); border-color: var(--border2); color: var(--sel-text); }
 /* A moment of "it worked" or "it did not" on the button itself. */
-button.mini.ok, button.mini.ok:disabled { border-color: #5fb85f; color: #9be09b; opacity: 1; }
-button.mini.bad, button.mini.bad:disabled { border-color: var(--red-bright); color: var(--red-bright); opacity: 1; }
+button.mini.ok, button.mini.ok:disabled { border-color: var(--green); color: var(--green-text); opacity: 1; }
+button.mini.bad, button.mini.bad:disabled { border-color: var(--red); color: var(--red-text); opacity: 1; }
 
 /* Pressed: the control gives a little under the finger, at once. Buttons,
    pills, tabs and the header's links only - a full-width heading or option
-   card that is a button too would lurch at this scale, not press. */
-button.primary, button.ghost, button.mini, .pill, .tab,
-header nav a, header nav .navlink, header .cog {
+   card that is a button too would lurch at this scale, not press. The
+   buttons, the header's links and the cog carry the transform in their own
+   transitions, above. */
+.pill, .tab {
   transition: transform var(--dur-fast) var(--ease-out);
+}
+header nav a, header nav .navlink {
+  transition: color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
 }
 :is(button.primary, button.ghost, button.mini, .pill, .tab,
     header nav a, header nav .navlink, header .cog):not(:disabled):active {
@@ -268,6 +364,7 @@ header nav a, header nav .navlink, header .cog {
    compact sizes. */
 @media screen and (pointer: coarse), screen and (max-width: 760px) {
   button.mini { min-height: var(--touch-min); min-width: var(--touch-min); }
+  button.primary, button.ghost { min-height: var(--touch-min); }
   .pill, .tab { min-height: var(--touch-min); }
   header nav a, header nav .navlink {
     display: inline-flex; align-items: center; min-height: var(--touch-min);
@@ -437,10 +534,17 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 /* ---------- overlays ---------- */
 .overlay {
   display: none; position: fixed; inset: 0; z-index: 40;
-  background: rgba(0,0,0,.68);
+  background: var(--scrim);
   align-items: flex-start; justify-content: center; overflow-y: auto; padding: 6vh 16px 40px;
 }
-.overlay.show { display: flex; }
+.overlay.show { display: flex; transition: opacity var(--dur) var(--ease-out); }
+/* A dialog rises a little and fades in as it opens; under reduced motion it
+   simply appears. It closes at once. */
+.overlay.show .box { transition: transform var(--dur) var(--ease-out), opacity var(--dur) var(--ease-out); }
+@starting-style {
+  .overlay.show { opacity: 0; }
+  .overlay.show .box { transform: translateY(6px); opacity: 0; }
+}
 /* The page behind stays put; its scrollbar's room is kept throughout, so
    neither a dialog nor a short page moves anything sideways. */
 @media screen {
@@ -448,29 +552,34 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
   html:has(.overlay.show) { overflow: hidden; }
 }
 .box {
-  background: var(--shadow-grey); border: 2px solid var(--line); border-top: 3px solid var(--red-bright);
-  border-radius: 16px; width: 100%; max-width: 540px; padding: 22px;
-  box-shadow: var(--shadow-float);
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); width: 100%; max-width: 540px; padding: 20px;
+  box-shadow: var(--shadow-panel);
 }
 /* It takes the focus when it opens (dialog.js); a ring around it all says nothing. */
 .box:focus { outline: none; }
-.box h3 { font-size: 17px; margin-bottom: 6px; letter-spacing: .04em; }
-.box .lede { color: var(--text-dim); font-size: 13.5px; line-height: 1.6; margin-bottom: 18px; }
+.box h3 { font-family: var(--font-head); font-size: var(--fs-md); font-weight: 700; line-height: 1.3; margin-bottom: 8px; }
+/* A dialog's title, with what goes beside it at the right (Settings: the build on screen). */
+.box-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+.box-head h3 { flex: 1; margin-bottom: 0; }
+.box-ver { font-size: var(--fs-sm); color: var(--text3); }
+.box .lede { color: var(--text2); font-size: 13.5px; line-height: 1.6; margin-bottom: 18px; }
 .box .field { margin-bottom: 16px; }
 .box .field label {
-  display: block; font-size: 11px; font-weight: 700; letter-spacing: .14em;
-  text-transform: uppercase; color: var(--text-dim); margin-bottom: 7px;
+  display: block; font-size: var(--fs-micro); font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text3); margin-bottom: 6px;
 }
 .box .field input, .box .field select { width: 100%; }
 .box .hint { font-size: 12.5px; color: var(--text-dim); margin-top: 7px; line-height: 1.55; }
-.box .actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+/* The buttons keep their own height beside a hint (M21). */
+.box .actions { display: flex; gap: 8px; margin-top: 20px; flex-wrap: wrap; align-items: center; }
 .scope-opt {
   display: block; width: 100%; text-align: left;
-  background: var(--black-night); border: 2px solid var(--line); border-radius: 10px;
+  background: var(--bg); border: 1px solid var(--border2); border-radius: var(--radius);
   color: var(--white); font-family: inherit; font-size: 14.5px;
   padding: 13px 15px; margin-bottom: 10px; cursor: pointer;
 }
-.scope-opt:hover { border-color: var(--red-bright); }
+@media (hover: hover) { .scope-opt:hover { border-color: var(--text3); } }
 .scope-opt b { display: block; font-size: 15px; margin-bottom: 4px; }
 .scope-opt span { color: var(--text-dim); font-size: 12.5px; line-height: 1.55; }
 
@@ -484,18 +593,18 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
   position: fixed; left: 50%; bottom: 28px;
   transform: translateX(-50%) translateY(12px);
   opacity: 0; visibility: hidden; pointer-events: none;
-  background: var(--shadow-grey); border: 1.5px solid var(--line);
-  border-radius: 10px; box-shadow: var(--shadow-float);
-  padding: 13px 22px; font-size: 14px; line-height: 1.45; z-index: 90;
-  max-width: min(560px, 90vw); text-align: center;
+  background: var(--toast-bg); color: #fff; border: 0;
+  border-radius: var(--radius); box-shadow: var(--shadow-panel);
+  padding: 10px 14px; font-size: 14px; font-weight: 600; line-height: 1.45; z-index: 90;
+  max-width: min(560px, calc(100vw - 32px)); text-align: center;
   transition: transform var(--dur) var(--ease-out), opacity var(--dur) var(--ease-out), visibility var(--dur);
 }
 #toast.show {
   transform: translateX(-50%) translateY(0);
   opacity: 1; visibility: visible;
 }
-/* Red for what failed and nothing else. */
-#toast.bad { border-color: var(--red-bright); }
+/* Green for what worked, red for what did not, as the hub's. */
+#toast.bad { background: var(--toast-warn-bg); }
 
 /* ---------- motion, depth, touch sizes ----------
    Every duration is one of these, so the one rule under them takes all of
@@ -505,13 +614,13 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
   --dur-fast: 120ms;                      /* a colour, a press */
   --dur: 200ms;                           /* the toast */
   --dur-shake: 360ms;                     /* a refused value */
-  --dur-sweep: 1.8s;                      /* the skeleton's sweep, while loading */
+  --dur-out: 150ms;                       /* something going away */
   --ease-out: cubic-bezier(.23, 1, .32, 1);
   --shadow-float: 0 1px 2px rgba(0,0,0,.3), 0 6px 16px rgba(0,0,0,.3), 0 20px 48px rgba(0,0,0,.4);
   --touch-floor: 48px;                    /* standing up, in the workshop */
 }
 @media (prefers-reduced-motion: reduce) {
-  :root { --dur-fast: 0s; --dur: 0s; --dur-shake: 0s; --dur-sweep: 0s; }
+  :root { --dur-fast: 0s; --dur: 0s; --dur-out: 0s; --dur-shake: 0s; }
 }
 
 /* Headings and short titles break evenly; paragraphs leave no word on its
@@ -815,7 +924,7 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 /* History is a panel inside each lane now, not a tab of its own. */
 .history-panel { margin-top: 4px; }
 .mini.quiet { color: var(--text-dim); border-color: var(--line); }
-.mini.quiet[aria-pressed="true"] { color: var(--white); border-color: var(--red-bright); }
+.mini.quiet[aria-pressed="true"] { background: var(--sel-bg); color: var(--sel-text); border-color: var(--border2); }
 
 /* A "Decide now" button in a warning row stretched across its whole grid
    track, which read as a banner rather than a control. */
@@ -1058,13 +1167,15 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 #loginErr { color: var(--red-bright); font-size: 14.5px; margin-top: 14px; min-height: 22px; line-height: 1.5; }
 #localNote { color: var(--text-dim); font-size: 12.5px; margin-top: 20px; line-height: 1.6; }
 
-header .who { font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
-/* The cog: settings, top right. */
+header .who { font-size: var(--fs-sm); color: var(--text3); white-space: nowrap; }
+/* The cog: settings, top right. An icon button: no outline, a veil on hover. */
 header .cog {
-  background: none; border: 1.5px solid var(--line); border-radius: 8px; color: var(--text-dim);
-  width: 36px; height: 36px; font-size: 19px; line-height: 1; cursor: pointer; padding: 0;
+  display: inline-grid; place-items: center; background: none; border: 0; border-radius: var(--radius);
+  color: var(--text); width: 36px; height: 36px; cursor: pointer; padding: 0;
+  transition: background-color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
 }
-header .cog:hover { border-color: var(--red-bright); color: var(--white); }
+header .cog svg { width: 20px; height: 20px; }
+@media (hover: hover) { header .cog:hover { background: rgba(255, 255, 255, .08); } }
 /* The hub's app switcher (hub-bridge.js) and the cog, one pair, 4px apart: the
    header wraps on a phone, and the two go together. Empty - a login with one
    app, local mode, no hub - the slot takes no room. */
@@ -1747,21 +1858,14 @@ button.c-catchip[aria-expanded="true"]::after, button.c-item[aria-expanded="true
 }
 
 /* THE SIZE OF WHAT IS COMING. Each line is one full-width bar cut into blocks
-   by a mask, so the highlight sweeps left to right through every block as one
-   band, at one speed, and the gaps between them stay page. On the motion
-   tokens: under reduced motion the sweep has no duration and stands still. */
+   by a mask, so the gaps between them stay page. It stands still, as the
+   family's skeletons do. */
 .skeleton { padding: 8px 2px 24px; }
 .sk-line {
   position: relative; overflow: hidden; height: 12px; margin: 13px 0;
   background: rgba(255, 255, 255, .07);
 }
-.sk-line::after {
-  content: ''; position: absolute; inset: 0;
-  background: linear-gradient(90deg, transparent 25%, rgba(255, 255, 255, .09) 50%, transparent 75%);
-  transform: translateX(-100%);
-  animation: sk-sweep var(--dur-sweep) ease-in-out infinite;
-}
-@keyframes sk-sweep { to { transform: translateX(100%); } }
+/* The family's skeletons stand still: the size of what is coming, no sweep. */
 .sk-tabs { height: 30px; margin: 6px 0 22px; }
 .sk-tabs {
   -webkit-mask-image: linear-gradient(90deg, #000 0 120px, transparent 120px 132px, #000 132px 196px,
@@ -2286,7 +2390,7 @@ button.more-sentinel {
   padding: 6px 16px;
 }
 .test-mode .mini { border-color: rgba(255,255,255,.55); letter-spacing: 0; text-transform: none; }
-.test-mode .mini:hover { border-color: var(--white); }
+@media (hover: hover) { .test-mode .mini:hover { border-color: var(--white); background: transparent; } }
 
 /* ============================================================
    ACCOUNTS, SIGN-IN, PASSWORDS

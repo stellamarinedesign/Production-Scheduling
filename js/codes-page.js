@@ -25,6 +25,7 @@ import { fitCodesSheet, TYPE_STEPS } from './codes-print.js';
 import { davitsByBoat } from './davits.js';
 import { today } from './transform.js';
 import { wireHelp } from './help.js';
+import { wireSettings } from './settings.js';
 import { startup, keepWatch, forgetDevice } from './boot.js';
 import { watchDialogs, keepFocus } from './dialog.js';
 import { toast, toastFailed, unsay } from './toast.js';
@@ -171,6 +172,10 @@ async function forget() {
 
   $('storeMode').textContent = Store.mode === 'firestore' ? 'Saved for everyone' : 'Saved on this device only';
   if (Store.mode !== 'firestore') $('storeMode').style.color = 'var(--red-bright)';
+  // The family header, as the board and the parts page have it (M29): who is
+  // signed in, and the cog with their password and sign out.
+  $('whoami').textContent = Auth.mode === 'local' ? 'Local mode' : (Auth.user?.email ?? '');
+  wireSettings($('settingsBtn'), { onSignOut: async () => { await forget(); location.reload(); } });
   watch.step('codes', 'firestore');
   try {
     await reads;

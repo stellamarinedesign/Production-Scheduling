@@ -200,6 +200,7 @@
 <link rel="modulepreload" href="js/davits.js?v=2026-11-27.9">
 <link rel="modulepreload" href="js/transform.js?v=2026-11-27.9">
 <link rel="modulepreload" href="js/help.js?v=2026-11-27.9">
+<link rel="modulepreload" href="js/settings.js?v=2026-11-27.9">
 <link rel="modulepreload" href="js/boot.js?v=2026-11-27.9">
 <link rel="modulepreload" href="js/dialog.js?v=2026-11-27.9">
 <link rel="modulepreload" href="js/toast.js?v=2026-11-27.9">
@@ -213,6 +214,7 @@
 <link rel="modulepreload" href="js/hub-bridge.js?v=2026-11-27.9">
 <link rel="modulepreload" href="js/field.js?v=2026-11-27.9">
 <link rel="modulepreload" href="js/admin-contact.js?v=2026-11-27.9">
+<link rel="modulepreload" href="js/password.js?v=2026-11-27.9">
 <!-- importmap:end -->
 </head>
 <body>
@@ -223,13 +225,16 @@
   <span class="sub">Stella Marine</span>
   <span class="spacer"></span>
   <nav>
-    <a href="./" class="not-engineer">Board</a>
-    <a href="vessel-codes" aria-current="page">Vessel codes</a>
-    <a href="parts">Parts</a>
-    <button class="navlink" id="helpBtn" title="Explanations, in one place">Help</button>
+    <a href="./" class="not-engineer" data-label="Board">Board</a>
+    <a href="vessel-codes" aria-current="page" data-label="Vessel codes">Vessel codes</a>
+    <a href="parts" data-label="Parts">Parts</a>
+    <button class="navlink" id="helpBtn" title="Explanations, in one place" data-label="Help">Help</button>
   </nav>
-  <!-- The hub's app switcher: Hubinator draws it here, for a login with two apps or more. -->
-  <span class="hd-apps" id="hubSlot"></span>
+  <span class="who" id="whoami"></span>
+  <!-- The hub's app switcher (Hubinator draws it in the slot, for a login with
+       two apps or more) and the cog: one pair, kept together when the header wraps. -->
+  <span class="hd-end"><span class="hd-apps" id="hubSlot"></span>
+  <button class="cog" id="settingsBtn" title="Settings: your account, password, sign out" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button></span>
 </header>
 
 <main>
