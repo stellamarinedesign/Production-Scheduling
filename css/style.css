@@ -475,7 +475,9 @@ button.hull.is-empty:hover::before { opacity: 1; }
 .job .created, .lane-row .created { color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .created-note { font-size: 12.5px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .job .acts-more .created-note, .lane-row .acts .created-note { display: none; }
-.hull-edit { display: none; }           /* a phone's way to it; a desk presses the hull itself */
+/* A phone's way to the hull; a desk presses the hull itself. Scoped, so the
+   small button's own display does not bring it back at a desk. */
+.job .acts-more > .hull-edit { display: none; }
 /* What the ERP says where a person has said otherwise. */
 .erp-note { font-size: 12.5px; color: var(--text-dim); }
 .job .part-chip {
@@ -2038,7 +2040,7 @@ button.c-catchip[aria-expanded="true"]::after, button.c-item[aria-expanded="true
   .job.is-open .acts, .lane-row.is-open .acts { display: flex; }
   .job .acts-more { grid-row: 5; padding-top: 8px; margin-top: 0; border-top: 0; flex-wrap: wrap; }
   .job .acts-more .created-note.po-note { display: none; }
-  .hull-edit { display: inline-block; }
+  .job .acts-more > .hull-edit { display: inline-flex; }
   .job .more { display: none; }   /* the row's own caret does this job on a phone */
 
   /* Column headings label columns that no longer exist. */
