@@ -84,7 +84,7 @@ function build() {
   accounts.append(el('div', 'settings-label', 'Accounts'));
   const link = Object.assign(el('a', 'textlink', 'Accounts'), { href: HUB_ACCOUNTS, target: '_blank', rel: 'noopener' });
   const line = el('div', 'settings-row-sub');
-  line.append('Roles and new people are set in Hubinator, under ', link, '.');
+  line.append('Roles and new people are set in the hub, under ', link, '.');
   const where = el('div', 'settings-card');
   where.append(line);
   accounts.append(where);

@@ -10,8 +10,10 @@
 //
 // FAIL OPEN. That address only resolves on the live site. Anywhere else (a
 // worktree on localhost, the tests page), or when the file is slow or broken,
-// loadHub is null and the board signs in exactly as it did before the hub.
-// Local mode never asks for it (auth.js).
+// loadHub is null, and a device already signed in carries on exactly as it
+// did before the hub. With nobody signed in, the live site says the hub
+// cannot be reached; anywhere else the board's own form is drawn as before
+// (noUserAction). Local mode never asks for it (auth.js).
 //
 // THE COPY SAVED ON THE DEVICE (boot.js) is drawn before Firebase or the hub
 // has said who this is. With the hub a person can be signed out, or be
@@ -27,6 +29,10 @@ export const HUB_URL = '/core/v1/hub.js';
 export const HUB_NOTE = 'stella.hub.session';
 /** The board's name on the hub's own screens: "No access to Production board". */
 export const HUB_TITLE = 'Production board';
+/** Where the hub is served. Anywhere else (a worktree, the tests page) no hub is expected. */
+export const HUB_HOST = 'stellamarinedesign.github.io';
+/** Every full screen the hub draws over the page: its sign-in, its cards. */
+export const HUB_SCREEN = '.shub-screen';
 const WAIT_MS = 4000;
 
 const tidy = (e) => String(e ?? '').trim().toLowerCase();
@@ -85,8 +91,11 @@ export function firstUser(fa, auth) {
  * Auth.user: Auth.assume puts the person this device last saw there before
  * Firebase has answered. `signIn` takes a token as well as a password:
  * nothing sends one today, it is the seam a token service could use later
- * with no release here. `legacy` does nothing: with no user, the page's own
- * form is drawn as before.
+ * with no release here. No `legacy`: with nobody signed in and the hub out of
+ * reach, the hub draws its own card, "The hub cannot be reached", and the
+ * board's own form is not drawn (the Hubinator session's plan, Pete's
+ * decision, 27 Nov 2026). `strict` stays off until the clean-up release: it
+ * would sign out every device that has never met the hub.
  */
 export function connectOptions({ fb, projectId, title = HUB_TITLE }) {
   return {
@@ -97,7 +106,6 @@ export function connectOptions({ fb, projectId, title = HUB_TITLE }) {
       ? fb.fa.signInWithCustomToken(fb.auth, token)
       : fb.fa.signInWithEmailAndPassword(fb.auth, email, password)),
     signOut: () => fb.fa.signOut(fb.auth),
-    legacy: () => {},
   };
 }
 
@@ -129,14 +137,23 @@ export function savedCopyAllowed(raw, email) {
  *           open - a login just linked or given a new key, or signed out in
  *           another app. Forget the device and reload; the reload asks the
  *           hub again.
- *   card    the hub has drawn its full-screen card (no access here, or a key
- *           it could not mend). The page draws nothing behind it, and stops.
- *   own     the page's own way, as before the hub: its sign-in form, or what
- *           it does after a sign-out.
+ *   card    the hub has drawn its full-screen card: no access here, a key it
+ *           could not mend, or it cannot be reached (`unreachable`, with its
+ *           screen up: `drawn`). The page draws nothing behind it, and stops.
+ *   down    the live site, where every login is the hub's, and the hub could
+ *           draw nothing: its file did not load or its connect failed (not
+ *           `loaded`), or it answered `unreachable` with no screen of its own
+ *           up, its code having failed to load. The page draws the hub's card
+ *           itself (sign-in.js, hubDownCard), with no form.
+ *   own     the page's own way, as before the hub: what it does after a
+ *           sign-out, or, off the live site (a worktree, the tests page), its
+ *           sign-in form.
  */
-export function noUserAction({ seen = false, hubState = null } = {}) {
+export function noUserAction({ seen = false, hubState = null, loaded = false, drawn = false, host = location.hostname } = {}) {
   if (seen && hubState && hubState !== 'legacy') return 'reload';
   if (hubState === 'none' || hubState === 'broken') return 'card';
+  if (hubState === 'unreachable' && drawn) return 'card';
+  if (host === HUB_HOST && (!loaded || hubState === 'unreachable')) return 'down';
   return 'own';
 }
 
@@ -173,9 +190,12 @@ export function showSwitcher({ hub = null, slot = null, projectId } = {}) {
  * auth listener: wait for the first auth state, wait for the hub's file
  * (asked for earlier: `hub`, from askForHub), connect, and watch for the
  * hub's person changing.
- * @returns {Promise<{Hub: object, state: string}|null>} null with no hub
+ * @param {() => boolean} [opts.shown]  whether one of the hub's own screens is up; the tests' seam
+ * @returns {Promise<{Hub: object, state: string, drawn: boolean}|null>} null with no hub;
+ *          `drawn` when the hub left one of its screens up as it answered: its card
  */
-export async function joinHub({ fb, projectId, hub = null, reload = () => location.reload() } = {}) {
+export async function joinHub({ fb, projectId, hub = null, reload = () => location.reload(),
+  shown = () => Boolean(document.querySelector(HUB_SCREEN)) } = {}) {
   await firstUser(fb.fa, fb.auth);
   const Hub = await loadHub(hub ? { load: hub } : {});
   if (!Hub) return null;
@@ -193,5 +213,5 @@ export async function joinHub({ fb, projectId, hub = null, reload = () => locati
       if (shouldReload({ state, hubEmail: me?.email ?? null, appEmail: fb.auth.currentUser?.email ?? null })) reload();
     });
   } catch (e) { console.warn('[hub] onChange:', e?.message ?? e); }
-  return { Hub, state };
+  return { Hub, state, drawn: shown() };
 }

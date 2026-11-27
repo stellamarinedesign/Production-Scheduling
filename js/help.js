@@ -286,18 +286,18 @@ export const HELP = [
         q: 'How is somebody given access?',
         admin: true,
         a: [
-          'In Hubinator, by an admin: Accounts, Add person, then a role in the '
+          'In the hub, by an admin: Accounts, Add person, then a role in the '
           + 'production board\'s column - manager, engineer, floor or tester. They sign in '
           + 'with the temporary password shown once and press Change password under the '
           + 'cog to make it theirs. A tester has the manager view, always in test mode. '
           + 'The list is the one place a role lives, the security rules read it too, and an '
           + 'account nobody listed can sign in and see nothing.',
-          'An admin sees, under the cog, the way to Hubinator\'s Accounts, the role of '
+          'An admin sees, under the cog, the way to the hub\'s Accounts, the role of '
           + 'their own account, and its chip in the header. Everyone else sees no roles '
           + 'anywhere: under the cog just their own account, Change password, Sign out and '
           + 'Test mode, and this topic not at all.',
-          'Changes made to the Accounts lists before Hubinator are in the Activity log, '
-          + 'shown to admins only; Hubinator keeps its own Account log.',
+          'Changes made to the Accounts lists before the hub are in the Activity log, '
+          + 'shown to admins only; the hub keeps its own Account log.',
         ],
       },
       {
@@ -606,9 +606,9 @@ export const HELP = [
           'The cog, top right, then Change password. Type the current password and the '
           + 'new one twice. It changes there and then; nothing is emailed and nobody '
           + 'else sees it. Sign out is under the same cog.',
-          'Signed in through Hubinator, both are Hubinator\'s: the password is the one for '
+          'Signed in through the hub, both are the hub\'s: the password is the one for '
           + 'every Stella app, and Sign out signs out of all of them on this device.',
-          'Forgotten it? Ask the admin: the login is made again in Hubinator with a '
+          'Forgotten it? Ask the admin: the login is made again in the hub with a '
           + 'temporary password, which you then change here.',
         ],
       },

@@ -7,10 +7,15 @@
 // so a password manager fills it and hears when it is sent, Enter sends it once,
 // and what is wrong is said at the field it is wrong in.
 //
-// THE FALLBACK, since the board joined the hub: a new sign-in goes through
-// Hubinator's own screen, and this form shows only when the hub cannot be
-// reached. It has no reset link any more: a reset changes the password the
-// hub's key for the board relies on.
+// NOT ON THE LIVE SITE ANY MORE. Since the board joined the hub a new sign-in
+// goes through the hub's own screen. This form showed only when the hub could
+// not be reached, and there it helped nobody: a linked login has no board
+// password, only its hub one, and one not yet linked is meant to link through
+// the hub. So with nobody signed in and the hub out of reach, the live site
+// draws the hub's card instead (hubDownCard; the Hubinator session's plan,
+// Pete's decision, 27 Nov 2026). Off the live site - a worktree, the tests -
+// the form is drawn as before, with no reset link; it goes in the clean-up
+// release.
 
 import { Auth, tidyEmail, isEmail, isWrongPassword, friendlyAuthError } from './auth.js';
 import { NO_ACCESS, askAccess, standing, placeOf } from './access.js';
@@ -108,6 +113,42 @@ export function signInForm({ signedIn, answerWithin = ANSWER_WITHIN } = {}) {
 /** The focus in the form as it opens, at a desk. On a touch screen it would raise the keyboard over it. */
 export function focusSignIn() {
   if (!matchMedia('(pointer: coarse)').matches) document.getElementById('loginEmail')?.focus({ preventScroll: true });
+}
+
+// ---- the hub cannot be reached ----------------------------------------------------
+
+/** The hub's own words for its card, so whichever draws it, it reads the same. */
+export const HUB_DOWN = Object.freeze({
+  title: 'The hub cannot be reached',
+  say: 'Check the connection, then try again.',
+  again: 'Try again',
+});
+
+/**
+ * NOBODY IS SIGNED IN AND THE HUB DREW NOTHING (hub-bridge.js, noUserAction
+ * 'down'): its file did not arrive, its code failed, or it had no card of its
+ * own to draw. The page draws that card itself, in the sign-in's place and
+ * look, with no form. Try again loads the page again, which asks the hub
+ * again; so does the connection coming back. Drawn once.
+ * @param {object} [opts]  `again`, `on` and `host` are the tests' seams
+ * @returns {HTMLElement}
+ */
+export function hubDownCard({ again = () => location.reload(), on = window, host = document.body } = {}) {
+  const had = document.getElementById('hubDown');
+  if (had) return had;
+  const card = el('section');
+  card.id = 'hubDown';
+  card.setAttribute('aria-labelledby', 'hubDownTitle');
+  const logo = Object.assign(el('img', 'auth-logo'), { src: 'assets/logo.svg', alt: 'Stella Marine' });
+  const title = el('h2', 'brand-head', HUB_DOWN.title);
+  title.id = 'hubDownTitle';
+  const btn = Object.assign(el('button', 'primary', HUB_DOWN.again), { type: 'button' });
+  btn.addEventListener('click', () => again());
+  on.addEventListener('online', () => again(), { once: true });
+  card.append(logo, title, el('p', null, HUB_DOWN.say), btn);
+  host.append(card);
+  btn.focus({ preventScroll: true });
+  return card;
 }
 
 // ---- the access lists, as a page starts -----------------------------------------
