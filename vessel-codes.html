@@ -112,107 +112,117 @@
 })();
 </script>
 <!-- watchdog:end -->
+<!-- The theme chosen on this device, worn before the first paint (js/theme.js). -->
+<script>try { if (localStorage.getItem('stella.board.theme') === 'workshop') document.documentElement.dataset.theme = 'workshop'; } catch (e) {}</script>
 <meta name="theme-color" content="#0E0A0A">
 <link rel="icon" type="image/png" href="assets/logo.png">
+<link rel="apple-touch-icon" href="assets/logo.png">
 <title>Vessel codes — Stella Marine</title>
 <link rel="manifest" href="manifest.json">
-<link rel="stylesheet" href="css/style.css?v=2026-11-27.9">
+<link rel="stylesheet" href="css/style.css?v=2026-11-27.10">
 <!-- AFTER style.css: it declares A4 portrait for the board, and @page cannot be
      scoped by selector, so the landscape rule has to win by coming later. -->
-<link rel="stylesheet" href="css/codes-print.css?v=2026-11-27.9">
+<link rel="stylesheet" href="css/codes-print.css?v=2026-11-27.10">
 <!-- importmap:start - every module named with the build's ?v=, so a page is never mixed with cached modules, then every file the page starts with preloaded; regenerate with: python tools/importmap.py -->
 <script type="importmap">
 {
   "imports": {
-    "./js/access.js": "./js/access.js?v=2026-11-27.9",
-    "./js/activity-log.js": "./js/activity-log.js?v=2026-11-27.9",
-    "./js/activity.js": "./js/activity.js?v=2026-11-27.9",
-    "./js/adapters/drafting-xlsx.js": "./js/adapters/drafting-xlsx.js?v=2026-11-27.9",
-    "./js/adapters/index.js": "./js/adapters/index.js?v=2026-11-27.9",
-    "./js/adapters/package-files.js": "./js/adapters/package-files.js?v=2026-11-27.9",
-    "./js/adapters/stock.js": "./js/adapters/stock.js?v=2026-11-27.9",
-    "./js/adapters/xlsx.js": "./js/adapters/xlsx.js?v=2026-11-27.9",
-    "./js/admin-contact.js": "./js/admin-contact.js?v=2026-11-27.9",
-    "./js/app.js": "./js/app.js?v=2026-11-27.9",
-    "./js/ask.js": "./js/ask.js?v=2026-11-27.9",
-    "./js/auth.js": "./js/auth.js?v=2026-11-27.9",
-    "./js/board-columns.js": "./js/board-columns.js?v=2026-11-27.9",
-    "./js/boot.js": "./js/boot.js?v=2026-11-27.9",
-    "./js/busy.js": "./js/busy.js?v=2026-11-27.9",
-    "./js/code-edits.js": "./js/code-edits.js?v=2026-11-27.9",
-    "./js/codes-page.js": "./js/codes-page.js?v=2026-11-27.9",
-    "./js/codes-print.js": "./js/codes-print.js?v=2026-11-27.9",
-    "./js/collapse.js": "./js/collapse.js?v=2026-11-27.9",
-    "./js/davits.js": "./js/davits.js?v=2026-11-27.9",
-    "./js/dialog.js": "./js/dialog.js?v=2026-11-27.9",
-    "./js/faults.js": "./js/faults.js?v=2026-11-27.9",
-    "./js/field.js": "./js/field.js?v=2026-11-27.9",
-    "./js/firebase.js": "./js/firebase.js?v=2026-11-27.9",
-    "./js/floor-board.js": "./js/floor-board.js?v=2026-11-27.9",
-    "./js/gantt.js": "./js/gantt.js?v=2026-11-27.9",
-    "./js/help.js": "./js/help.js?v=2026-11-27.9",
-    "./js/history-order.js": "./js/history-order.js?v=2026-11-27.9",
-    "./js/hub-bridge.js": "./js/hub-bridge.js?v=2026-11-27.9",
-    "./js/hub-card.js": "./js/hub-card.js?v=2026-11-27.9",
-    "./js/import-review.js": "./js/import-review.js?v=2026-11-27.9",
-    "./js/item-history.js": "./js/item-history.js?v=2026-11-27.9",
-    "./js/package-changes.js": "./js/package-changes.js?v=2026-11-27.9",
-    "./js/package-dialog.js": "./js/package-dialog.js?v=2026-11-27.9",
-    "./js/packages.js": "./js/packages.js?v=2026-11-27.9",
-    "./js/parts-page.js": "./js/parts-page.js?v=2026-11-27.9",
-    "./js/parts-review.js": "./js/parts-review.js?v=2026-11-27.9",
-    "./js/parts.js": "./js/parts.js?v=2026-11-27.9",
-    "./js/password.js": "./js/password.js?v=2026-11-27.9",
-    "./js/plinth-control.js": "./js/plinth-control.js?v=2026-11-27.9",
-    "./js/plinths.js": "./js/plinths.js?v=2026-11-27.9",
-    "./js/press.js": "./js/press.js?v=2026-11-27.9",
-    "./js/print.js": "./js/print.js?v=2026-11-27.9",
-    "./js/rules.js": "./js/rules.js?v=2026-11-27.9",
-    "./js/search-core.js": "./js/search-core.js?v=2026-11-27.9",
-    "./js/settings.js": "./js/settings.js?v=2026-11-27.9",
-    "./js/sign-in.js": "./js/sign-in.js?v=2026-11-27.9",
-    "./js/stella-folder.js": "./js/stella-folder.js?v=2026-11-27.9",
-    "./js/store.js": "./js/store.js?v=2026-11-27.9",
-    "./js/test-mode.js": "./js/test-mode.js?v=2026-11-27.9",
-    "./js/toast.js": "./js/toast.js?v=2026-11-27.9",
-    "./js/transform.js": "./js/transform.js?v=2026-11-27.9",
-    "./js/undo.js": "./js/undo.js?v=2026-11-27.9",
-    "./js/version.js": "./js/version.js?v=2026-11-27.9",
-    "./js/vessel-codes.js": "./js/vessel-codes.js?v=2026-11-27.9",
-    "./js/watchdog.js": "./js/watchdog.js?v=2026-11-27.9",
-    "./js/words.js": "./js/words.js?v=2026-11-27.9",
-    "./js/write-behind.js": "./js/write-behind.js?v=2026-11-27.9"
+    "./js/access.js": "./js/access.js?v=2026-11-27.10",
+    "./js/activity-log.js": "./js/activity-log.js?v=2026-11-27.10",
+    "./js/activity.js": "./js/activity.js?v=2026-11-27.10",
+    "./js/adapters/drafting-xlsx.js": "./js/adapters/drafting-xlsx.js?v=2026-11-27.10",
+    "./js/adapters/index.js": "./js/adapters/index.js?v=2026-11-27.10",
+    "./js/adapters/package-files.js": "./js/adapters/package-files.js?v=2026-11-27.10",
+    "./js/adapters/stock.js": "./js/adapters/stock.js?v=2026-11-27.10",
+    "./js/adapters/xlsx.js": "./js/adapters/xlsx.js?v=2026-11-27.10",
+    "./js/admin-contact.js": "./js/admin-contact.js?v=2026-11-27.10",
+    "./js/app.js": "./js/app.js?v=2026-11-27.10",
+    "./js/ask.js": "./js/ask.js?v=2026-11-27.10",
+    "./js/auth.js": "./js/auth.js?v=2026-11-27.10",
+    "./js/board-columns.js": "./js/board-columns.js?v=2026-11-27.10",
+    "./js/board-shell.js": "./js/board-shell.js?v=2026-11-27.10",
+    "./js/boot.js": "./js/boot.js?v=2026-11-27.10",
+    "./js/busy.js": "./js/busy.js?v=2026-11-27.10",
+    "./js/code-edits.js": "./js/code-edits.js?v=2026-11-27.10",
+    "./js/codes-page.js": "./js/codes-page.js?v=2026-11-27.10",
+    "./js/codes-print.js": "./js/codes-print.js?v=2026-11-27.10",
+    "./js/codes-side.js": "./js/codes-side.js?v=2026-11-27.10",
+    "./js/collapse.js": "./js/collapse.js?v=2026-11-27.10",
+    "./js/davits.js": "./js/davits.js?v=2026-11-27.10",
+    "./js/dialog.js": "./js/dialog.js?v=2026-11-27.10",
+    "./js/faults.js": "./js/faults.js?v=2026-11-27.10",
+    "./js/field.js": "./js/field.js?v=2026-11-27.10",
+    "./js/firebase.js": "./js/firebase.js?v=2026-11-27.10",
+    "./js/floor-board.js": "./js/floor-board.js?v=2026-11-27.10",
+    "./js/gantt.js": "./js/gantt.js?v=2026-11-27.10",
+    "./js/help.js": "./js/help.js?v=2026-11-27.10",
+    "./js/history-order.js": "./js/history-order.js?v=2026-11-27.10",
+    "./js/hub-bridge.js": "./js/hub-bridge.js?v=2026-11-27.10",
+    "./js/hub-card.js": "./js/hub-card.js?v=2026-11-27.10",
+    "./js/import-review.js": "./js/import-review.js?v=2026-11-27.10",
+    "./js/item-history.js": "./js/item-history.js?v=2026-11-27.10",
+    "./js/package-changes.js": "./js/package-changes.js?v=2026-11-27.10",
+    "./js/package-dialog.js": "./js/package-dialog.js?v=2026-11-27.10",
+    "./js/packages.js": "./js/packages.js?v=2026-11-27.10",
+    "./js/parts-page.js": "./js/parts-page.js?v=2026-11-27.10",
+    "./js/parts-review.js": "./js/parts-review.js?v=2026-11-27.10",
+    "./js/parts.js": "./js/parts.js?v=2026-11-27.10",
+    "./js/password.js": "./js/password.js?v=2026-11-27.10",
+    "./js/plinth-control.js": "./js/plinth-control.js?v=2026-11-27.10",
+    "./js/plinths.js": "./js/plinths.js?v=2026-11-27.10",
+    "./js/press.js": "./js/press.js?v=2026-11-27.10",
+    "./js/print.js": "./js/print.js?v=2026-11-27.10",
+    "./js/rules.js": "./js/rules.js?v=2026-11-27.10",
+    "./js/search-core.js": "./js/search-core.js?v=2026-11-27.10",
+    "./js/settings.js": "./js/settings.js?v=2026-11-27.10",
+    "./js/sign-in.js": "./js/sign-in.js?v=2026-11-27.10",
+    "./js/stella-folder.js": "./js/stella-folder.js?v=2026-11-27.10",
+    "./js/store.js": "./js/store.js?v=2026-11-27.10",
+    "./js/test-mode.js": "./js/test-mode.js?v=2026-11-27.10",
+    "./js/theme.js": "./js/theme.js?v=2026-11-27.10",
+    "./js/toast.js": "./js/toast.js?v=2026-11-27.10",
+    "./js/transform.js": "./js/transform.js?v=2026-11-27.10",
+    "./js/undo.js": "./js/undo.js?v=2026-11-27.10",
+    "./js/version.js": "./js/version.js?v=2026-11-27.10",
+    "./js/vessel-codes.js": "./js/vessel-codes.js?v=2026-11-27.10",
+    "./js/watchdog.js": "./js/watchdog.js?v=2026-11-27.10",
+    "./js/words.js": "./js/words.js?v=2026-11-27.10",
+    "./js/write-behind.js": "./js/write-behind.js?v=2026-11-27.10"
   }
 }
 </script>
 <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js">
 <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js">
 <link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js">
-<link rel="modulepreload" href="js/codes-page.js?v=2026-11-27.9">
-<link rel="modulepreload" href="js/store.js?v=2026-11-27.9">
-<link rel="modulepreload" href="js/vessel-codes.js?v=2026-11-27.9">
-<link rel="modulepreload" href="js/rules.js?v=2026-11-27.9">
-<link rel="modulepreload" href="js/auth.js?v=2026-11-27.9">
-<link rel="modulepreload" href="js/sign-in.js?v=2026-11-27.9">
-<link rel="modulepreload" href="js/test-mode.js?v=2026-11-27.9">
-<link rel="modulepreload" href="js/version.js?v=2026-11-27.9">
-<link rel="modulepreload" href="js/codes-print.js?v=2026-11-27.9">
-<link rel="modulepreload" href="js/davits.js?v=2026-11-27.9">
-<link rel="modulepreload" href="js/transform.js?v=2026-11-27.9">
-<link rel="modulepreload" href="js/help.js?v=2026-11-27.9">
-<link rel="modulepreload" href="js/boot.js?v=2026-11-27.9">
-<link rel="modulepreload" href="js/dialog.js?v=2026-11-27.9">
-<link rel="modulepreload" href="js/toast.js?v=2026-11-27.9">
-<link rel="modulepreload" href="js/ask.js?v=2026-11-27.9">
-<link rel="modulepreload" href="js/busy.js?v=2026-11-27.9">
-<link rel="modulepreload" href="js/words.js?v=2026-11-27.9">
-<link rel="modulepreload" href="js/code-edits.js?v=2026-11-27.9">
-<link rel="modulepreload" href="js/press.js?v=2026-11-27.9">
-<link rel="modulepreload" href="js/firebase.js?v=2026-11-27.9">
-<link rel="modulepreload" href="js/access.js?v=2026-11-27.9">
-<link rel="modulepreload" href="js/hub-bridge.js?v=2026-11-27.9">
-<link rel="modulepreload" href="js/field.js?v=2026-11-27.9">
-<link rel="modulepreload" href="js/admin-contact.js?v=2026-11-27.9">
+<link rel="modulepreload" href="js/codes-page.js?v=2026-11-27.10">
+<link rel="modulepreload" href="js/store.js?v=2026-11-27.10">
+<link rel="modulepreload" href="js/vessel-codes.js?v=2026-11-27.10">
+<link rel="modulepreload" href="js/rules.js?v=2026-11-27.10">
+<link rel="modulepreload" href="js/auth.js?v=2026-11-27.10">
+<link rel="modulepreload" href="js/sign-in.js?v=2026-11-27.10">
+<link rel="modulepreload" href="js/test-mode.js?v=2026-11-27.10">
+<link rel="modulepreload" href="js/version.js?v=2026-11-27.10">
+<link rel="modulepreload" href="js/codes-print.js?v=2026-11-27.10">
+<link rel="modulepreload" href="js/davits.js?v=2026-11-27.10">
+<link rel="modulepreload" href="js/transform.js?v=2026-11-27.10">
+<link rel="modulepreload" href="js/help.js?v=2026-11-27.10">
+<link rel="modulepreload" href="js/settings.js?v=2026-11-27.10">
+<link rel="modulepreload" href="js/codes-side.js?v=2026-11-27.10">
+<link rel="modulepreload" href="js/boot.js?v=2026-11-27.10">
+<link rel="modulepreload" href="js/dialog.js?v=2026-11-27.10">
+<link rel="modulepreload" href="js/toast.js?v=2026-11-27.10">
+<link rel="modulepreload" href="js/ask.js?v=2026-11-27.10">
+<link rel="modulepreload" href="js/busy.js?v=2026-11-27.10">
+<link rel="modulepreload" href="js/words.js?v=2026-11-27.10">
+<link rel="modulepreload" href="js/code-edits.js?v=2026-11-27.10">
+<link rel="modulepreload" href="js/press.js?v=2026-11-27.10">
+<link rel="modulepreload" href="js/firebase.js?v=2026-11-27.10">
+<link rel="modulepreload" href="js/access.js?v=2026-11-27.10">
+<link rel="modulepreload" href="js/hub-bridge.js?v=2026-11-27.10">
+<link rel="modulepreload" href="js/field.js?v=2026-11-27.10">
+<link rel="modulepreload" href="js/admin-contact.js?v=2026-11-27.10">
+<link rel="modulepreload" href="js/password.js?v=2026-11-27.10">
+<link rel="modulepreload" href="js/theme.js?v=2026-11-27.10">
 <!-- importmap:end -->
 </head>
 <body>
@@ -223,13 +233,16 @@
   <span class="sub">Stella Marine</span>
   <span class="spacer"></span>
   <nav>
-    <a href="./" class="not-engineer">Board</a>
-    <a href="vessel-codes" aria-current="page">Vessel codes</a>
-    <a href="parts">Parts</a>
-    <button class="navlink" id="helpBtn" title="Explanations, in one place">Help</button>
+    <a href="./" class="not-engineer" data-label="Board">Board</a>
+    <a href="vessel-codes" aria-current="page" data-label="Vessel codes">Vessel codes</a>
+    <a href="parts" data-label="Parts">Parts</a>
+    <button class="navlink" id="helpBtn" title="Explanations, in one place" data-label="Help">Help</button>
   </nav>
-  <!-- The hub's app switcher: Hubinator draws it here, for a login with two apps or more. -->
-  <span class="hd-apps" id="hubSlot"></span>
+  <span class="who" id="whoami"></span>
+  <!-- The hub's app switcher (Hubinator draws it in the slot, for a login with
+       two apps or more) and the cog: one pair, kept together when the header wraps. -->
+  <span class="hd-end"><span class="hd-apps" id="hubSlot"></span>
+  <button class="cog" id="settingsBtn" title="Settings: your account, password, sign out" aria-label="Settings"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button></span>
 </header>
 
 <main>
@@ -241,21 +254,41 @@
   </div>
 
   <div class="state" id="codesDenied" hidden></div>
-
   <div class="state" id="codesEmpty" hidden></div>
-
+  <!-- THE CATEGORIES DOWN A SIDEBAR, the board's grey panel: a way down the
+       page, every category still on it. On a phone, a strip of them over the
+       codes (codes-side.js). -->
+  <div class="bd codes-bd">
+  <nav class="bd-side" aria-label="Categories"><div class="side-sec" id="codesSide"></div></nav>
+  <div class="bd-main codes-main">
+  <nav class="codes-strip" id="codesStrip" aria-label="Categories"></nav>
+  <!-- THE SIZE OF WHAT IS COMING: the toolbar and a page of codes, standing
+       still, until the codes are drawn and the buttons work (M29). -->
+  <div id="codesSkeleton" class="skeleton" aria-hidden="true">
+    <div class="sk-line sk-tabs sk-tabs-codes"></div>
+    <div class="sk-line sk-head"></div>
+    <div class="sk-line sk-row" style="--w: 30%"></div>
+    <div class="sk-line sk-row" style="--w: 24%"></div>
+    <div class="sk-line sk-row" style="--w: 36%"></div>
+    <div class="sk-line sk-row" style="--w: 28%"></div>
+    <div class="sk-line sk-head"></div>
+    <div class="sk-line sk-row" style="--w: 26%"></div>
+    <div class="sk-line sk-row" style="--w: 33%"></div>
+  </div>
   <div id="warnings"></div>
-
-  <div class="view-bar">
+  <div class="view-bar" id="codesBar" hidden>
     <button class="tab" id="modeBoats" aria-current="page">One line per boat</button>
     <button class="tab" id="modeProducts" aria-current="false">Split by product</button>
-    <span class="spacer"></span>
     <span class="hint" id="modeHint"></span>
-    <button class="mini" id="saveCodes">Download codes</button>
-    <button class="mini" id="loadCodes" hidden>Load codes…</button>
-    <input type="file" id="codesFile" accept=".json,application/json" aria-label="File of vessel codes" hidden>
-    <button class="mini" id="previewSheet" aria-pressed="false">Code sheet</button>
-    <button class="primary" id="printSheet">Print code sheet</button>
+    <!-- The buttons wrap as one group, as the board's do: a narrow column gets
+         two tidy lines, never a ragged one. -->
+    <span class="vb-group vb-end">
+      <button class="mini" id="saveCodes">Download codes</button>
+      <button class="mini" id="loadCodes" hidden>Load codes…</button>
+      <input type="file" id="codesFile" accept=".json,application/json" aria-label="File of vessel codes" hidden>
+      <button class="mini" id="previewSheet" aria-pressed="false">Code sheet</button>
+      <button class="primary" id="printSheet">Print code sheet</button>
+    </span>
   </div>
 
   <!-- The map used to ship as data/vessel-codes.seed.json, which meant the
@@ -267,7 +300,7 @@
   <div id="sheetStatus" class="fit-status" hidden></div>
   <div id="codesPrintRoot" hidden><div id="codesSheet"></div></div>
 
-  <div class="codes-head">
+  <div class="codes-head" id="codesColHead">
     <div>Display code</div><div>ERP codes</div><div>Model</div><div>Hull</div>
     <div>Products</div><div></div>
   </div>
@@ -283,8 +316,8 @@
     </div>
     <div id="davitRows"></div>
   </div>
-
-
+  </div>
+  </div>
 </main>
 
 <!-- ============ HELP ============
@@ -301,6 +334,6 @@
 
 <div id="toast"></div>
 
-<script type="module" src="js/codes-page.js?v=2026-11-27.9"></script>
+<script type="module" src="js/codes-page.js?v=2026-11-27.10"></script>
 </body>
 </html>

@@ -8,36 +8,141 @@
    Matches the Stella Drawings app.
    ============================================================ */
 
+/* THE STELLA FAMILY'S TOKENS, as design scheduling carries them and the hub's
+   core copies them (the hub draws its sign-in, cards and password dialog
+   inside these pages on its own copy, so these must match it). Fixed: they
+   change only with Pete's approval. The board's older names follow as
+   aliases, so nothing that uses them moves. */
 :root {
-  --black-night: #0E0A0A;
-  --shadow-grey: #282827;
-  --band:        #1c1c1b;
-  --line:        #454542;
-  --text-dim:    #b0b0ab;
-  --white:       #FFFFFF;
-  --red-bright:  #EA372E;
-  --red-deep:    #AF1F24;
-  --warn-bg:     #2b100e;
+  color-scheme: dark;
+  --ground: #0e0a0a;   /* Black Night: the page */
+  --bg: #1c1c1b;       /* Band: fields, hover, insets */
+  --bg2: #333331;      /* Chip Grey: chips, the chosen item, a step lighter than a card */
+  --surface: #282827;  /* Shadow Grey: the header, cards, dialogs */
+  --border: #454542;   /* Rule Grey: every hairline */
+  --border2: #5e5e5a;  /* Strong Rule: outlines that must hold at a glance */
+  --text: #ffffff;
+  --text2: #d2d2ce;    /* Ash */
+  --text3: #b0b0ab;    /* Muted Ash */
+  --accent: #af1f24;   /* Upsdell Red: the one filled button in a view */
+  --accent-text: #ffffff;
+  --link: #ff7369;     /* Link Coral */
+  --red: #ea372e;      --red-bg: #2b100e;   --red-text: #ff7369;    /* Burning Star Red: lines and markers */
+  --amber: #d97706;    --amber-bg: #2b1f08; --amber-text: #f2b84b;
+  --green: #5fb85f;    --green-bg: #13261a; --green-text: #7fd47f;
+  --focus: #ea372e;
+  --select-bg: var(--accent); --select-text: var(--accent-text);
+  /* What is chosen (a pressed toggle, the current item): grey, with a red line
+     where there is room for one. Pete, 27 Nov 2026, for every Stella app. */
+  --sel-bg: var(--bg2); --sel-text: var(--text); --sel-line: var(--red);
+  --toast-bg: #1f7a3a; --toast-warn-bg: #af1f24;
+  --scrim: rgba(0, 0, 0, .55);
+  --shadow-panel: 0 1px 2px rgba(0, 0, 0, .3), 0 4px 12px rgba(0, 0, 0, .25), 0 16px 40px rgba(0, 0, 0, .4);
+  /* The licensed faces are never shipped: Friz Quadrata and Sweet Sans show
+     where they are installed, Georgia and the system face elsewhere. */
+  --font: "Sweet Sans Pro", "Sweet Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-head: "Friz Quadrata Pro", "Friz Quadrata BT", "Friz Quadrata", Georgia, serif;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace;
+  --fs-micro: 11px; --fs-sm: 13px; --fs-base: 14.5px; --fs-md: 16px; --fs-lg: 19px;
+  --radius: 8px; --radius-lg: 11px; --radius-inner: 6px;
+  --ctl: 36px;          /* a control at a desk */
+  --ctl-sm: 30px;       /* a small one, drawn */
+  --hit: 36px;          /* what a small one can be hit by at a desk */
+  --ok: var(--green); --warn: var(--amber);
+  /* the board's older names */
+  --black-night: var(--ground);
+  --shadow-grey: var(--surface);
+  --band:        var(--bg);
+  --line:        var(--border);
+  --text-dim:    var(--text3);
+  --white:       var(--text);
+  --red-bright:  var(--red);
+  --red-deep:    var(--accent);
+  --warn-bg:     var(--red-bg);
   --touch-min:   44px;
+  --side-w:      256px;   /* the board's sidebar: its longest label and its count */
+  --row-hover: color-mix(in srgb, var(--bg2) 55%, var(--surface));   /* a row in a card, under the pointer or the finger */
+  /* A wash over a surface: white on the dark page, the ink on Workshop's. */
+  --wash-1: rgba(255, 255, 255, .05);   /* the Gantt's week lines */
+  --wash-2: rgba(255, 255, 255, .07);   /* a skeleton's bars */
+  --wash-3: rgba(255, 255, 255, .18);   /* a finished bar's progress */
+  --wash-4: rgba(255, 255, 255, .28);   /* a bar's progress */
+  /* A sheet of paper on the screen. Print takes it off. */
+  --shadow-paper: 0 6px 30px rgba(0, 0, 0, .55);
 }
 
-/* Brand webfonts (licensed) — drop files into fonts/ and uncomment:
-@font-face { font-family:"Friz Quadrata Pro";
-  src:url("../fonts/FrizQuadrataPro.woff2") format("woff2"); font-display:swap; }
-@font-face { font-family:"Sweet Sans Pro"; font-weight:400;
-  src:url("../fonts/SweetSansPro-Light.woff2") format("woff2"); font-display:swap; }
-*/
+/* THE WORKSHOP THEME (UX stage two, G1): the family's light look, for bright
+   offices and the workshop floor, chosen per device under the cog (theme.js).
+   Design scheduling's values, which the hub's own screens wear too, so the
+   hub's sign-in and cards inside the board match the page around them. Values
+   only: every rule reads these. Screen only: paper keeps its own colours,
+   whichever theme the screen wears. */
+@media screen {
+  :root[data-theme="workshop"] {
+    color-scheme: light;
+    --ground: #ffffff;   --bg: #f5f4f0;   --bg2: #eceae4;   --surface: #ffffff;
+    --border: #d4d2c8;   --border2: #b8b6ac;
+    --text: #1a1a18;     --text2: #5a5a54; --text3: #6f6f68;
+    --accent: #1a1a18;   --accent-text: #f5f4f0;
+    --link: #1d4ed8;
+    --red: #dc2626;      --red-bg: #fef2f2;   --red-text: #b91c1c;
+    --amber: #d97706;    --amber-bg: #fffbeb; --amber-text: #b45309;
+    --green: #16a34a;    --green-bg: #f0fdf4; --green-text: #15803d;
+    --focus: #2563eb;
+    --select-bg: #eff6ff; --select-text: #1d4ed8;
+    --toast-bg: var(--green-text); --toast-warn-bg: var(--red-text);
+    --scrim: rgba(26, 26, 24, .35);
+    --shadow-panel: 0 1px 2px rgba(0, 0, 0, .06), 0 4px 12px rgba(0, 0, 0, .07), 0 16px 40px rgba(0, 0, 0, .12);
+    --shadow-float: 0 1px 2px rgba(0, 0, 0, .06), 0 6px 16px rgba(0, 0, 0, .08), 0 20px 48px rgba(0, 0, 0, .12);
+    --radius: 6px;       --radius-lg: 10px;
+    /* Upsdell Red stays red where the board draws it as a line or a band. */
+    --red-deep: #af1f24;
+    --wash-1: rgba(26, 26, 24, .06);
+    --wash-2: rgba(26, 26, 24, .07);
+    --wash-3: rgba(26, 26, 24, .10);
+    --wash-4: rgba(26, 26, 24, .14);
+    /* White paper on a white page: a hairline holds its edge. */
+    --shadow-paper: 0 0 0 1px var(--border), 0 4px 18px rgba(0, 0, 0, .08);
+  }
+  /* The header and the test strip stay dark bands, as design scheduling's
+     header does in Workshop: its near-black, no red rule, no mark, the name
+     in plain case. */
+  :root[data-theme="workshop"] :is(header, .test-mode) {
+    color-scheme: dark;
+    --surface: #1a1a18;  --bg: #262624;   --bg2: #333331;
+    --border: #454542;   --border2: #5e5e5a;
+    --text: #f5f4f0;     --text2: #d2d2ce; --text3: #9ca3af;
+    --white: #f5f4f0;    --text-dim: #9ca3af;
+    color: var(--text);
+  }
+  :root[data-theme="workshop"] header { border-bottom: 0; }
+  :root[data-theme="workshop"] header .logo { display: none; }
+  :root[data-theme="workshop"] header h1 { text-transform: none; letter-spacing: .02em; }
+}
+/* A change of theme lands at once, every colour together, none fading on its
+   own (theme.js takes this off on the next frame). */
+.theme-switching *, .theme-switching *::before, .theme-switching *::after { transition: none !important; }
 
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; }
 body {
-  font-family: "Sweet Sans Pro", "Sweet Sans", -apple-system, "Segoe UI", Roboto, sans-serif;
-  background: var(--black-night);
-  color: var(--white);
-  font-size: 15px;
+  font-family: var(--font);
+  background: var(--ground);
+  color: var(--text);
+  font-size: var(--fs-base);
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
 }
-.brand-head { font-family: "Friz Quadrata Pro", "Friz Quadrata", Georgia, serif; }
+.brand-head { font-family: var(--font-head); font-weight: 700; }
+/* THE SHEETS KEEP WHAT THEY HAD. They inherited the page's 15px and its
+   proportional figures, and they are measured to fit the paper at those, so
+   they are pinned to them here: print does not move with the screen. */
+#printRoot, #codesPrintRoot { font-size: 15px; font-variant-numeric: normal; }
+#codesPrintRoot { font-family: "Sweet Sans Pro", "Sweet Sans", -apple-system, "Segoe UI", Roboto, sans-serif; }
+::selection { background: var(--select-bg); color: var(--select-text); }
+/* Focus is a ring of its own, 2px outside the control: never the border, which
+   is where a refused value turns red. */
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
 
 /* `hidden` has to actually hide. The UA rule `[hidden]{display:none}` loses to
@@ -47,34 +152,72 @@ body {
    on the custom-name dialog would have done the same on a blank cell. */
 [hidden] { display: none !important; }
 
-/* ---------- header ---------- */
+/* ---------- header ----------
+   The family's bar: Shadow Grey on the 3px red rule, the mark and the page's
+   name, then its links as tabs. A link is muted until it is the page you are
+   on, which turns white and heavier over a red line, lifted clear of the rule
+   so the two never merge. The heavier width is held from the start
+   (data-label), so nothing beside it moves. */
 header {
-  border-bottom: 3px solid var(--red-bright);
-  background: var(--shadow-grey);
-  padding: 11px 18px 10px;
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  min-height: 56px; padding: 0 16px 0 12px;
+  background: var(--surface); border-bottom: 3px solid var(--red);
 }
-header .logo { height: 30px; }
-header h1 { font-size: 19px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
-header .sub { font-size: 12.5px; color: var(--text-dim); letter-spacing: .05em; }
-header .spacer { margin-left: auto; }
-header nav { display: flex; gap: 8px; }
+header .logo { width: 40px; height: 32px; object-fit: contain; flex: none; }
+header h1 {
+  font-size: var(--fs-lg); line-height: 1.25; letter-spacing: .1em; text-transform: uppercase; white-space: nowrap;
+}
+header .sub { display: none; }
+header .spacer { margin-left: auto; order: 2; }
+header .who { order: 3; }
+header .hd-end { order: 4; }
+header nav { display: flex; align-self: stretch; margin-left: 4px; }
 /* Import and Board switch a display rather than a document, so they are buttons
    where Vessel codes is a link. They are the same control to a reader, so they
    share one rule — a <button> inherits none of an <a>'s box, so listing the
    class alongside is what keeps it from rendering as a bare square. */
 header nav a,
 header nav .navlink {
-  background: none; color: var(--text-dim); text-decoration: none;
-  font-family: inherit; font-size: 13px; font-weight: 600; letter-spacing: .04em;
-  border: 1.5px solid var(--line); border-radius: 8px;
-  padding: 7px 13px; cursor: pointer; line-height: 1.2;
+  position: relative; display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
+  background: none; border: 0; padding: 0 12px; cursor: pointer;
+  color: var(--text3); text-decoration: none; white-space: nowrap;
+  font-family: inherit; font-size: var(--fs-base); font-weight: 500; line-height: 1.2;
+  transition: color var(--dur-fast) var(--ease-out);
 }
-header nav a:hover,
-header nav .navlink:hover { border-color: var(--red-bright); color: var(--white); }
+header nav a::after,
+header nav .navlink::after { content: attr(data-label); height: 0; overflow: hidden; visibility: hidden; font-weight: 700; }
+header nav a::before,
+header nav .navlink::before {
+  content: ""; position: absolute; left: 12px; right: 12px; bottom: 6px; height: 3px; border-radius: 2px;
+  background: transparent; transition: background-color var(--dur-fast) var(--ease-out);
+}
 header nav a[aria-current="page"],
-header nav .navlink[aria-current="page"] {
-  background: var(--red-deep); border-color: var(--red-bright); color: var(--white);
+header nav .navlink[aria-current="page"] { color: var(--text); font-weight: 700; }
+header nav a[aria-current="page"]::before,
+header nav .navlink[aria-current="page"]::before { background: var(--sel-line); }
+@media (hover: hover) {
+  header nav a:hover,
+  header nav .navlink:hover { color: var(--text); }
+}
+/* Between a phone and a desk the account's name gives way first. */
+@media screen and (max-width: 1099px) { header .who { display: none; } }
+/* A phone: one line for the mark, the name and the cog, then the links on a
+   strip of their own that scrolls sideways and fades where there is more. */
+@media screen and (max-width: 760px) {
+  header { padding: 0 4px 0 12px; column-gap: 8px; row-gap: 0; }
+  header h1 { font-size: 15px; }
+  header .spacer { min-height: 56px; }
+  header nav {
+    order: 5; flex: 0 0 calc(100% + 16px); margin: 0 -4px 0 -12px; padding: 0 4px; height: var(--touch-min);
+    overflow-x: auto; overflow-y: hidden; scrollbar-width: none; box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08);
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+            mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+  header nav::-webkit-scrollbar { display: none; }
+  .parts-page header nav { height: var(--touch-floor); }
+  /* An Excel download is a desk's errand: on a phone it leaves the first screen. */
+  .parts-page #xlsxAll { display: none; }
+  header nav a, header nav .navlink { flex: none; }
 }
 
 /* Wide: the orders view is two columns of six, and a landscape iPad is
@@ -84,18 +227,23 @@ main { padding: 16px 22px 60px; max-width: 1720px; margin: 0 auto; }
 /* ---------- provenance strip ----------
    Where this board came from, always visible. With an uploaded file it guards
    against a stale export; with a live source it guards against a silently
-   failed refresh serving yesterday's data as today's. */
+   failed refresh serving yesterday's data as today's. A quiet strip under the
+   header, the width of the window. */
 .provenance {
-  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-  background: var(--band); border: 1.5px solid var(--line); border-radius: 10px;
-  padding: 10px 14px; margin-bottom: 14px; font-size: 13px; color: var(--text-dim);
+  display: flex; align-items: center; gap: 4px 16px; flex-wrap: wrap;
+  background: var(--bg); border-bottom: 1px solid var(--border);
+  padding: 7px 22px; margin: -16px -22px 16px; font-size: var(--fs-sm); color: var(--text3);
 }
-.provenance b { color: var(--white); font-weight: 600; }
-.provenance .age.stale { color: var(--red-bright); font-weight: 700; }
+.provenance b { color: var(--text2); font-weight: 600; }
+.provenance .age.stale { color: var(--amber-text); font-weight: 600; }
 .provenance .src { font-variant-numeric: tabular-nums; }
 /* A board that has not reached the others, said until it has. */
 .prov-share { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.prov-bad { color: var(--red-bright); font-weight: 600; }
+.prov-bad { color: var(--red-text); font-weight: 600; }
+/* The board runs to the window's edges, its sidebar down the left. */
+#appShell > main { max-width: none; }
+#appShell > main > .provenance { margin-bottom: 0; }
+#importPage { max-width: 1676px; margin: 16px auto 0; }
 /* Which build is on screen. Pages serves everything with max-age=600, so a
    refresh soon after a deploy can legitimately show the old stylesheet — and
    without this that is indistinguishable from a fix that did not work. */
@@ -123,33 +271,15 @@ main { padding: 16px 22px 60px; max-width: 1720px; margin: 0 auto; }
 }
 
 /* A model code chosen by hand, as against every one the data carries. */
-.c-model.is-set { color: var(--white); }
-/* Kept off the printed sheet. Still here, still editable — dimmed, not gone. */
-.code-row.is-offsheet { opacity: .45; }
-/* Davits carry a description where every other line carries codes, so the
-   product column needs room a code column does not — the alternative was a
-   description stacked into a six-line column. */
-#davitSection .codes-head,
-#davitSection .code-row {
-  grid-template-columns: 100px 80px 80px minmax(260px, 1fr) 140px;
-}
-/* A description is prose, not a code: a bordered chip made it look like one and
-   boxed it in. */
+.code-row > .c-model.is-set { color: var(--text); }
+/* Kept off the printed sheet. Still here, still editable: its facts dimmed,
+   not gone, and its buttons as they were. */
+.code-row.is-offsheet > :not(.c-act):not(.cx-fault) { opacity: .45; }
+/* A description is prose, not a code: a chip made it look like one and boxed
+   it in. */
 #davitSection .c-item {
-  border: none; padding: 0; background: none; color: var(--white);
-  font-family: inherit; font-size: 13px; white-space: normal;
-}
-@media (max-width: 1100px) {
-  #davitSection .codes-head, #davitSection .code-row {
-    grid-template-columns: 88px 70px 70px minmax(200px, 1fr) 128px;
-  }
-}
-
-.codes-cat-static {
-  display: flex; align-items: baseline; gap: 10px;
-  border-bottom: 2px solid var(--red-deep); color: var(--white);
-  font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
-  padding: 0 0 6px; margin: 26px 0 4px;
+  min-height: 0; border: none; border-radius: 0; padding: 0; background: none; color: var(--text);
+  font-family: inherit; font-size: 13px; text-align: left; white-space: normal;
 }
 .code-row.is-offsheet .c-display { text-decoration: line-through; }
 
@@ -163,49 +293,60 @@ main { padding: 16px 22px 60px; max-width: 1720px; margin: 0 auto; }
 .boot-actions .hint { font-size: 12.5px; color: var(--text-dim); line-height: 1.6; max-width: 60ch; }
 .boot-actions .hint code { color: var(--white); }
 
-#provVersion, #pageVersion {
-  color: var(--text-dim); opacity: .6; font-variant-numeric: tabular-nums;
-  margin-left: 14px; cursor: help;
-}
+/* The build on screen is in Settings, at the top right (Pete, 27 Nov 2026). */
+#provVersion, #pageVersion { display: none; }
 
 /* ---------- drop zone ---------- */
 #dropZone, .drop-zone {
-  border: 2px dashed var(--line); border-radius: 14px;
+  border: 1px dashed var(--border2); border-radius: var(--radius-lg);
   padding: 44px 24px; text-align: center; color: var(--text-dim);
   transition: border-color var(--dur-fast), background var(--dur-fast); cursor: pointer;
 }
-#dropZone:hover, #dropZone.dragover, .drop-zone:hover, .drop-zone.dragover { border-color: var(--red-bright); background: rgba(234,55,46,.06); color: var(--white); }
-#dropZone strong, .drop-zone strong { display: block; color: var(--white); font-size: 17px; margin-bottom: 6px; }
+#dropZone.dragover, .drop-zone.dragover { border-color: var(--text3); background: var(--bg); color: var(--text); }
+@media (hover: hover) { #dropZone:hover, .drop-zone:hover { border-color: var(--text3); background: var(--bg); color: var(--text); } }
+#dropZone strong, .drop-zone strong { display: block; color: var(--text); font-size: var(--fs-md); margin-bottom: 6px; }
 #dropZone .hint, .drop-zone .hint { font-size: 13px; line-height: 1.6; }
 
 /* ---------- controls ---------- */
 .controls {
-  display: flex; align-items: flex-end; gap: 18px; flex-wrap: wrap;
-  background: var(--shadow-grey); border: 1.5px solid var(--line); border-radius: 12px;
-  padding: 14px 16px; margin-bottom: 14px;
+  display: flex; align-items: flex-end; gap: 16px 24px; flex-wrap: wrap;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 16px; margin-bottom: 14px;
 }
 .ctrl { display: flex; flex-direction: column; gap: 6px; }
 .ctrl label, .ctrl-cap {
-  font-size: 11px; font-weight: 700; letter-spacing: .14em;
-  text-transform: uppercase; color: var(--text-dim);
+  font-size: var(--fs-micro); font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text3);
 }
-.ctrl-err { font-size: 12.5px; color: var(--red-bright); line-height: 1.5; max-width: 34ch; }
+.ctrl-err { font-size: var(--fs-sm); color: var(--red-text); line-height: 1.5; max-width: 34ch; }
+.ctrl-row { min-height: var(--ctl); }
+/* Which sheet, and which paper: one switch each, its pieces joined. */
+#sheetPick, #paperPick, #themePick { gap: 0; }
+:is(#sheetPick, #paperPick, #themePick) button.mini { border-radius: 0; margin-left: -1px; }
+:is(#sheetPick, #paperPick, #themePick) button.mini:first-child { border-radius: var(--radius) 0 0 var(--radius); margin-left: 0; }
+:is(#sheetPick, #paperPick, #themePick) button.mini:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
+:is(#sheetPick, #paperPick, #themePick) button.mini[aria-pressed="true"] { z-index: 1; }
 .ctrl .val { font-size: 13px; color: var(--white); font-variant-numeric: tabular-nums; }
 .ctrl-row { display: flex; align-items: center; gap: 10px; }
-input[type=range] { width: 190px; accent-color: var(--red-bright); }
+input[type=range] { width: 190px; accent-color: var(--text2); }
+/* A field: Band, a hairline, 8px corners, 36px at a desk. Focus is the ring
+   (above); the edge only changes for a value that is refused. */
 input[type=text], input[type=number], input[type=search], input[type=email],
 input[type=password], select, textarea {
-  background: var(--black-night); border: 2px solid var(--line); border-radius: 9px;
-  color: var(--white); font-size: 15px; font-family: inherit;
-  padding: 9px 12px; outline: none; transition: border-color var(--dur-fast);
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+  color: var(--text); font-size: var(--fs-base); font-family: inherit;
+  min-height: var(--ctl); padding: 0 12px; caret-color: var(--focus);
+  transition: border-color var(--dur-fast);
 }
-input:focus, select:focus, textarea:focus { border-color: var(--red-bright); }
+select { padding: 0 8px; }
+textarea { padding: 8px 12px; }
+::placeholder { color: var(--text3); opacity: 1; }
 input[type=number] { width: 84px; }
 /* A value that is refused: red, one short shake, and why in words beneath it
    until something is typed (field.js). */
-.field-err { color: var(--red-bright); font-size: 12.5px; line-height: 1.5; margin-top: 6px; }
+.field-err { color: var(--red-text); font-size: var(--fs-sm); line-height: 1.5; margin-top: 6px; }
 :is(input, select, textarea).is-refused {
-  border-color: var(--red-bright); animation: refuse var(--dur-shake) ease-in-out;
+  border-color: var(--red-text); animation: refuse var(--dur-shake) ease-in-out;
 }
 @keyframes refuse {
   0%, 100% { transform: none; }
@@ -226,36 +367,50 @@ input[type=number] { width: 84px; }
 }
 .controls .spacer { margin-left: auto; }
 
+/* BUTTONS, the family's three: the one filled in a view (primary), outlined
+   for everything else (ghost, which the family calls secondary), and small
+   (mini) for a button in a row or a strip. A small one is drawn 30px and can
+   be hit across 36px; on a phone or a touch screen every one is 44px. */
+button.primary, button.ghost, button.mini {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border-radius: var(--radius); font-family: inherit; font-weight: 600; white-space: nowrap; cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out),
+    border-color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+}
 button.primary {
-  background: var(--red-deep); border: none; border-radius: 9px;
-  color: var(--white); font-size: 15px; font-weight: 700; font-family: inherit;
-  letter-spacing: .03em; padding: 11px 22px; cursor: pointer; min-height: var(--touch-min);
+  background: var(--accent); border: 1px solid var(--accent); color: var(--accent-text);
+  font-size: 14px; min-height: var(--ctl); padding: 0 16px;
 }
-button.primary:hover { background: var(--red-bright); }
-button.primary:disabled { background: var(--line); color: var(--text-dim); cursor: default; }
+button.primary:disabled { background: transparent; border: 1px dashed var(--border); color: var(--text3); cursor: default; }
 button.ghost {
-  background: none; border: 2px solid var(--line); border-radius: 9px;
-  color: var(--white); font-size: 14px; font-weight: 600; font-family: inherit;
-  padding: 9px 16px; cursor: pointer; min-height: var(--touch-min);
+  background: transparent; border: 1px solid var(--border2); color: var(--text2);
+  font-size: 14px; min-height: var(--ctl); padding: 0 14px;
 }
-button.ghost:hover { border-color: var(--red-bright); }
 button.mini {
-  background: none; border: 1.5px solid var(--line); border-radius: 7px;
-  color: var(--white); font-family: inherit; font-size: 12px; font-weight: 600;
-  padding: 5px 9px; cursor: pointer; white-space: nowrap;
+  background: transparent; border: 1px solid var(--border2); color: var(--text2);
+  font-size: var(--fs-sm); min-height: var(--ctl-sm); padding: 0 10px;
 }
-button.mini:hover { border-color: var(--red-bright); }
-button.mini.on { background: var(--red-deep); border-color: var(--red-bright); }
+button.mini::after { content: ""; position: absolute; inset: calc((var(--ctl-sm) - var(--hit)) / 2) 0; }
+@media (hover: hover) {
+  button.primary:not(:disabled):hover { filter: brightness(1.12); }
+  button.ghost:not(:disabled):hover, button.mini:not(:disabled):hover { background: var(--bg); color: var(--text); }
+}
+/* Chosen, or on: grey, white. */
+button.mini.on, button.mini[aria-pressed="true"] { background: var(--sel-bg); border-color: var(--border2); color: var(--sel-text); }
 /* A moment of "it worked" or "it did not" on the button itself. */
-button.mini.ok, button.mini.ok:disabled { border-color: #5fb85f; color: #9be09b; opacity: 1; }
-button.mini.bad, button.mini.bad:disabled { border-color: var(--red-bright); color: var(--red-bright); opacity: 1; }
+button.mini.ok, button.mini.ok:disabled { border-color: var(--green); color: var(--green-text); opacity: 1; }
+button.mini.bad, button.mini.bad:disabled { border-color: var(--red); color: var(--red-text); opacity: 1; }
 
 /* Pressed: the control gives a little under the finger, at once. Buttons,
    pills, tabs and the header's links only - a full-width heading or option
-   card that is a button too would lurch at this scale, not press. */
-button.primary, button.ghost, button.mini, .pill, .tab,
-header nav a, header nav .navlink, header .cog {
+   card that is a button too would lurch at this scale, not press. The
+   buttons, the header's links and the cog carry the transform in their own
+   transitions, above. */
+.pill, .tab {
   transition: transform var(--dur-fast) var(--ease-out);
+}
+header nav a, header nav .navlink {
+  transition: color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
 }
 :is(button.primary, button.ghost, button.mini, .pill, .tab,
     header nav a, header nav .navlink, header .cog):not(:disabled):active {
@@ -268,75 +423,137 @@ header nav a, header nav .navlink, header .cog {
    compact sizes. */
 @media screen and (pointer: coarse), screen and (max-width: 760px) {
   button.mini { min-height: var(--touch-min); min-width: var(--touch-min); }
+  button.primary, button.ghost { min-height: var(--touch-min); }
   .pill, .tab { min-height: var(--touch-min); }
   header nav a, header nav .navlink {
     display: inline-flex; align-items: center; min-height: var(--touch-min);
   }
   header button.cog { width: var(--touch-min); height: var(--touch-min); }
   .parts-page :is(button.mini, .pill, .tab) { min-height: var(--touch-floor); }
+  .parts-page :is(header nav a, header nav .navlink) { min-height: var(--touch-floor); }
+  .parts-page header button.cog { width: var(--touch-floor); height: var(--touch-floor); }
+  .parts-page .part { min-height: var(--touch-floor); }
 }
 
-/* ---------- warning panels ---------- */
+/* ---------- what needs dealing with ----------
+   One line of buttons over the board (M12), each a panel shut to its
+   heading: red where the sheet would come out wrong, amber where something
+   wants deciding, grey for the rest, the count first. Opened, a panel takes
+   the width under the line and its list grows open beneath its heading. What
+   is hidden from print and the rows the import left out are not here: they are
+   records, under the sidebar. */
+#warnings { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; margin-bottom: 14px; }
+#warnings:empty { display: none; }
 .panel {
-  border: 1.5px solid var(--line); border-radius: 11px;
-  background: var(--band); margin-bottom: 12px; overflow: hidden;
+  --p-ink: var(--text2); --p-bg: var(--bg2); --p-line: var(--border);
+  flex: none; max-width: 100%; border-radius: var(--radius); background: var(--p-bg);
 }
+.panel.alert { --p-ink: var(--red-text); --p-bg: var(--red-bg); --p-line: color-mix(in srgb, var(--red-text) 22%, transparent); }
+.panel.warn { --p-ink: var(--amber-text); --p-bg: var(--amber-bg); --p-line: color-mix(in srgb, var(--amber-text) 22%, transparent); }
 .panel > summary {
-  padding: 11px 15px; cursor: pointer; font-size: 13.5px; font-weight: 600;
-  display: flex; align-items: center; gap: 10px; list-style: none;
+  display: flex; align-items: center; gap: 8px; min-height: var(--ctl); padding: 0 12px;
+  border-radius: var(--radius); color: var(--p-ink); font-size: var(--fs-sm); font-weight: 600;
+  cursor: pointer; list-style: none;
 }
 .panel > summary::-webkit-details-marker { display: none; }
-.panel > summary::before { content: "▸"; color: var(--text-dim); font-size: 11px; }
-.panel[open] > summary::before { content: "▾"; }
-.panel .body { padding: 4px 15px 14px; font-size: 13px; color: var(--text-dim); line-height: 1.6; }
-.panel.alert { border-color: var(--red-deep); background: var(--warn-bg); }
-.panel.alert > summary { color: var(--white); }
-.panel.alert strong { color: var(--red-bright); }
-.panel .count {
-  margin-left: auto; font-size: 12px; color: var(--text-dim);
-  font-variant-numeric: tabular-nums;
+.panel > summary .count { order: -1; font-weight: 700; font-variant-numeric: tabular-nums; }
+.panel > summary::after {
+  content: ""; flex: none; width: 6px; height: 6px; margin: 0 2px 3px;
+  border-right: 1.8px solid currentColor; border-bottom: 1.8px solid currentColor;
+  transform: rotate(-45deg); transition: transform var(--dur-fast) var(--ease-out);
 }
+.panel[open] { flex-basis: 100%; order: 10; border-radius: var(--radius-lg); }
+.panel[open] > summary::after { transform: rotate(45deg); margin-bottom: 5px; }
+@media (hover: hover) { .panel > summary:hover { background: color-mix(in srgb, var(--p-ink) 10%, var(--p-bg)); } }
+.panel::details-content {
+  block-size: 0; overflow: clip;
+  transition: block-size var(--dur-fold) var(--ease-out), content-visibility var(--dur-fold) allow-discrete;
+}
+.panel[open]::details-content { block-size: auto; }
+.panel .body { padding: 0 14px 12px; font-size: var(--fs-sm); color: var(--text2); line-height: 1.6; }
+.panel strong { color: var(--p-ink); }
 .xrow {
   display: grid; grid-template-columns: 74px 150px 1.3fr 1.1fr; gap: 12px;
-  padding: 5px 0; border-bottom: 1px solid var(--line); align-items: baseline;
+  padding: 6px 0; border-bottom: 1px solid var(--p-line, var(--border)); align-items: baseline;
 }
 /* A row with a control: the control keeps its own width, the words the rest. */
 .xrow.has-act { grid-template-columns: 74px minmax(0, 1fr) minmax(0, 1fr) auto; align-items: center; }
 .xrow .xacts { display: flex; align-items: center; gap: 8px; }
-.textlink { color: var(--white); text-underline-offset: 3px; }
+.textlink { color: var(--text); text-underline-offset: 3px; }
 @media screen and (max-width: 760px) {
   .xrow { grid-template-columns: 74px minmax(0, 1fr); gap: 2px 12px; }
   .xrow > :nth-child(n + 3) { grid-column: 2; }
   .xrow.has-act { grid-template-columns: 74px minmax(0, 1fr); padding: 8px 0; }
   .xrow.has-act > .why:empty { display: none; }
   .xrow.has-act > :is(.mini, .xacts) { grid-column: 2; justify-self: start; margin-top: 6px; }
+  /* The line scrolls sideways rather than stacking; opened, it wraps to make
+     room for the list under it. */
+  #warnings { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -12px 12px; padding: 0 12px;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+            mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
+  #warnings::-webkit-scrollbar { display: none; }
+  #warnings:has(.panel[open]) { flex-wrap: wrap; overflow: visible; -webkit-mask-image: none; mask-image: none; }
+  .panel > summary { min-height: var(--touch-min); white-space: nowrap; }
+  .panel[open] > summary { white-space: normal; }
 }
-.xrow .desc { color: var(--white); opacity: .8; }
+.xrow .desc { color: var(--text); opacity: .8; }
 .xgroup {
   display: flex; align-items: baseline; gap: 10px;
   margin: 14px 0 4px; padding-bottom: 4px;
-  border-bottom: 2px solid var(--line);
-  font-size: 11px; font-weight: 700; letter-spacing: .13em;
-  text-transform: uppercase; color: var(--text-dim);
+  border-bottom: 1px solid var(--border2);
+  font-size: var(--fs-micro); font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text3);
 }
 .xgroup .count { margin-left: auto; letter-spacing: 0; }
-.xgroup.horizon  { color: var(--red-bright); border-bottom-color: var(--red-deep); }
-.xgroup.stockCap { color: #dcb96d; border-bottom-color: #8a6d3b; }
-.xgroup.unmapped { color: var(--red-bright); border-bottom-color: var(--red-deep); }
+.xgroup.horizon  { color: var(--amber-text); }
+.xgroup.stockCap { color: var(--amber-text); }
+.xgroup.unmapped { color: var(--red-text); }
 .xrow:last-child { border-bottom: none; }
-.xrow .id { font-variant-numeric: tabular-nums; color: var(--white); }
-.xrow .why { color: var(--text-dim); }
+.xrow .id { font-variant-numeric: tabular-nums; color: var(--text); }
+.xrow .why { color: var(--text3); }
 
-/* ---------- manager board ---------- */
-.cat-block { margin-bottom: 20px; }
+/* The records under the sidebar: a card of rows. */
+.rec { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 4px 16px 10px; font-size: var(--fs-sm); color: var(--text2); }
+.rec-lede { padding: 8px 0 4px; color: var(--text3); }
+
+/* ---------- manager board ----------
+   Each category a Shadow Grey card on the ground, its name in Friz Quadrata
+   over a red line while it is open, its rows on hairlines. A row reacts under
+   the pointer and the finger; an opened one steps back to Band. */
+.cat-block {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  margin-bottom: 16px; overflow: clip;
+}
 .cat-head {
-  display: flex; align-items: baseline; gap: 12px;
-  border-bottom: 2px solid var(--red-deep); padding-bottom: 6px; margin-bottom: 4px;
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px;
+  background: none; border: 0; box-shadow: inset 0 -2px 0 var(--red);
+  color: var(--text); font-family: inherit; text-align: left;
+  padding: 0 14px 0 12px; margin: 0; cursor: pointer;
 }
 .cat-head h2 {
-  font-size: 14px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+  font-family: var(--font-head); font-size: var(--fs-md); font-weight: 700; line-height: 1.3;
+  letter-spacing: 0; text-transform: none;
 }
-.cat-head .n { font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.cat-head .n { font-size: var(--fs-sm); color: var(--text3); font-variant-numeric: tabular-nums; }
+.is-collapsed > .cat-head { box-shadow: none; }
+/* The carets are drawn, not typed: the glyph in the markup gives way to a
+   chevron that turns with its fold. */
+:is(.cat-caret, .dg-caret, .flag-caret, .g-caret) {
+  display: inline-grid; place-items: center; width: 14px; height: 14px; flex: none; font-size: 0; color: var(--text3);
+}
+:is(.cat-caret, .dg-caret, .flag-caret, .g-caret)::before {
+  content: ""; width: 6px; height: 6px; margin-top: -3px;
+  border-right: 1.8px solid currentColor; border-bottom: 1.8px solid currentColor;
+  transform: rotate(45deg); transition: transform var(--dur-fast) var(--ease-out);
+}
+:is(.is-collapsed > .cat-head, .is-collapsed > .hist-cat-head, .detail-group.is-shut, .flag-head[aria-expanded="false"],
+    .g-banner.is-collapsed, .codes-cat.is-collapsed) :is(.cat-caret, .dg-caret, .flag-caret, .g-caret)::before {
+  transform: rotate(-45deg); margin: 0 0 0 -3px;
+}
+/* The one fold that moves: the category whose heading was just pressed grows
+   open (board-shell.js). */
+.fold-in { overflow: clip; animation: fold-in var(--dur-fold) var(--ease-out); }
+@keyframes fold-in { from { height: 0; opacity: 0; } }
 
 .job {
   display: grid;
@@ -345,75 +562,90 @@ header nav a, header nav .navlink, header .cog {
      the flexible vessel column absorbed the difference and the Due and Status
      headers sat 100px right of the data they labelled.
 
-     FIVE tracks here and six on .is-full. It used to declare six either way,
-     which left a spare track on a narrow row and quietly put the actions in the
-     92px Status track — invisible while that held three buttons, and an overlap
-     the moment the status control made it four. A row's tracks must match the
-     cells it actually renders. */
-  grid-template-columns: 76px 74px minmax(150px, 1.7fr) 92px 92px 92px 112px;
+     A row's tracks must match the cells it actually renders: seven here (with
+     Created), eight on .is-full. */
+  grid-template-columns: 80px 74px minmax(150px, 1.7fr) 92px 92px 92px 100px;
   gap: 12px; align-items: center;
-  padding: 9px 10px; border-bottom: 1px solid var(--line);
+  min-height: var(--row-h, 44px); padding: 0 10px 0 14px; border-top: 1px solid var(--border);
   font-size: 14px;
+  transition: background-color var(--dur-fast) var(--ease-out);
 }
 .job.col-head {
-  padding: 2px 10px 6px; border-bottom: 1px solid var(--line);
-  font-size: 10.5px; font-weight: 700; letter-spacing: .13em;
-  text-transform: uppercase; color: var(--text-dim);
+  min-height: 30px; border-top: 0;
+  font-size: var(--fs-micro); font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text3); white-space: nowrap;
 }
-.job.col-head:hover { background: none; }
-.job:hover { background: rgba(255,255,255,.03); }
-.job .prod { font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: 13px; }
-.job .label { font-weight: 600; }
-.job .due { font-variant-numeric: tabular-nums; }
+@media (hover: hover) { .job:has(.acts button):hover { background: var(--row-hover); } }
+.job:has(.acts button):active { background: var(--row-hover); }
+.job.is-open, .job.is-open:hover { background: var(--bg); }
+.job .prod { font-variant-numeric: tabular-nums; color: var(--text3); font-size: var(--fs-sm); }
+.job .label { font-weight: 600; padding: 6px 0; min-width: 0; overflow-wrap: anywhere; }
+.job .due { font-variant-numeric: tabular-nums; font-size: var(--fs-sm); color: var(--text2); }
 /* The hull column: the ERP's reading dim, the manager's own in white. For a
-   manager it is a button, so a tap opens the dialog instead of the row. */
-.job .hull { font-variant-numeric: tabular-nums; color: var(--text-dim); font-size: 13px; }
-.job .hull.is-manual { color: var(--white); }
-button.hull { background: none; border: 0; padding: 0; text-align: left; font: inherit; font-size: 13px; cursor: pointer; }
-button.hull:hover { color: var(--white); text-decoration: underline; }
+   manager it is a button, so a tap opens the dialog instead of the row; its
+   target reaches past the words. */
+.job .hull { font-variant-numeric: tabular-nums; color: var(--text3); font-size: var(--fs-sm); }
+.job .hull.is-manual { color: var(--text); }
+button.hull { position: relative; background: none; border: 0; padding: 0; text-align: left; font: inherit; font-size: var(--fs-sm); cursor: pointer; }
+button.hull::after { content: ""; position: absolute; inset: -10px -6px; }
+@media (hover: hover) { button.hull:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; } }
 button.hull.is-empty::before { content: 'Add hull'; opacity: .45; }
-button.hull.is-empty:hover::before { opacity: 1; }
+@media (hover: hover) { button.hull.is-empty:hover::before { opacity: 1; } }
 /* When the order was entered in the ERP: a manager's column, never printed.
    Where it gives way, the row's folded controls carry it as a note. */
-.job .created, .lane-row .created { color: var(--text-dim); font-variant-numeric: tabular-nums; }
-.created-note { font-size: 12.5px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.job .created, .lane-row .created { color: var(--text3); font-variant-numeric: tabular-nums; font-size: var(--fs-sm); }
+.created-note { font-size: var(--fs-sm); color: var(--text3); font-variant-numeric: tabular-nums; }
 .job .acts-more .created-note, .lane-row .acts .created-note { display: none; }
-.hull-edit { display: none; }           /* a phone's way to it; a desk presses the hull itself */
+/* A phone's way to the hull and to Hide; a desk presses the row's own. Scoped,
+   so the small button's own display does not bring them back at a desk. */
+.job .acts-more > :is(.hull-edit, .hide-twin) { display: none; }
 /* What the ERP says where a person has said otherwise. */
-.erp-note { font-size: 12.5px; color: var(--text-dim); }
-.job .part-chip {
-  font-size: 10.5px; color: var(--text-dim); border: 1px solid var(--line);
-  border-radius: 5px; padding: 0 5px; letter-spacing: .05em; margin-left: 6px;
-  vertical-align: middle;
+.erp-note { font-size: var(--fs-sm); color: var(--text3); }
+/* Chips say a fact about the job beside them: grey, as information is. */
+.job :is(.part-chip, .edited, .pinned) {
+  display: inline-flex; align-items: center; height: 18px; padding: 0 6px; margin-left: 6px; border-radius: 999px;
+  background: var(--bg2); color: var(--text2); border: 0;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .06em; vertical-align: 2px;
 }
-.job .due.stock { color: var(--text-dim); font-weight: 700; letter-spacing: .05em; }
-.job .status { font-size: 12px; color: var(--text-dim); }
+.job .pinned { background: transparent; box-shadow: inset 0 0 0 1px var(--border2); color: var(--text3); }
+.job .due.stock { color: var(--text3); font-weight: 700; letter-spacing: .05em; }
+.job .status { font-size: var(--fs-sm); color: var(--text3); }
 .job.col-head .status { font-size: inherit; }
 /* The customer's PO is manager-view only — it never reaches the printed board.
    It sits beside the production number because that is the pair read together. */
-.job .po { font-size: 12.5px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
-.job .acts { display: flex; gap: 6px; justify-content: flex-end; }
-/* The edits, folded under the row until it is opened: a strip across the
-   whole row, so the columns above never have to make room for them. */
+.job .po { font-size: var(--fs-sm); color: var(--text3); font-variant-numeric: tabular-nums; }
+.job .acts { display: flex; gap: 4px; justify-content: flex-end; align-items: center; }
+/* The row's caret: a small button, its chevron drawn. */
+.job .more { min-width: 30px; padding: 0; font-size: 0; }
+.job .more::before {
+  content: ""; width: 6px; height: 6px; margin-left: -2px;
+  border-right: 1.8px solid currentColor; border-bottom: 1.8px solid currentColor;
+  transform: rotate(-45deg); transition: transform var(--dur-fast) var(--ease-out);
+}
+.job.is-open .more::before { transform: rotate(45deg); margin: -3px 0 0; }
+/* THE OPENED ROW, at a desk: two deliberate lines, never a ragged wrap. The
+   notes (PO, created, the ERP's word) and the status on the first; the tools,
+   and Complete apart at the end, on the second. */
 .job .acts-more {
-  grid-column: 1 / -1; display: none; justify-content: flex-end; align-items: center;
-  flex-wrap: wrap;                       /* a two-up column on a laptop is narrower than the controls */
-  gap: 8px; padding-top: 8px; margin-top: 2px; border-top: 1px dashed var(--line);
+  grid-column: 1 / -1; display: none; flex-wrap: wrap; align-items: center;
+  gap: 8px 6px; padding: 4px 0 12px; margin: 0;
 }
 .job.is-open .acts-more { display: flex; }
+.job .acts-more > * { order: 4; }
+.job .acts-more > :is(.created-note, .erp-note, .po-note, .plinth) { order: 1; margin-right: 10px; }
+.job .acts-more > .st { order: 2; margin-left: auto; }
+.job .acts-more::before { content: ""; flex-basis: 100%; height: 0; order: 3; }
+.job .acts-more > .act-done { order: 6; margin-left: auto; }
 .job:has(.acts button) { cursor: pointer; }
-.job .more { min-width: 30px; padding-left: 8px; padding-right: 8px; }
-.job.on-hold .label { color: var(--red-bright); }
+/* On hold is written on the row: the vessel in red, and the words in a chip. */
+.job.on-hold .label { color: var(--red-text); }
 .job.on-hold .label::after {
-  content: " [ON HOLD]"; font-size: 11px; letter-spacing: .06em; font-weight: 700;
+  content: "ON HOLD"; display: inline-flex; align-items: center; height: 18px; padding: 0 6px; margin-left: 6px;
+  border-radius: 999px; background: var(--red-bg); color: var(--red-text);
+  font-size: 10.5px; letter-spacing: .06em; font-weight: 700; vertical-align: 2px;
 }
-.job.is-hidden { opacity: .45; }
+.job.is-hidden > :not(.acts):not(.acts-more):not(.fault) { opacity: .5; }
 .job.is-hidden .label { text-decoration: line-through; }
-.job .edited {
-  font-size: 10.5px; color: var(--red-bright); border: 1px solid var(--red-deep);
-  border-radius: 5px; padding: 0 5px; letter-spacing: .05em; margin-left: 6px;
-  vertical-align: middle;
-}
 
 /* ---------- vessel codes table ---------- */
 table.codes { width: 100%; border-collapse: collapse; font-size: 13.5px; }
@@ -430,17 +662,26 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
   display: inline-block; font-size: 10.5px; letter-spacing: .06em; font-weight: 700;
   border-radius: 5px; padding: 1px 6px; white-space: nowrap;
 }
-.chip.ok { border: 1px solid #3e6b3e; color: #8fce8f; }
-.chip.no { border: 1px solid #8a6d3b; color: #dcb96d; }
+/* Only what needs deciding is marked (L17): a confirmed code is the ordinary
+   case and carries no chip; one not yet confirmed is amber. */
+.chip.ok { display: none; }
+.chip.no { border: 0; border-radius: 999px; background: var(--amber-bg); color: var(--amber-text); padding: 0 7px; line-height: 18px; }
 .chip.alias { border: 1px solid var(--red-deep); color: var(--red-bright); }
 
 /* ---------- overlays ---------- */
 .overlay {
   display: none; position: fixed; inset: 0; z-index: 40;
-  background: rgba(0,0,0,.68);
+  background: var(--scrim);
   align-items: flex-start; justify-content: center; overflow-y: auto; padding: 6vh 16px 40px;
 }
-.overlay.show { display: flex; }
+.overlay.show { display: flex; transition: opacity var(--dur) var(--ease-out); }
+/* A dialog rises a little and fades in as it opens; under reduced motion it
+   simply appears. It closes at once. */
+.overlay.show .box { transition: transform var(--dur) var(--ease-out), opacity var(--dur) var(--ease-out); }
+@starting-style {
+  .overlay.show { opacity: 0; }
+  .overlay.show .box { transform: translateY(6px); opacity: 0; }
+}
 /* The page behind stays put; its scrollbar's room is kept throughout, so
    neither a dialog nor a short page moves anything sideways. */
 @media screen {
@@ -448,29 +689,34 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
   html:has(.overlay.show) { overflow: hidden; }
 }
 .box {
-  background: var(--shadow-grey); border: 2px solid var(--line); border-top: 3px solid var(--red-bright);
-  border-radius: 16px; width: 100%; max-width: 540px; padding: 22px;
-  box-shadow: var(--shadow-float);
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); width: 100%; max-width: 540px; padding: 20px;
+  box-shadow: var(--shadow-panel);
 }
 /* It takes the focus when it opens (dialog.js); a ring around it all says nothing. */
 .box:focus { outline: none; }
-.box h3 { font-size: 17px; margin-bottom: 6px; letter-spacing: .04em; }
-.box .lede { color: var(--text-dim); font-size: 13.5px; line-height: 1.6; margin-bottom: 18px; }
+.box h3 { font-family: var(--font-head); font-size: var(--fs-md); font-weight: 700; line-height: 1.3; margin-bottom: 8px; }
+/* A dialog's title, with what goes beside it at the right (Settings: the build on screen). */
+.box-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+.box-head h3 { flex: 1; margin-bottom: 0; }
+.box-ver { font-size: var(--fs-sm); color: var(--text3); }
+.box .lede { color: var(--text2); font-size: 13.5px; line-height: 1.6; margin-bottom: 18px; }
 .box .field { margin-bottom: 16px; }
 .box .field label {
-  display: block; font-size: 11px; font-weight: 700; letter-spacing: .14em;
-  text-transform: uppercase; color: var(--text-dim); margin-bottom: 7px;
+  display: block; font-size: var(--fs-micro); font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text3); margin-bottom: 6px;
 }
 .box .field input, .box .field select { width: 100%; }
 .box .hint { font-size: 12.5px; color: var(--text-dim); margin-top: 7px; line-height: 1.55; }
-.box .actions { display: flex; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+/* The buttons keep their own height beside a hint (M21). */
+.box .actions { display: flex; gap: 8px; margin-top: 20px; flex-wrap: wrap; align-items: center; }
 .scope-opt {
   display: block; width: 100%; text-align: left;
-  background: var(--black-night); border: 2px solid var(--line); border-radius: 10px;
+  background: var(--bg); border: 1px solid var(--border2); border-radius: var(--radius);
   color: var(--white); font-family: inherit; font-size: 14.5px;
   padding: 13px 15px; margin-bottom: 10px; cursor: pointer;
 }
-.scope-opt:hover { border-color: var(--red-bright); }
+@media (hover: hover) { .scope-opt:hover { border-color: var(--text3); } }
 .scope-opt b { display: block; font-size: 15px; margin-bottom: 4px; }
 .scope-opt span { color: var(--text-dim); font-size: 12.5px; line-height: 1.55; }
 
@@ -484,34 +730,38 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
   position: fixed; left: 50%; bottom: 28px;
   transform: translateX(-50%) translateY(12px);
   opacity: 0; visibility: hidden; pointer-events: none;
-  background: var(--shadow-grey); border: 1.5px solid var(--line);
-  border-radius: 10px; box-shadow: var(--shadow-float);
-  padding: 13px 22px; font-size: 14px; line-height: 1.45; z-index: 90;
-  max-width: min(560px, 90vw); text-align: center;
+  background: var(--toast-bg); color: #fff; border: 0;
+  border-radius: var(--radius); box-shadow: var(--shadow-panel);
+  padding: 10px 14px; font-size: 14px; font-weight: 600; line-height: 1.45; z-index: 90;
+  max-width: min(560px, calc(100vw - 32px)); text-align: center;
   transition: transform var(--dur) var(--ease-out), opacity var(--dur) var(--ease-out), visibility var(--dur);
 }
 #toast.show {
   transform: translateX(-50%) translateY(0);
   opacity: 1; visibility: visible;
 }
-/* Red for what failed and nothing else. */
-#toast.bad { border-color: var(--red-bright); }
+/* Green for what worked, red for what did not, as the hub's. */
+#toast.bad { background: var(--toast-warn-bg); }
 
 /* ---------- motion, depth, touch sizes ----------
    Every duration is one of these, so the one rule under them takes all of
    them to zero for anyone who has asked for less motion. The shadow is for
    what floats - the toast and the dialogs - and nothing at rest. */
+/* A fold can grow to its own height (interpolate-size), where the browser has it. */
+:root { interpolate-size: allow-keywords; }
 :root {
   --dur-fast: 120ms;                      /* a colour, a press */
   --dur: 200ms;                           /* the toast */
   --dur-shake: 360ms;                     /* a refused value */
-  --dur-sweep: 1.8s;                      /* the skeleton's sweep, while loading */
+  --dur-out: 150ms;                       /* something going away */
+  --dur-fold: 180ms;                      /* a fold growing open */
+  --dur-panel: 260ms;                     /* the phone's menu sliding in */
   --ease-out: cubic-bezier(.23, 1, .32, 1);
   --shadow-float: 0 1px 2px rgba(0,0,0,.3), 0 6px 16px rgba(0,0,0,.3), 0 20px 48px rgba(0,0,0,.4);
   --touch-floor: 48px;                    /* standing up, in the workshop */
 }
 @media (prefers-reduced-motion: reduce) {
-  :root { --dur-fast: 0s; --dur: 0s; --dur-shake: 0s; --dur-sweep: 0s; }
+  :root { --dur-fast: 0s; --dur: 0s; --dur-out: 0s; --dur-fold: 0s; --dur-panel: 0s; --dur-shake: 0s; }
 }
 
 /* Headings and short titles break evenly; paragraphs leave no word on its
@@ -550,7 +800,7 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
   width: 794px;                 /* A4 at 96dpi */
   min-height: 1123px;           /* ...and the matching page height */
   padding: 60px 57px 47px;      /* 0.625in top, 0.59in sides, 0.49in bottom */
-  box-shadow: 0 6px 30px rgba(0,0,0,.55);
+  box-shadow: var(--shadow-paper);
 }
 @media print { #printPreview, #printSecond { min-height: 0; } }
 
@@ -627,7 +877,7 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 #printRoot .page {
   width: 1123px; height: 794px; box-sizing: border-box;   /* landscape A4 at 96dpi */
   padding: 60px 57px 51px;      /* the @page margins, with 4px of safety at the foot */
-  margin: 0 auto; background: #fff; box-shadow: 0 6px 30px rgba(0,0,0,.55);
+  margin: 0 auto; background: #fff; box-shadow: var(--shadow-paper);
 }
 /* The A3 copy: one portrait sheet drawn at A3 itself, so the page is A3-sized
    and nothing is zoomed on the way to the printer. The width of a landscape
@@ -679,6 +929,10 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
      hands the document a full page height whatever the content, which is one
      more way to end up with a blank second sheet. */
   html, body { height: auto !important; min-height: 0 !important; }
+  /* Paper keeps the page as it was before the family's dark scheme and its
+     folds (UX stage two): the scheme is the screen's, and paper has no folds
+     to grow. */
+  :root { color-scheme: normal; interpolate-size: numeric-only; }
 
   /* #printRoot lives INSIDE <main>. Hiding an ancestor with display:none takes
      the whole subtree with it — a descendant cannot opt back in — which is why
@@ -696,21 +950,22 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
      twice: first Gantt and History, then Internal Factory Jobs and Time &
      Materials. Hide every section and bring back the one that prints. */
   .offstage,
-  #boardWrap > section,
+  .bd-main > section,
   #importPage,
   header, #authView, #hubDown, #toast, .overlay, .test-mode, .shub,
   .provenance, #dropZone, .controls, #warnings, .tabs, .view-bar,
-  .fit-status, #floorEmpty, #emptyState { display: none !important; }
+  .fit-status, #floorEmpty, #emptyState,
+  .bd-side, .bd-scrim, .view-head { display: none !important; }
 
-  #appShell:not([hidden]), main, #boardWrap:not([hidden]) {
+  #appShell:not([hidden]), main, #boardWrap:not([hidden]), .bd, .bd-main {
     display: block !important;
     padding: 0 !important; margin: 0 !important; max-width: none !important;
   }
 
-  /* The one section that prints. Two ids so it outranks `#boardWrap > section`
+  /* The one section that prints. Two ids so it outranks `.bd-main > section`
      above — both carry !important, so this comes down to specificity, and a
      single id would lose. */
-  #boardWrap > #tabPrint, #tabPrint.offstage {
+  #boardWrap #tabPrint, #tabPrint.offstage {
     position: static !important; left: auto !important;
     visibility: visible !important; display: block !important;
   }
@@ -749,73 +1004,135 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 #printPreview td.c-status, #printPreview th.c-status { white-space: nowrap; }
 
 /* ---------- tabs ---------- */
-.tabs { display: flex; gap: 8px; margin: 4px 0 14px; border-bottom: 1px solid var(--line); }
+.tabs { display: flex; align-items: stretch; gap: 2px; margin: 0 0 12px; border-bottom: 1px solid var(--border); }
+/* The family's tabs: words in the body face, muted until current, which is
+   white over the red line. */
 .tab {
-  background: none; border: none; border-bottom: 3px solid transparent;
-  color: var(--text-dim); font-family: inherit; font-size: 13px; font-weight: 700;
-  letter-spacing: .1em; text-transform: uppercase; padding: 10px 14px; cursor: pointer;
+  display: inline-flex; align-items: center; min-height: var(--touch-min);
+  background: none; border: none; border-bottom: 3px solid transparent; margin-bottom: -1px;
+  color: var(--text3); font-family: inherit; font-size: var(--fs-base); font-weight: 600;
+  padding: 0 12px; cursor: pointer; white-space: nowrap;
 }
-.tab:hover { color: var(--white); }
-.tab[aria-current="page"] { color: var(--white); border-bottom-color: var(--red-bright); }
+@media (hover: hover) { .tab:hover { color: var(--text); } }
+.tab[aria-current="page"] { color: var(--text); border-bottom-color: var(--red); }
 
-/* Print is a destination, not a view of the work, and sitting alone on the
-   right it read as an afterthought. Given the weight it had as a button. */
-#tabPrintBtn {
-  background: var(--red-deep); border: 1px solid var(--red-bright);
-  border-radius: 8px; color: var(--white); margin: 2px 0 6px; padding: 8px 18px;
+/* ---------- the board's sidebar (UX stage two) ----------
+   Material ordering's manager sidebar: a Shadow Grey panel down the left edge,
+   its sections divided by hairlines, the chosen item grey with a red line on
+   its edge, counts as pills. The four views; Print, a destination, apart; the
+   two records. Wide enough for its longest label with its count. A manager's:
+   the floor's board is the one view. On a phone it is a menu (below). */
+.bd {
+  display: grid; grid-template-columns: var(--side-w) minmax(0, 1fr); align-items: start;
+  margin: 0 -22px -60px; min-height: calc(100vh - 96px);
 }
-#tabPrintBtn:hover { background: var(--red-bright); }
-#tabPrintBtn[aria-current="page"] { background: var(--red-bright); border-bottom-color: var(--red-bright); }
+body.role-floor .bd { grid-template-columns: minmax(0, 1fr); }
+.bd-side {
+  position: sticky; top: 0; align-self: stretch; max-height: 100vh; overflow-y: auto;
+  background: var(--surface); border-right: 1px solid var(--border);
+}
+.bd-main { min-width: 0; max-width: 1720px; padding: 16px 22px 60px; }
+/* PAPER IS PAPER: an A4 preview is 794px wide because A4 is. Beside the sidebar
+   a narrow window has less than that, so the preview scrolls in its own box
+   and the page stays put. Screen only: the printer gets the sheet as it was. */
+@media screen { .bd-main #printRoot { overflow-x: auto; } }
+.bd-side-head, .view-head, .bd-scrim { display: none; }
+.side-sec { display: grid; gap: 2px; padding: 10px; border-bottom: 1px solid var(--border); }
+.side-records:not(:has(.side-item:not([hidden]))) { display: none; }
+.side-item {
+  position: relative; display: flex; align-items: center; gap: 8px; width: 100%; min-height: var(--ctl);
+  padding: 7px 10px; border: 0; border-radius: var(--radius); background: none;
+  color: var(--text2); font-family: inherit; font-size: 14px; text-align: left; cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.side-item svg { width: 16px; height: 16px; flex: none; color: var(--text3); }
+.side-item .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-item .n {
+  flex: none; margin-left: auto; min-width: 20px; padding: 1px 6px; border-radius: 20px; text-align: center;
+  background: var(--bg2); color: var(--text2); font: 11px/1.45 var(--mono); font-variant-numeric: tabular-nums;
+}
+.side-item[aria-current="page"] {
+  background: var(--sel-bg); color: var(--sel-text); font-weight: 600; box-shadow: inset 3px 0 0 var(--sel-line);
+}
+.side-item[aria-current="page"] svg { color: inherit; }
+.side-item[aria-current="page"] .n { background: var(--border); color: var(--text); }
+.side-item.quiet { color: var(--text3); font-size: var(--fs-sm); }
+@media (hover: hover) { .side-item:not([aria-current="page"]):hover { background: var(--bg); color: var(--text); } }
+.side-item:not([aria-current="page"]):active { background: var(--bg); }
+.bd .cog {
+  display: inline-grid; place-items: center; width: var(--touch-min); height: var(--touch-min); padding: 0;
+  border: 0; border-radius: var(--radius); background: none; color: var(--text); cursor: pointer;
+}
+.bd .cog svg { width: 20px; height: 20px; }
+/* A phone: the sidebar is a menu, opened from the button beside the view's
+   name over the board, and the same panel slides in from the left. */
+@media screen and (max-width: 760px) {
+  .bd { grid-template-columns: minmax(0, 1fr); min-height: 0; }
+  .bd-main { padding: 12px 12px 48px; }
+  .view-head { display: flex; align-items: center; gap: 2px; margin: 0 0 8px -10px; }
+  .view-head h2 { font-size: var(--fs-lg); line-height: 1.25; }
+  .bd-side {
+    position: fixed; top: 0; bottom: 0; left: 0; z-index: 60; width: min(288px, 86vw); max-height: none;
+    transform: translateX(-100%); visibility: hidden; box-shadow: var(--shadow-panel);
+    transition: transform var(--dur-out) var(--ease-out), visibility var(--dur-out);
+  }
+  .bd-side.is-open { transform: none; visibility: visible; transition: transform var(--dur-panel) var(--ease-out), visibility var(--dur-panel); }
+  .bd-side-head { display: flex; align-items: center; gap: 8px; min-height: 56px; padding: 0 6px 0 20px; border-bottom: 1px solid var(--border); }
+  .bd-side-head b { flex: 1; font-size: var(--fs-md); }
+  .side-item { min-height: var(--touch-min); }
+  .bd-scrim {
+    display: block; position: fixed; inset: 0; z-index: 59; background: var(--scrim);
+    opacity: 0; visibility: hidden; transition: opacity var(--dur) var(--ease-out), visibility var(--dur);
+  }
+  .bd-scrim.is-open { opacity: 1; visibility: visible; }
+  html:has(.bd-side.is-open) { overflow: hidden; }
+}
 
 /* Print sits alone on the right. It is the one tab that is a destination
    rather than a view of the work, and the gap says so without a divider. */
 .tab-spacer { flex: 1 1 auto; }
 
 /* ---------- the side lanes: internal factory jobs, T&M ---------- */
-/* Prod nbr / job / for-or-item / age / actions. No due date column: the ERP
-   stamps start and end to the day the order was raised on every one of these,
-   so a due date would be a number that means nothing. */
-.lane-table { font-size: 13.5px; }
+/* Prod nbr / job / for-or-item / created / age / actions. No due date column:
+   the ERP stamps start and end to the day the order was raised on every one
+   of these, so a due date would be a number that means nothing. Each
+   category a card, as on the board. */
+.lane-table { font-size: 14px; }
 .lane-row {
   /* The actions track holds FOUR controls — Label, Hide, the status select and
-     Complete — and was sized for three, so the Open column ran underneath them.
-     Same fault as the board rows had, in the place that was missed. 284px is
-     the four measured with Unhide, the wider of Hide's two words. */
-  display: grid; grid-template-columns: 78px 1.6fr 1fr 92px 92px 290px;
-  align-items: baseline; gap: 10px;
-  padding: 7px 0; border-bottom: 1px solid var(--line);
+     Complete; 290px is the four measured with Unhide, the wider of Hide's two
+     words. */
+  display: grid; grid-template-columns: 78px 1.6fr 1fr 92px 92px 300px;
+  align-items: center; gap: 10px; min-height: var(--row-h, 44px);
+  padding: 0 10px 0 14px; border-top: 1px solid var(--border);
 }
 .lane-head {
-  font-size: 11px; letter-spacing: .1em; text-transform: uppercase;
-  color: var(--text-dim); border-bottom: 1px solid var(--line); padding-bottom: 6px;
+  min-height: 30px; border-top: 0;
+  font-size: var(--fs-micro); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text3);
 }
-.lane-row .prod { color: var(--text-dim); font-variant-numeric: tabular-nums; }
-.lane-row .label { color: var(--white); }
-.lane-row .who { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.lane-row .age { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.lane-row .prod { color: var(--text3); font-variant-numeric: tabular-nums; font-size: var(--fs-sm); }
+.lane-row .label { color: var(--text); font-weight: 600; padding: 6px 0; }
+.lane-row .who { color: var(--text3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); }
+.lane-row .age { color: var(--text3); font-variant-numeric: tabular-nums; font-size: var(--fs-sm); }
 /* Six months open is not a schedule slipping, it is a job nobody has closed. */
-.lane-row .age.is-stale { color: var(--red-bright); }
-.lane-row .acts { display: flex; gap: 6px; justify-content: flex-end; }
-.lane-row.is-hidden { opacity: .45; }
+.lane-row .age.is-stale { color: var(--amber-text); }
+.lane-row .acts { display: flex; gap: 6px; justify-content: flex-end; align-items: center; }
+.lane-row.is-hidden > :not(.acts) { opacity: .5; }
 .lane-row.is-hidden .label { text-decoration: line-through; }
 .lane-row .flag {
   margin-left: 8px; font-size: 10px; font-weight: 700; letter-spacing: .1em;
-  color: var(--red-bright);
+  color: var(--red-text);
 }
 
-/* A lane's category headings sit between two lists, where the board's sit at
-   the top of a column. They need air above them and enough weight to read as a
-   break rather than as another row. */
-#tabInternal .cat, #tabTm .cat { margin-bottom: 8px; }
-#tabInternal .cat + .cat, #tabTm .cat + .cat { margin-top: 30px; }
-#tabInternal .cat-head, #tabTm .cat-head { padding-bottom: 8px; margin-bottom: 8px; }
-#tabInternal .cat-head h2, #tabTm .cat-head h2 { font-size: 16px; letter-spacing: .1em; }
-#tabInternal .cat-head .n, #tabTm .cat-head .n { font-size: 13px; }
+#tabInternal .cat, #tabTm .cat {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  margin-bottom: 16px; overflow: clip;
+}
 
-/* History is a panel inside each lane now, not a tab of its own. */
+/* History is a panel inside each lane, not a tab of its own. */
 .history-panel { margin-top: 4px; }
-.mini.quiet { color: var(--text-dim); border-color: var(--line); }
-.mini.quiet[aria-pressed="true"] { color: var(--white); border-color: var(--red-bright); }
+.mini.quiet { color: var(--text2); border-color: var(--border2); }
+.mini.quiet[aria-pressed="true"] { background: var(--sel-bg); color: var(--sel-text); border-color: var(--border2); }
 
 /* A "Decide now" button in a warning row stretched across its whole grid
    track, which read as a banner rather than a control. */
@@ -840,34 +1157,24 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 .g-caret { color: var(--text-dim); font-size: 10px; }
 .g-banner.is-collapsed .g-band-name { color: var(--text-dim); }
 
-/* Manual status. The row's own status text goes red-adjacent when a person set
-   it, so a board full of ERP statuses shows the hand-edited ones at a glance. */
-.status.is-manual { color: var(--red-bright); }
-.st-select {
-  background: var(--black-night); color: var(--text-dim);
-  border: 1px solid var(--line); border-radius: 6px;
-  font-family: inherit; font-size: 10.5px; padding: 3px 2px; cursor: pointer;
-  width: 84px;
+/* Manual status. A status a person set reads in white, as a hull a person set
+   does: a board full of ERP statuses shows the hand-edited ones at a glance. */
+.status.is-manual { color: var(--text); }
+.st-select, .pl-select {
+  min-height: var(--ctl-sm); padding: 0 8px; width: auto; max-width: 180px;
+  background: var(--bg); color: var(--text2); border: 1px solid var(--border); border-radius: var(--radius);
+  font-family: inherit; font-size: var(--fs-sm); cursor: pointer;
 }
-.st-select:hover { border-color: var(--red-bright); color: var(--white); }
-.st.is-manual .st-select { color: var(--red-bright); border-color: var(--red-deep); }
-
+.st.is-manual .st-select { color: var(--text); border-color: var(--border2); }
 /* A davit's plinth, in its row's fold. A select nobody has set yet is drawn
    blank - dashed, dim, italic - so a choice never passes for a default. */
 .plinth { display: inline-flex; align-items: center; gap: 6px; }
-/* At the left of the strip, apart from the row's own controls on the right. */
-.job .acts-more .plinth { order: -1; margin-right: auto; }
-.pl-label { font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text-dim); }
-.pl-select {
-  background: var(--black-night); color: var(--white);
-  border: 1px solid var(--line); border-radius: 6px;
-  font-family: inherit; font-size: 10.5px; padding: 3px 2px; cursor: pointer; max-width: 160px;
-}
-.pl-select:hover { border-color: var(--red-bright); }
-.pl-select.is-blank { color: var(--text-dim); font-style: italic; border-style: dashed; }
-.pl-select option, .pl-select optgroup { color: var(--white); font-style: normal; }
-.plinth input.pl-mm { width: 64px; font-size: 10.5px; padding: 3px 6px; border-width: 1px; border-radius: 6px; }
-.pl-flag { color: var(--red-bright); font-size: 11px; font-weight: 700; }
+.pl-label { font-size: var(--fs-micro); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text3); }
+.pl-select { color: var(--text); max-width: 160px; }
+.pl-select.is-blank { color: var(--text3); font-style: italic; border-style: dashed; }
+.pl-select option, .pl-select optgroup { color: var(--text); font-style: normal; }
+.plinth input.pl-mm { width: 64px; min-height: var(--ctl-sm); font-size: var(--fs-sm); padding: 0 8px; }
+.pl-flag { color: var(--amber-text); font-size: var(--fs-micro); font-weight: 700; }
 
 /* ---------- import review ---------- */
 .import-current { color: var(--text-dim); font-size: 13px; margin-top: 16px; }
@@ -875,38 +1182,38 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 .import-state.bad { color: var(--red-bright); }
 .import-review { margin-top: 18px; }
 .import-review h2 {
-  font-size: 15px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
-  border-bottom: 2px solid var(--red-deep); padding-bottom: 6px; margin-bottom: 10px;
+  font-family: var(--font-head); font-size: var(--fs-lg); font-weight: 700; line-height: 1.25;
+  border-bottom: 2px solid var(--red); padding-bottom: 6px; margin-bottom: 10px;
 }
 .import-review .lede { color: var(--text-dim); font-size: 13px; margin-bottom: 16px; }
 .import-stats { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
 .import-stats .stat {
-  flex: 1 1 150px; background: var(--band); border: 1px solid var(--line);
-  border-radius: 10px; padding: 12px 14px;
+  flex: 1 1 150px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 12px 16px; color: var(--text2); font-family: inherit;
 }
-.import-stats .stat b { display: block; font-size: 26px; line-height: 1.1; color: var(--white); }
+.import-stats .stat b { display: block; font-size: 24px; line-height: 1.1; color: var(--text); font-variant-numeric: tabular-nums; }
 .import-stats .stat span { display: block; font-size: 12px; color: var(--text-dim); margin-top: 2px; }
 .import-stats .stat em { display: block; font-size: 11px; color: var(--text-dim); opacity: .75; font-style: normal; margin-top: 4px; }
 
 .import-scope {
-  font-size: 12.5px; color: var(--text-dim); line-height: 1.6;
-  border-left: 3px solid var(--line); padding: 8px 0 8px 12px; margin-bottom: 18px;
+  font-size: var(--fs-sm); color: var(--text3); line-height: 1.6;
+  background: var(--bg); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 18px;
 }
 
 /* The counts are buttons: each one opens the rows behind it, because "69
    production orders" is a number you want to be able to check. */
 .import-stats .stat { text-align: left; cursor: pointer; }
-.import-stats .stat:hover { border-color: var(--red-bright); }
-.import-stats .stat.is-open { border-color: var(--red-bright); background: var(--black-night); }
+.import-stats .stat:hover { border-color: var(--text3); }
+.import-stats .stat.is-open { border-color: var(--border2); background: var(--sel-bg); box-shadow: inset 0 -2px 0 var(--sel-line); }
 /* A count with nothing behind it is not a button, and should not look like one. */
 .import-stats div.stat { cursor: default; }
 .import-stats div.stat:hover { border-color: var(--line); }
 .stat-more {
-  display: block; font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;
-  color: var(--red-bright); margin-top: 6px;
+  display: block; font-size: var(--fs-micro); font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--text3); margin-top: 6px;
 }
 
-.import-detail { margin: 0 0 20px; border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.import-detail { margin: 0 0 20px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px 16px; }
 .import-detail h3 {
   font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
   color: var(--white); margin-bottom: 8px;
@@ -916,27 +1223,25 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
    navigate by, and they were blending into the rows they separate. */
 .detail-group {
   display: flex; align-items: center; gap: 9px; width: 100%;
-  background: var(--black-night); border: 1px solid var(--line);
-  border-left: 3px solid var(--red-deep); border-radius: 6px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
   color: var(--white); font-family: inherit; font-size: 11.5px; font-weight: 700;
   letter-spacing: .1em; text-transform: uppercase; text-align: left;
   margin: 16px 0 2px; padding: 8px 12px; cursor: pointer;
 }
-.detail-group:hover { border-left-color: var(--red-bright); }
+@media (hover: hover) { .detail-group:hover { border-color: var(--border2); } }
 .detail-group .dg-caret { color: var(--text-dim); font-size: 10px; letter-spacing: 0; }
 .detail-group .dg-name { flex: 1 1 auto; }
 .detail-group .dg-n {
   color: var(--text-dim); font-variant-numeric: tabular-nums; letter-spacing: .04em;
 }
-.detail-group.is-shut { border-left-color: var(--line); color: var(--text-dim); }
+.detail-group.is-shut { color: var(--text3); }
 
 .import-flags h3 {
   font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
   color: var(--text-dim); margin-bottom: 8px;
 }
 .import-flags .flag {
-  border-left: 3px solid var(--line); background: var(--band);
-  padding: 4px 14px 4px; margin-bottom: 8px; border-radius: 0 8px 8px 0;
+  background: var(--bg); padding: 4px 14px; margin-bottom: 8px; border-radius: var(--radius);
 }
 .flag-bar { display: flex; align-items: center; gap: 10px; }
 .flag-head {
@@ -949,7 +1254,7 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 /* The count leads the line. On the right it was the last thing read on a line
    whose whole point is how many of these there are. */
 .flag-n {
-  font-size: 12.5px; font-weight: 700; color: var(--red-bright);
+  font-size: var(--fs-sm); font-weight: 700; color: var(--text2);
   font-variant-numeric: tabular-nums; min-width: 30px;
 }
 .flag-note { font-size: 12.5px; color: var(--text-dim); padding-bottom: 8px; line-height: 1.55; }
@@ -974,14 +1279,14 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
    than colouring the minority would: the page is quiet, and the exceptions are
    the only thing on it. */
 .flag-row.is-same { opacity: .42; }
-.flag-row.is-new { border-top-color: var(--red-deep); }
+.flag-row.is-new { border-top-color: var(--amber); }
 .flag-row.is-leaving .fr-main { color: var(--text-dim); text-decoration: line-through; }
 .flag-row .fr-act { gap: 8px; }
 .fr-tag {
   border-radius: 3px; padding: 1px 6px; font-size: 10px; line-height: 1.7;
   white-space: nowrap; letter-spacing: .06em; text-transform: uppercase;
 }
-.fr-tag.is-new { background: var(--red-deep); color: var(--white); font-weight: 700; }
+.fr-tag.is-new { background: var(--amber-bg); color: var(--amber-text); font-weight: 700; }
 /* The changed tag names the fields, so it reads as words rather than a label. */
 .fr-tag.is-changed {
   border: 1px solid var(--line); color: var(--white);
@@ -997,31 +1302,32 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 .import-diff > b { color: var(--white); }
 .import-diff .id-part { display: inline-flex; align-items: baseline; gap: 5px; }
 .import-diff .id-part b { color: var(--white); font-variant-numeric: tabular-nums; }
-.import-diff .id-part.is-new b { color: var(--red-bright); }
+.import-diff .id-part.is-new b { color: var(--amber-text); }
 .import-diff .id-first { color: var(--text-dim); }
 
 .detail-head { display: flex; align-items: baseline; gap: 12px; }
 .detail-head h3 { flex: 1; }
 
-.flag-bad { border-left-color: var(--red-bright); }
-.flag-warn { border-left-color: #C8912F; }
-.flag-info { border-left-color: var(--line); }
+/* A finding's kind is its tint, not a coloured edge. */
+.import-flags .flag-bad { background: var(--red-bg); }
+.import-flags .flag-warn { background: var(--amber-bg); }
+.flag-bad .flag-n { color: var(--red-text); }
+.flag-warn .flag-n { color: var(--amber-text); }
 .import-clean { color: var(--text-dim); font-size: 13px; margin-bottom: 18px; }
 .import-actions { display: flex; gap: 10px; margin-top: 18px; align-items: center; }
 .import-actions .hint { font-size: 12px; color: var(--text-dim); }
 
 /* Cancel-and-undo in a resolve run. Destructive of work just done, so it says
    so — but it is still a ghost button, because the safe path is the loud one. */
-.ghost.danger { color: var(--red-bright); border-color: var(--red-deep); }
-.ghost.danger:hover { border-color: var(--red-bright); }
+.ghost.danger { color: var(--red-text); border-color: var(--red); }
 
 @media (max-width: 900px) {
   .flag-row { grid-template-columns: 78px 1fr 104px; }
   .flag-row .fr-detail { display: none; }
 }
 
-@media (max-width: 1240px) {
-  .lane-row { grid-template-columns: 72px 1.3fr 1fr 84px 80px 284px; }
+@media (max-width: 1496px) {
+  .lane-row { grid-template-columns: 72px 1.3fr 1fr 84px 80px 290px; }
 }
 
 /* Kept in the layout but out of sight, so the print view can still be
@@ -1031,12 +1337,12 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 
 .fit-status {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  background: var(--band); border: 1.5px solid var(--line); border-radius: 10px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 10px 14px; margin-bottom: 16px; font-size: 13px; color: var(--text-dim);
 }
 .fit-status b { color: var(--white); font-weight: 600; }
-.fit-status.trimmed { border-color: var(--red-deep); background: var(--warn-bg); }
-.fit-status.trimmed b { color: var(--red-bright); }
+.fit-status.trimmed { border-color: transparent; background: var(--amber-bg); color: var(--amber-text); }
+.fit-status.trimmed b { color: var(--amber-text); }
 
 /* ---------- sign in ---------- */
 #authView { display: none; }
@@ -1058,13 +1364,15 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 #loginErr { color: var(--red-bright); font-size: 14.5px; margin-top: 14px; min-height: 22px; line-height: 1.5; }
 #localNote { color: var(--text-dim); font-size: 12.5px; margin-top: 20px; line-height: 1.6; }
 
-header .who { font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
-/* The cog: settings, top right. */
+header .who { font-size: var(--fs-sm); color: var(--text3); white-space: nowrap; }
+/* The cog: settings, top right. An icon button: no outline, a veil on hover. */
 header .cog {
-  background: none; border: 1.5px solid var(--line); border-radius: 8px; color: var(--text-dim);
-  width: 36px; height: 36px; font-size: 19px; line-height: 1; cursor: pointer; padding: 0;
+  display: inline-grid; place-items: center; background: none; border: 0; border-radius: var(--radius);
+  color: var(--text); width: 36px; height: 36px; cursor: pointer; padding: 0;
+  transition: background-color var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
 }
-header .cog:hover { border-color: var(--red-bright); color: var(--white); }
+header .cog svg { width: 20px; height: 20px; }
+@media (hover: hover) { header .cog:hover { background: rgba(255, 255, 255, .08); } }
 /* The hub's app switcher (hub-bridge.js) and the cog, one pair, 4px apart: the
    header wraps on a phone, and the two go together. Empty - a login with one
    app, local mode, no hub - the slot takes no room. */
@@ -1200,7 +1508,7 @@ header .hd-end { display: flex; align-items: center; gap: 4px; }
 .acct-row .acct-email { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .acct-role { width: 100%; font-size: 12.5px; }
 .master-chip {
-  font-size: 9.5px; color: var(--red-bright); border: 1px solid var(--red-deep); border-radius: 5px;
+  font-size: 9.5px; color: var(--text2); border: 1px solid var(--border2); border-radius: 5px;
   padding: 0 5px; letter-spacing: .08em; margin-left: 6px; vertical-align: middle;
 }
 @media screen and (max-width: 760px) {
@@ -1212,7 +1520,7 @@ header .hd-end { display: flex; align-items: center; gap: 4px; }
 .act-filters { display: inline-flex; gap: 6px; margin-left: auto; align-self: center; }
 .activity {
   margin: 4px 0 10px; max-height: min(70vh, 560px); overflow-y: auto;
-  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
 }
 .activity .state { padding: 24px 16px; }
 .act-row {
@@ -1234,7 +1542,7 @@ header .who .role {
   display: inline-block; border: 1px solid var(--line); border-radius: 5px;
   padding: 1px 6px; margin-left: 6px; font-size: 10.5px; font-weight: 700; letter-spacing: .08em;
 }
-header .who .role.manager { border-color: var(--red-deep); color: var(--red-bright); }
+header .who .role.manager { border-color: var(--border2); color: var(--text2); }
 
 /* ---------- new vessel code ---------- */
 .box.wide { max-width: 620px; }
@@ -1264,6 +1572,8 @@ header .who .role.manager { border-color: var(--red-deep); color: var(--red-brig
    Corrections and Import go by their own classes. */
 body.role-floor .controls,
 body.role-floor:not(.parts-page) .tabs,
+body.role-floor .bd-side,
+body.role-floor .view-head,
 body.role-floor #warnings,
 body.role-floor #dropZone,
 body.role-floor .fit-status,
@@ -1276,9 +1586,9 @@ body.role-floor #boardWrap { display: block; }
    have three cells (see jobRow). Desktop only: on a phone every row is the
    same two-column card regardless of role. */
 @media screen and (min-width: 761px) {
-  body.role-floor .job { grid-template-columns: 76px minmax(150px, 1fr) 92px 92px; }
-  body.role-floor .board-col .job { grid-template-columns: 66px minmax(90px, 1fr) 78px 82px; }
-  body.role-floor .job.is-full { grid-template-columns: 76px minmax(200px, 1fr) 92px 96px; }
+  body.role-floor .job { grid-template-columns: 80px minmax(150px, 1fr) 92px 92px; }
+  body.role-floor .board-col .job { grid-template-columns: 80px minmax(90px, 1fr) 78px 82px; }
+  body.role-floor .job.is-full { grid-template-columns: 80px minmax(200px, 1fr) 92px 96px; }
 }
 
 table.codes select {
@@ -1286,8 +1596,8 @@ table.codes select {
 }
 
 .scope-note {
-  font-size: 12.5px; color: var(--text-dim); line-height: 1.6;
-  border-left: 3px solid var(--red-deep); padding: 2px 0 2px 12px; margin-bottom: 16px;
+  font-size: var(--fs-sm); color: var(--text3); line-height: 1.6;
+  background: var(--bg); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 16px;
 }
 .scope-note em { color: var(--white); font-style: normal; font-weight: 600; }
 .job .pinned {
@@ -1312,11 +1622,11 @@ button.linkish:disabled { opacity: .5; cursor: default; }
    ============================================================ */
 .g-summary {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  background: var(--band); border: 1.5px solid var(--line); border-radius: 10px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 10px 14px; margin-bottom: 14px; font-size: 13px; color: var(--text-dim);
 }
 .g-summary .sep { opacity: .5; }
-.g-summary .g-overdue-count { color: var(--red-bright); font-weight: 700; }
+.g-summary .g-overdue-count { color: var(--red-text); font-weight: 700; }
 
 .gantt { --g-label: 264px; font-size: 13px; }
 
@@ -1339,10 +1649,10 @@ button.linkish:disabled { opacity: .5; cursor: default; }
   color: var(--text-dim); overflow: hidden; white-space: nowrap;
 }
 
-.g-week { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(255,255,255,.05); }
+.g-week { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--wash-1); }
 .g-today {
   position: absolute; top: 0; bottom: 0; width: 2px;
-  background: var(--red-bright); opacity: .85; z-index: 2;
+  background: var(--red); opacity: .85; z-index: 2;
 }
 
 .g-banner { min-height: 30px; margin-top: 12px; }
@@ -1350,7 +1660,7 @@ button.linkish:disabled { opacity: .5; cursor: default; }
   font-size: 11px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase;
   color: var(--white);
 }
-.g-banner .g-scale { border-bottom: 2px solid var(--red-deep); }
+.g-banner .g-scale { border-bottom: 2px solid var(--red); }
 .g-banner-n {
   position: absolute; right: 0; bottom: 4px;
   font-size: 11px; color: var(--text-dim); font-variant-numeric: tabular-nums;
@@ -1358,23 +1668,25 @@ button.linkish:disabled { opacity: .5; cursor: default; }
 
 .g-bar {
   position: absolute; top: 5px; height: 16px;
-  background: var(--red-deep); border: 1px solid var(--red-bright); border-radius: 4px;
+  background: var(--border2); border: 1px solid var(--border2); border-radius: 4px;
   min-width: 3px; z-index: 1;
   display: flex; align-items: center; overflow: hidden;
 }
 .g-bar-text {
-  padding: 0 7px; font-size: 11px; color: #fff; white-space: nowrap;
+  padding: 0 7px; font-size: 11px; color: var(--text); white-space: nowrap;
   overflow: hidden; text-overflow: ellipsis;
 }
-.g-row:hover .g-bar { filter: brightness(1.25); }
+@media (hover: hover) { .g-row:hover .g-bar { filter: brightness(1.2); } }
 
 /* Past its end date and still open. Nothing else in the app surfaces this —
    the board sorts by due date, so an overdue job just looks like the top row. */
-.g-row.is-overdue .g-bar { background: #7a1114; border-color: var(--red-bright); border-style: dashed; }
-.g-row.is-overdue .g-label .g-name { color: var(--red-bright); }
+.g-row.is-overdue .g-bar { background: var(--red-bg); border-color: var(--red-text); border-style: dashed; }
+.g-row.is-overdue .g-bar-text { color: var(--red-text); }
+.g-row.is-overdue .g-label .g-name { color: var(--red-text); }
 
 /* Stock has no committed date, so it should not read like a commitment. */
-.g-row.is-stock .g-bar { background: var(--line); border-color: var(--text-dim); }
+.g-row.is-stock .g-bar { background: transparent; border-color: var(--border2); border-style: dashed; }
+.g-row.is-stock .g-bar-text { color: var(--text3); }
 .g-row.is-stock .g-label .g-name { color: var(--text-dim); }
 
 .g-dates {
@@ -1382,7 +1694,7 @@ button.linkish:disabled { opacity: .5; cursor: default; }
   white-space: nowrap; font-variant-numeric: tabular-nums; pointer-events: none;
 }
 
-@media (max-width: 900px) { .gantt { --g-label: 170px; } .g-dates { display: none; } }
+@media (max-width: 1156px) { .gantt { --g-label: 170px; } .g-dates { display: none; } }
 
 /* A bar that runs past the window edge. The chevron says the work continues
    rather than that it stops here. */
@@ -1390,7 +1702,7 @@ button.linkish:disabled { opacity: .5; cursor: default; }
 .g-bar.clip-end { border-right-style: dashed; border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .g-bar.clip-start::before,
 .g-bar.clip-end::after {
-  font-size: 10px; color: #fff; opacity: .9; flex-shrink: 0; padding: 0 2px;
+  font-size: 10px; color: var(--text); opacity: .9; flex-shrink: 0; padding: 0 2px;
 }
 .g-bar.clip-start::before { content: "‹"; }
 .g-bar.clip-end::after { content: "›"; margin-left: auto; }
@@ -1411,142 +1723,132 @@ button.linkish:disabled { opacity: .5; cursor: default; }
 .g-unsched-row .g-cat { color: var(--text-dim); font-size: 12px; }
 .g-unsched-row .g-when { color: var(--text-dim); font-variant-numeric: tabular-nums; text-align: right; }
 
-/* ---------- view toolbars ---------- */
+/* ---------- view toolbars ----------
+   Two groups that wrap whole, so a narrow column gets two tidy lines, never a
+   ragged one: what acts on the board at the left, the count and the records
+   of what happened at the right. */
 .view-bar {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap;
   margin-bottom: 14px;
 }
+.view-bar .vb-group { display: inline-flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; }
+.view-bar .vb-end { margin-left: auto; }
 .view-bar .spacer { margin-left: auto; }
-.view-bar .hint { font-size: 12.5px; color: var(--text-dim); }
-.view-bar .mini:disabled { opacity: .4; cursor: default; border-color: var(--line); }
+.view-bar .hint { font-size: var(--fs-sm); color: var(--text3); }
+.view-bar .mini:disabled { opacity: .4; cursor: default; border-color: var(--border); }
 
 /* ---------- orders view: the shape of the printed sheet ----------
    Narrow categories side by side, davits full width beneath, using the same
    balancer the print layout uses so the two views never disagree about which
    category sits where. */
-.board-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 26px; align-items: start; }
+.board-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 16px; align-items: start; }
 .board-col { min-width: 0; }
-.cat-block.is-full { margin-top: 4px; }
-/* 980, not 1100: a landscape iPad is 1024 and should still get two columns. */
+.cat-block.is-full { margin-top: 0; }
+/* Two columns need a wide column to sit in: beside the sidebar that is a
+   window about 1,240px wide. The floor has no sidebar, and two columns hold on
+   its board down to 980 (a landscape iPad is 1024). */
+@media (max-width: 1236px) { body:not(.role-floor) .board-grid { grid-template-columns: 1fr; } }
 @media (max-width: 980px) { .board-grid { grid-template-columns: 1fr; } }
 
-.cat-head {
-  display: flex; align-items: baseline; gap: 10px; width: 100%;
-  background: none; border: none; border-bottom: 2px solid var(--red-deep);
-  color: var(--white); font-family: inherit; text-align: left;
-  padding: 0 0 6px; margin-bottom: 4px; cursor: pointer;
-}
-.cat-head:hover { border-bottom-color: var(--red-bright); }
-.cat-head .cat-caret { color: var(--text-dim); font-size: 11px; }
-.cat-block.is-collapsed { margin-bottom: 10px; }
-.cat-block.is-collapsed .cat-head { border-bottom-color: var(--line); }
+@media (hover: hover) { .cat-head:hover { background: color-mix(in srgb, var(--bg2) 40%, transparent); } }
 
 /* Two columns halves the room, so the narrow blocks lose the status column and
-   lean on a tighter grid. Davits keeps the full set. */
-/* FIVE columns, not six with one collapsed.
-   The narrow blocks drop Status for room, and the cell is left out of the
-   markup entirely rather than hidden. `display:none` on a grid item removes it
-   from flow, so the actions cell auto-placed into the 0-width track behind it —
-   which is why the buttons sat left of where they belonged and the due date
-   appeared to run through them. */
+   lean on a tighter grid. Davits keeps the full set.
+   FIVE columns, not six with one collapsed: the narrow blocks drop Status for
+   room, and the cell is left out of the markup entirely rather than hidden. */
 .board-col .job {
-  grid-template-columns: 66px 62px minmax(90px, 1fr) 78px 82px 82px 100px;
-  gap: 10px; font-size: 13px; padding: 7px 8px;
+  grid-template-columns: 80px 62px minmax(90px, 1fr) 78px 82px 82px 100px;
+  gap: 10px; font-size: 13.5px; padding: 0 10px 0 12px;
 }
 /* An edit that did not save, said on its row until it is dealt with. */
 .fault {
   grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  padding-top: 7px; margin-top: 2px; font-size: 12.5px; color: var(--red-bright);
+  padding: 0 0 8px; font-size: var(--fs-sm); color: var(--red-text);
 }
 .fault-words { flex: 1 1 260px; line-height: 1.5; }
-.board-col .job .acts { gap: 5px; }
-.board-col .job .acts .mini { padding: 4px 7px; font-size: 11px; }
-.job.is-full { grid-template-columns: 76px 74px minmax(200px, 1.8fr) 92px 92px 96px 88px 112px; }
+.job.is-full { grid-template-columns: 80px 74px minmax(200px, 1.8fr) 92px 92px 96px 88px 100px; }
 
-/* The Created column needs a wide desk screen: below one, a two-up column
-   has no room for a second date beside the vessel. It gives way first, before
-   the PO does, and the row's folded controls carry it instead. Six tracks on
-   a two-up row and seven on the full-width one, as before it came. */
-@media (max-width: 1440px) {
-  .job { grid-template-columns: 76px 74px minmax(150px, 1.7fr) 92px 92px 112px; }
-  .board-col .job { grid-template-columns: 66px 62px minmax(90px, 1fr) 78px 82px 100px; }
-  .job.is-full { grid-template-columns: 76px 74px minmax(200px, 1.8fr) 92px 96px 88px 112px; }
+/* The Created column needs a wide window: beside the sidebar, below about
+   1,700px a two-up column has no room for a second date beside the vessel. It
+   gives way first, before the PO does, and the row's folded controls carry it
+   instead. Six tracks on a two-up row and seven on the full-width one. */
+@media (max-width: 1696px) {
+  .job { grid-template-columns: 80px 74px minmax(150px, 1.7fr) 92px 92px 100px; }
+  .board-col .job { grid-template-columns: 80px 62px minmax(90px, 1fr) 78px 82px 100px; }
+  .job.is-full { grid-template-columns: 80px 74px minmax(200px, 1.8fr) 92px 96px 88px 100px; }
   .job .created { display: none; }
-  .job .acts-more .created-note { display: inline; order: -2; margin-right: auto; }
-  .job .acts-more:has(.plinth) .created-note { margin-right: 0; }
+  .job .acts-more .created-note { display: inline; }
   .job .acts-more .created-note.po-note { display: none; }
 }
 
-/* Below roughly a laptop a two-up column is about 450px, which is not room
-   for six cells: the PO gives way (it stays in the production number's
-   tooltip) and the status column with it. Five tracks, matching the five
-   cells left. */
-@media (max-width: 1240px) {
+/* Narrower again (below about 1,500px beside the sidebar) a two-up column has
+   no room for six cells: the PO gives way (into the opened row) and the status
+   column with it. Five tracks, matching the five cells left. */
+@media (max-width: 1496px) {
   .job, .job.is-full, .board-col .job {
-    grid-template-columns: 60px minmax(84px, 1.4fr) 70px 76px 96px;
+    grid-template-columns: 80px minmax(84px, 1.4fr) 70px 76px 100px;
   }
   .job .po { display: none; }
   .job.is-full .status { display: none; }
   /* Its place in the opened row, before the created date. */
-  .job .acts-more .created-note.po-note { display: inline; order: -3; margin-right: 14px; }
+  .job .acts-more .created-note.po-note { display: inline; }
 }
 
 /* ---------- history ---------- */
-.hist { font-size: 13.5px; }
-.hist-cat { margin-bottom: 18px; }
+.hist { font-size: 14px; }
+.hist-cat {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  margin-bottom: 16px; overflow: clip;
+}
 /* The order History is read in, above the lists. */
 .hist-bar { display: flex; justify-content: flex-end; margin-bottom: 10px; }
 /* Latest first names the category on the row, there being no heading. */
 .hist-row .label .cat { margin-left: 8px; }
 .hist-cat-head {
-  display: flex; align-items: baseline; gap: 10px; width: 100%;
-  background: none; border: none; border-bottom: 2px solid var(--red-deep);
-  color: var(--white); font-family: inherit; text-align: left;
-  padding: 0 0 6px; margin-bottom: 4px; cursor: pointer;
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px;
+  background: none; border: 0; box-shadow: inset 0 -2px 0 var(--red);
+  color: var(--text); font-family: inherit; text-align: left;
+  padding: 0 14px 0 12px; margin: 0; cursor: pointer;
 }
-.hist-cat-head:hover { border-bottom-color: var(--red-bright); }
-.hist-cat-head h2 {
-  font-size: 14px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
-}
-.hist-cat-head .cat-caret { color: var(--text-dim); font-size: 11px; }
-.hist-cat-head .n { font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
-.hist-cat.is-collapsed .hist-cat-head { border-bottom-color: var(--line); }
+.hist-cat-head h2 { font-family: var(--font-head); font-size: var(--fs-md); font-weight: 700; line-height: 1.3; }
+.hist-cat-head .n { font-size: var(--fs-sm); color: var(--text3); font-variant-numeric: tabular-nums; }
+.hist-cat.is-collapsed .hist-cat-head { box-shadow: none; }
 .hist-row {
   display: grid; grid-template-columns: 78px 1.5fr 96px 104px 128px 92px;
-  gap: 12px; align-items: baseline;
-  padding: 8px 8px; border-bottom: 1px solid var(--line);
+  gap: 12px; align-items: center; min-height: var(--row-h, 44px);
+  padding: 4px 10px 4px 14px; border-top: 1px solid var(--border);
 }
 /* Last changed: a short name over a short time, in the one narrow column. */
 .hist-row .touched {
-  display: grid; line-height: 1.3; font-size: 12px; color: var(--text-dim);
+  display: grid; line-height: 1.3; font-size: 12px; color: var(--text3);
   font-variant-numeric: tabular-nums;
 }
-.hist-row .touched b { color: var(--white); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* A production job also has the board's PO and hull. Below a half screen the
-   PO gives way, as it does on the board, and stays in the production number's
-   tooltip. */
+.hist-row .touched b { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A production job also has the board's PO and hull. Beside the sidebar, below
+   about 1,240px the PO gives way, as it does on the board, and stays in the
+   production number's tooltip. */
 .hist-row.is-prod { grid-template-columns: 78px 74px 1.5fr 92px 96px 104px 128px 92px; }
-@media (max-width: 980px) {
+@media (max-width: 1236px) {
   .hist-row.is-prod {
     grid-template-columns: 66px minmax(90px, 1.5fr) 84px 84px 92px 104px 84px; gap: 8px;
   }
   .hist-row .po { display: none; }
 }
-.hist-row:hover { background: rgba(255,255,255,.03); }
+@media (hover: hover) { .hist-row:not(.hist-head):hover { background: var(--row-hover); } }
 .hist-head {
-  font-size: 10.5px; font-weight: 700; letter-spacing: .13em;
-  text-transform: uppercase; color: var(--text-dim); border-bottom: 2px solid var(--line);
+  min-height: 30px; border-top: 0;
+  font-size: var(--fs-micro); font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text3);
 }
-.hist-head:hover { background: none; }
-.hist-row .prod, .hist-row .po, .hist-row .hull, .hist-row .due, .hist-row .when { font-variant-numeric: tabular-nums; color: var(--text-dim); }
-.hist-row .label { color: var(--white); }
-.hist-row .cat { color: var(--text-dim); font-size: 12.5px; }
+.hist-row .prod, .hist-row .po, .hist-row .hull, .hist-row .due, .hist-row .when { font-variant-numeric: tabular-nums; color: var(--text3); font-size: var(--fs-sm); }
+.hist-row .label { color: var(--text); font-weight: 600; }
+.hist-row .cat { color: var(--text3); font-size: var(--fs-sm); }
 /* How a job left: ticked by a person, or closed upstream. Quiet, because the
    job is the thing being read - but present, because "completed" and
    "cancelled" are not the same outcome. */
 .hist-row .hist-why {
-  margin-left: 8px; padding: 1px 6px; border: 1px solid var(--line); border-radius: 3px;
-  color: var(--text-dim); font-size: 10.5px; white-space: nowrap;
+  margin-left: 8px; padding: 0 6px; border-radius: 999px; background: var(--bg2);
+  color: var(--text2); font-size: 10.5px; font-weight: 700; white-space: nowrap;
 }
 .hist-row .acts { text-align: right; }
 
@@ -1554,15 +1856,15 @@ button.linkish:disabled { opacity: .5; cursor: default; }
 .c-actions-top { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .c-actions-top .spacer { margin-left: auto; }
 .c-actions-top .hint { font-size: 12px; color: var(--text-dim); }
-.c-list { max-height: 46vh; overflow-y: auto; border: 1.5px solid var(--line); border-radius: 10px; }
+.c-list { max-height: 46vh; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); }
 .c-row {
   display: grid; grid-template-columns: 22px 74px 1.4fr 1fr 96px; gap: 10px;
   align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--line);
   font-size: 13px; cursor: pointer;
 }
 .c-row:last-child { border-bottom: none; }
-.c-row:hover { background: rgba(255,255,255,.04); }
-.c-row input { accent-color: var(--red-bright); width: 16px; height: 16px; }
+@media (hover: hover) { .c-row:hover { background: var(--bg); } }
+.c-row input { accent-color: var(--text2); width: 18px; height: 18px; }
 .c-row .c-prod, .c-row .c-due { color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .c-row .c-cat { color: var(--text-dim); font-size: 12px; }
 
@@ -1573,8 +1875,8 @@ button.linkish:disabled { opacity: .5; cursor: default; }
 .gantt.is-wide { overflow-x: auto; padding-bottom: 10px; }
 .gantt.is-wide .g-label {
   position: sticky; left: 0; z-index: 4;
-  background: var(--black-night);
-  border-right: 1px solid var(--line);
+  background: var(--ground);
+  border-right: 1px solid var(--border);
   margin-right: -1px;
 }
 .gantt.is-wide .g-banner .g-label { background: var(--black-night); }
@@ -1587,101 +1889,211 @@ button.linkish:disabled { opacity: .5; cursor: default; }
 .gantt.is-packed .g-label .g-name { color: var(--text-dim); font-size: 11.5px; }
 
 .g-bar.is-clickable { cursor: pointer; }
-.g-bar.is-clickable:hover { outline: 1.5px solid var(--white); outline-offset: 1px; }
+@media (hover: hover) { .g-bar.is-clickable:hover { outline: 1.5px solid var(--text); outline-offset: 1px; } }
 
 /* Progress inside the bar. Only completion sets it today; floor tracking is
    the eventual source. */
 .g-fill {
   position: absolute; left: 0; top: 0; bottom: 0;
-  background: rgba(255,255,255,.28); pointer-events: none;
+  background: var(--wash-4); pointer-events: none;
 }
-.g-bar.is-done { background: #2f5d33; border-color: #5fb85f; }
-.g-bar.is-done .g-fill { background: rgba(255,255,255,.18); }
+.g-bar.is-done { background: var(--green-bg); border-color: var(--green); }
+.g-bar.is-done .g-bar-text { color: var(--green-text); }
+.g-bar.is-done .g-fill { background: var(--wash-3); }
 .g-row.is-done .g-label .g-name { color: var(--text-dim); text-decoration: line-through; }
 
 /* Bars carry their own state classes in packed mode, where the row cannot. */
-.g-bar.is-overdue { background: #7a1114; border-color: var(--red-bright); border-style: dashed; }
-.g-bar.is-stock { background: var(--line); border-color: var(--text-dim); }
+.g-bar.is-overdue { background: var(--red-bg); border-color: var(--red-text); border-style: dashed; }
+.g-bar.is-stock { background: transparent; border-color: var(--border2); border-style: dashed; }
 
-/* ---------- vessel codes: one line per boat ---------- */
+/* ---------- vessel codes: one line per boat (UX stage two) ----------
+   The board's look: its categories down the sidebar, each a grey card with its
+   name in Friz Quadrata over a red line while it is open, its lines on
+   hairlines. A line is its facts, then its buttons two by two at the right,
+   the grid a phone has, so a line never grows a row of buttons and Set model
+   never sits on the products (Pete, 27 Nov 2026). Below about 980px of column
+   the facts stack on the left, Model and Hull labelled with their column's
+   heading; on a phone a line is a card and its buttons wait behind a tap
+   (codes-side.js). */
+main:has(> .codes-bd) { max-width: none; }
+main:has(> .codes-bd) > .provenance { margin-bottom: 0; }
+.codes-bd:not(:has(#codesSide a)) { grid-template-columns: minmax(0, 1fr); }
+.codes-bd:not(:has(#codesSide a)) > .bd-side { display: none; }
+.codes-main { container: codes / inline-size; --act-w: 236px; }
+/* The floor's page has no buttons, so no column for them. */
+.codes-main:not(:has(.c-act > button)) { --act-w: 0px; }
+@media screen { .codes-main > #codesPrintRoot { overflow-x: auto; } }
+/* The count under the toolbar, a line of its own, so the toolbar is its
+   buttons and Print code sheet keeps its place at the end. */
+#codesBar > .hint { order: 10; flex: 1 0 100%; }
+.codes-strip { display: none; }
+/* Each card carries its own column headings; this one is what they copy. */
+#codesColHead { display: none; }
+
+a.side-item { text-decoration: none; }
+#codesSide .side-item[aria-current="true"] {
+  background: var(--sel-bg); color: var(--sel-text); font-weight: 600; box-shadow: inset 3px 0 0 var(--sel-line);
+}
+#codesSide .side-item[aria-current="true"] .n { background: var(--border); color: var(--text); }
+
+.codes-group, #davitSection {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  margin-bottom: 16px; overflow: clip; scroll-margin-top: 12px;
+}
+.codes-cat, .codes-cat-static {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px;
+  background: none; border: 0; box-shadow: inset 0 -2px 0 var(--red);
+  color: var(--text); font-family: inherit; text-align: left;
+  padding: 0 14px 0 12px; margin: 0;
+}
+.codes-cat { cursor: pointer; }
+.codes-cat.is-collapsed { box-shadow: none; }
+@media (hover: hover) { .codes-cat:hover { background: color-mix(in srgb, var(--bg2) 40%, transparent); } }
+.codes-cat .name, .codes-cat-static {
+  font-family: var(--font-head); font-size: var(--fs-md); font-weight: 700; line-height: 1.3;
+  letter-spacing: 0; text-transform: none;
+}
+.codes-cat-static { padding-left: 14px; }
+.codes-cat .n { font-size: var(--fs-sm); color: var(--text3); font-variant-numeric: tabular-nums; }
+
+/* Display code | ERP codes | Model | Hull | Products | the buttons, two by two.
+   No order column: the customer's reference differs per order, so it changed
+   on every line and told nobody anything. */
 .codes-head, .code-row {
-  display: grid;
-  /* Three buttons in the actions cell now — Model, Rename, Split. */
-  /* Stella | ERP codes | Model | Hull | Products | actions
-     No order column: the customer's reference differs per order, so it changed
-     on every line and told nobody anything. */
-  /* Stella | ERP codes | Model | Hull | Products | actions (three buttons) */
-  grid-template-columns: 160px 170px 115px 105px minmax(170px, 1fr) 248px;
-  gap: 14px; align-items: baseline; padding: 9px 10px;
+  display: grid; grid-template-columns: 130px 150px 100px 84px minmax(160px, 1fr) var(--act-w);
+  column-gap: 14px; align-items: center; padding: 6px 12px 6px 14px;
 }
-.codes-head {
-  font-size: 10.5px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase;
-  color: var(--text-dim); border-bottom: 2px solid var(--line);
+/* Davits carry a description where every other line carries codes, so their
+   product column takes the room the ERP codes leave. */
+#davitSection :is(.codes-head, .code-row) {
+  grid-template-columns: 130px 100px 84px minmax(220px, 1fr) var(--act-w);
 }
-.code-row { border-bottom: 1px solid var(--line); font-size: 13px; }
-.code-row:hover { background: rgba(255,255,255,.03); }
+.codes-head { min-height: 30px; padding-top: 0; padding-bottom: 0; }
+.codes-head > div {
+  white-space: nowrap; font-size: var(--fs-micro); font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text3);
+}
+.code-row {
+  min-height: var(--row-h, 44px); border-top: 1px solid var(--border); font-size: 13px;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+@media (hover: hover) { .code-row:hover { background: var(--row-hover); } }
 
 /* The display is the answer, so it carries the weight. */
-.c-display { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.c-display .c-code {
-  font-size: 16px; font-weight: 700; color: var(--white); letter-spacing: .02em;
+.c-display { display: flex; align-items: baseline; gap: 4px 8px; flex-wrap: wrap; min-width: 0; }
+.c-display .c-code, #davitSection .c-display {
+  font-size: 16px; font-weight: 700; color: var(--text); letter-spacing: .02em;
 }
-.c-codes { display: flex; gap: 5px; flex-wrap: wrap; }
+.c-codes, .c-items { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
 .c-tag {
-  font-size: 11px; font-variant-numeric: tabular-nums; color: var(--text-dim);
-  border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px;
+  font-family: var(--mono); font-size: 12px; line-height: 18px; font-variant-numeric: tabular-nums;
+  color: var(--text3); border: 1px solid var(--border); border-radius: var(--radius-inner); padding: 0 5px;
 }
 /* An ERP code identical to the display needs no explaining. */
-.c-tag.is-same { border-style: dashed; opacity: .55; }
+.c-tag.is-same { border-style: dashed; }
+/* The sheet's columns carry these names too, so the page's lines are named by
+   their row and the sheet's columns keep what they had. */
 .c-model, .c-hull { color: var(--text-dim); font-size: 12.5px; }
-.c-items { display: flex; gap: 5px; flex-wrap: wrap; }
-.c-item {
-  font-size: 11px; color: var(--text-dim);
-  border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px;
+.code-row > :is(.c-model, .c-hull) { min-width: 0; color: var(--text3); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.c-item, .c-catchip {
+  display: inline-flex; align-items: center; min-height: 22px; padding: 0 8px;
+  border: 0; border-radius: 999px; background: var(--bg2); color: var(--text2); font-size: 12.5px;
 }
-.c-catchip {
-  font-size: 11px; font-weight: 700; letter-spacing: .04em;
-  color: var(--red-bright); border: 1px solid var(--red-deep);
-  border-radius: 5px; padding: 1px 7px; cursor: help;
-}
-.c-act { display: flex; gap: 6px; justify-content: flex-end; }
+.c-catchip { font-weight: 600; }
+/* Two by two: the same grid at every width, so a line never grows a row of
+   buttons. A line not yet confirmed is asked that first, across the top. */
+.c-act { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; align-self: center; }
+.c-act .mini { width: 100%; padding: 0 8px; white-space: nowrap; }
+.c-act [data-act="confirm"] { grid-column: 1 / -1; }
 .c-act .mini:disabled { opacity: .35; cursor: default; }
 
-.codes-cat {
-  display: flex; align-items: baseline; gap: 10px; width: 100%;
-  background: none; border: none; border-bottom: 2px solid var(--red-deep);
-  color: var(--white); font-family: inherit; text-align: left;
-  padding: 18px 10px 6px; margin-bottom: 2px; cursor: pointer;
-}
-.codes-cat:hover { border-bottom-color: var(--red-bright); }
-.codes-cat .cat-caret { color: var(--text-dim); font-size: 11px; }
-.codes-cat .name {
-  font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
-}
-.codes-cat .n { font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
-.codes-cat.is-collapsed { border-bottom-color: var(--line); }
-
-@media (max-width: 1100px) {
+/* Half-screen: the facts stack on the left, the buttons stay on the right. */
+@container codes (max-width: 980px) {
   .codes-head { display: none; }
-  .code-row { grid-template-columns: 1fr 1fr; gap: 6px 14px; }
+  .code-row, #davitSection .code-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--act-w);
+    grid-template-areas: "disp disp act" "codes codes act" "model hull act" "items items act";
+    row-gap: 6px; padding-top: 10px; padding-bottom: 10px;
+  }
+  #davitSection .code-row { grid-template-areas: "disp disp act" "model hull act" "items items act"; }
+  .code-row > .c-display { grid-area: disp; }
+  .code-row > .c-codes { grid-area: codes; }
+  .code-row > .c-model { grid-area: model; }
+  .code-row > .c-hull { grid-area: hull; }
+  .code-row > .c-items { grid-area: items; }
+  .code-row > .c-act { grid-area: act; }
+  .code-row > :is(.c-model, .c-hull)::before {
+    margin-right: 6px; font-size: var(--fs-micro); font-weight: 700; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--text3);
+  }
+  .code-row > .c-model::before { content: "Model"; }
+  .code-row > .c-hull::before { content: "Hull"; }
 }
 
-/* ---------- vessel codes: what a row can do, and what it has to say ----------
-   The buttons name what they act on, so their column is wider where there is
-   room for it, and folds onto another line where there is not. */
-.c-act { flex-wrap: wrap; }
-@media (min-width: 1280px) {
-  .codes-head, .code-row { grid-template-columns: 160px 170px 115px 105px minmax(170px, 1fr) 330px; }
-}
-@media (min-width: 1101px) {
-  #davitSection .codes-head, #davitSection .code-row {
-    grid-template-columns: 112px 80px 80px minmax(260px, 1fr) 190px;
+/* A phone: the categories as a strip of pills over the codes, and each line a
+   card of its facts. Its buttons wait behind a tap on it; a keyboard that
+   reaches them opens it too. */
+@media screen and (max-width: 760px) {
+  .codes-bd > .bd-side { display: none; }
+  .codes-strip:not(:empty) {
+    position: sticky; top: var(--test-h, 0px); z-index: 5; display: flex; gap: 6px;
+    margin: -12px -12px 8px; padding: 8px 12px; overflow-x: auto; scrollbar-width: none;
+    background: var(--ground);
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+            mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+  .codes-strip::-webkit-scrollbar { display: none; }
+  .strip-item {
+    position: relative; flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 36px;
+    padding: 0 12px; border: 1px solid var(--border2); border-radius: 999px;
+    color: var(--text2); font-size: var(--fs-sm); text-decoration: none; white-space: nowrap;
+  }
+  .strip-item::after { content: ""; position: absolute; inset: -4px 0; }
+  .strip-item .n { color: var(--text3); font-variant-numeric: tabular-nums; }
+  .strip-item[aria-current="true"] { background: var(--sel-bg); border-color: var(--sel-bg); color: var(--sel-text); }
+  .strip-item[aria-current="true"] .n { color: inherit; }
+  .codes-group, #davitSection { scroll-margin-top: calc(var(--test-h, 0px) + 60px); }
+
+  /* The toolbar wraps on a phone rather than scrolling as the board's does:
+     the two views side by side, the buttons an even row, Print code sheet the
+     width of the page under them. */
+  #codesBar {
+    flex-wrap: wrap; overflow: visible; margin: 0 0 12px; padding: 0;
+    -webkit-mask-image: none; mask-image: none;
+  }
+  #codesBar > .tab { flex: 1 1 40%; justify-content: center; }
+  #codesBar > .hint:empty { display: none; }
+  #codesBar .vb-group > .mini { flex: 1 1 28%; min-width: 0; padding: 0 6px; }
+  #codesBar .vb-group > .primary { flex: 1 0 100%; min-height: var(--touch-floor, 48px); }
+
+  .code-row, #davitSection .code-row {
+    position: relative; grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "disp disp" "codes codes" "model hull" "items items";
+    row-gap: 8px; padding: 12px 14px;
+  }
+  #davitSection .code-row { grid-template-areas: "disp disp" "model hull" "items items"; }
+  .code-row > .c-hull { text-align: right; }
+  .code-row > .c-act { grid-area: auto / 1 / auto / -1; gap: 8px; padding-top: 4px; }
+  .code-row:has(> .c-act > button) { cursor: pointer; padding-right: 40px; }
+  .code-row:has(> .c-act > button)::after {
+    content: ""; position: absolute; top: 19px; right: 17px; width: 7px; height: 7px;
+    border-right: 1.8px solid var(--text3); border-bottom: 1.8px solid var(--text3);
+    transform: rotate(-45deg); transition: transform var(--dur-fast) var(--ease-out);
+  }
+  .code-row.is-open:has(> .c-act > button)::after { transform: rotate(45deg); }
+  .code-row.is-open, .code-row.is-open:hover { background: var(--bg); }
+  .code-row:not(.is-open):not(:focus-within) > .c-act {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
+    clip-path: inset(50%); white-space: nowrap;
   }
 }
 
+/* ---------- vessel codes: what a row can do, and what it has to say ----------
+   The buttons name what they act on, and sit two by two (above). */
+
 /* A chip with item codes behind it is a button; the caret says which way it is. */
 button.c-catchip, button.c-item {
-  background: none; font-family: inherit; text-align: left; cursor: pointer; position: relative;
+  font-family: inherit; text-align: left; cursor: pointer; position: relative;
 }
 button.c-catchip::after, button.c-item::after {
   content: '\25b8'; margin-left: 5px; color: var(--text-dim); font-size: 9px;
@@ -1693,7 +2105,8 @@ button.c-catchip[aria-expanded="true"]::after, button.c-item[aria-expanded="true
 .cx-list { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px; padding-top: 2px; }
 .cx-of { font-size: 11px; color: var(--text-dim); margin-right: 4px; }
 #davitSection .cx-list .c-item {
-  border: 1px solid var(--line); padding: 1px 6px; color: var(--text-dim); font-size: 11px;
+  min-height: 22px; border-radius: 999px; padding: 0 8px; background: var(--bg2);
+  color: var(--text2); font-size: 12px; white-space: nowrap;
 }
 
 /* What was not saved, on its line until it is dealt with. A line off the sheet
@@ -1703,8 +2116,6 @@ button.c-catchip[aria-expanded="true"]::after, button.c-item[aria-expanded="true
   color: var(--red-bright); font-size: 12.5px; line-height: 1.5; padding-top: 4px;
 }
 .cx-fault > span { flex: 0 1 auto; }
-.code-row.is-offsheet:has(.cx-fault) { opacity: 1; }
-.code-row.is-offsheet:has(.cx-fault) > :not(.cx-fault) { opacity: .45; }
 
 /* A line arrived at from a link: a colour that fades from it, once. */
 :root { --dur-mark: 900ms; }
@@ -1747,21 +2158,14 @@ button.c-catchip[aria-expanded="true"]::after, button.c-item[aria-expanded="true
 }
 
 /* THE SIZE OF WHAT IS COMING. Each line is one full-width bar cut into blocks
-   by a mask, so the highlight sweeps left to right through every block as one
-   band, at one speed, and the gaps between them stay page. On the motion
-   tokens: under reduced motion the sweep has no duration and stands still. */
+   by a mask, so the gaps between them stay page. It stands still, as the
+   family's skeletons do. */
 .skeleton { padding: 8px 2px 24px; }
 .sk-line {
   position: relative; overflow: hidden; height: 12px; margin: 13px 0;
-  background: rgba(255, 255, 255, .07);
+  background: var(--wash-2);
 }
-.sk-line::after {
-  content: ''; position: absolute; inset: 0;
-  background: linear-gradient(90deg, transparent 25%, rgba(255, 255, 255, .09) 50%, transparent 75%);
-  transform: translateX(-100%);
-  animation: sk-sweep var(--dur-sweep) ease-in-out infinite;
-}
-@keyframes sk-sweep { to { transform: translateX(100%); } }
+/* The family's skeletons stand still: the size of what is coming, no sweep. */
 .sk-tabs { height: 30px; margin: 6px 0 22px; }
 .sk-tabs {
   -webkit-mask-image: linear-gradient(90deg, #000 0 120px, transparent 120px 132px, #000 132px 196px,
@@ -1776,6 +2180,16 @@ button.c-catchip[aria-expanded="true"]::after, button.c-item[aria-expanded="true
     transparent 176px 188px, #000 188px 300px, transparent 300px 312px, #000 312px 376px, transparent 376px);
           mask-image: linear-gradient(90deg, #000 0 72px, transparent 72px 84px, #000 84px 176px,
     transparent 176px 188px, #000 188px 300px, transparent 300px 312px, #000 312px 376px, transparent 376px);
+}
+.sk-tabs-codes {
+  -webkit-mask-image: linear-gradient(90deg, #000 0 150px, transparent 150px 162px, #000 162px 290px,
+    transparent 290px calc(100% - 380px), #000 calc(100% - 380px) calc(100% - 256px),
+    transparent calc(100% - 256px) calc(100% - 246px), #000 calc(100% - 246px) calc(100% - 150px),
+    transparent calc(100% - 150px) calc(100% - 140px), #000 calc(100% - 140px));
+          mask-image: linear-gradient(90deg, #000 0 150px, transparent 150px 162px, #000 162px 290px,
+    transparent 290px calc(100% - 380px), #000 calc(100% - 380px) calc(100% - 256px),
+    transparent calc(100% - 256px) calc(100% - 246px), #000 calc(100% - 246px) calc(100% - 150px),
+    transparent calc(100% - 150px) calc(100% - 140px), #000 calc(100% - 140px));
 }
 .sk-head { height: 14px; width: 34%; margin-top: 30px; }
 .sk-row {
@@ -1845,6 +2259,16 @@ button.c-catchip[aria-expanded="true"]::after, button.c-item[aria-expanded="true
   /* The spacer exists to push Print to the right on a wide screen. In a
      scrolling strip it would push it out of reach instead. */
   .tab-spacer { display: none; }
+  /* The board's view bar: one strip that scrolls sideways, the count first. */
+  .bd .view-bar {
+    flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -12px 12px; padding: 0 12px;
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+            mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+  .bd .view-bar::-webkit-scrollbar { display: none; }
+  .bd .view-bar .vb-group { display: contents; }
+  .bd .view-bar > *, .bd .view-bar .vb-group > * { flex: none; }
+  .bd .view-bar .hint { order: -1; }
 }
 
 /* A ROW BECOMES A CARD, AND ITS BUTTONS FOLD AWAY.
@@ -1867,7 +2291,8 @@ button.c-catchip[aria-expanded="true"]::after, button.c-item[aria-expanded="true
     grid-template-rows: auto auto;
     gap: 3px 12px;
     align-items: baseline;
-    padding: 11px 10px;
+    min-height: 0;
+    padding: 11px 10px 11px 14px;
   }
   .job:has(.acts button), .lane-row:has(.acts button) {
     grid-template-columns: minmax(0, 1fr) auto 26px;
@@ -1905,10 +2330,12 @@ button.c-catchip[aria-expanded="true"]::after, button.c-item[aria-expanded="true
   .job:has(.acts button)::after { grid-row: 1 / span 3; }
   .lane-row:has(.acts button)::after { grid-row: 1 / span 2; }
   .job:has(.acts button)::after, .lane-row:has(.acts button)::after {
-    content: '\25b8';                      /* right, when shut */
+    content: '';                           /* a chevron, drawn: right when shut */
     grid-column: 3;
     align-self: center; justify-self: center;
-    color: var(--text-dim); font-size: 16px; line-height: 1;
+    width: 7px; height: 7px; margin-right: 4px;
+    border-right: 1.8px solid var(--text3); border-bottom: 1.8px solid var(--text3);
+    transform: rotate(-45deg); transition: transform var(--dur-fast) var(--ease-out);
   }
   /* THE SAME :has() ON PURPOSE. `:has(.acts button)` takes the specificity of
      its argument, so the shut rule scores higher than a plain `.is-open` and
@@ -1917,8 +2344,8 @@ button.c-catchip[aria-expanded="true"]::after, button.c-item[aria-expanded="true
      also true: there is no caret to turn unless there are buttons. */
   .job.is-open:has(.acts button)::after,
   .lane-row.is-open:has(.acts button)::after {
-    content: '\25be';                      /* down, when open */
-    color: var(--white);
+    transform: rotate(45deg);              /* down, when open */
+    border-color: var(--text);
   }
   .job:has(.acts button), .lane-row:has(.acts button) { cursor: pointer; }
 
@@ -1930,12 +2357,26 @@ button.c-catchip[aria-expanded="true"]::after, button.c-item[aria-expanded="true
     gap: 8px; padding-top: 11px; margin-top: 9px;
     border-top: 1px solid var(--line);
   }
-  .job .acts { grid-row: 4; }
-  .job.is-open .acts, .lane-row.is-open .acts { display: flex; }
-  .job .acts-more { grid-row: 5; padding-top: 8px; margin-top: 0; border-top: 0; flex-wrap: wrap; }
+  .lane-row.is-open .acts { display: flex; }
+  /* AN OPENED ORDER: the status across the top, the tools two by two, Complete
+     the full width at the foot. The row's own Hide and caret give way to the
+     fold's Hide and the card's chevron. */
+  .job .acts, .job.is-open .acts { display: none; }
+  .job .acts-more {
+    grid-row: 4; display: none; grid-template-columns: 1fr 1fr; gap: 8px;
+    padding: 12px 8px 4px 0; margin-top: 0; border-top: 0;
+  }
+  .job.is-open .acts-more { display: grid; }
+  .job .acts-more::before { display: none; }
+  .job .acts-more > :is(.created-note, .erp-note, .po-note, .plinth) { grid-column: 1 / -1; margin: 0; }
+  .job .acts-more > .st { grid-column: 1 / -1; margin: 0; }
+  .job .acts-more > .st .st-select { width: 100%; max-width: none; }
+  .job .acts-more > button.mini { width: 100%; }
+  .job .acts-more > .hide-twin { display: inline-flex; order: 5; }
+  .job .acts-more > .act-done { grid-column: 1 / -1; order: 6; margin: 0; }
   .job .acts-more .created-note.po-note { display: none; }
-  .hull-edit { display: inline-block; }
-  .job .more { display: none; }   /* the row's own caret does this job on a phone */
+  .job .acts-more > .hull-edit { display: inline-flex; }
+  .job .more { display: none; }   /* the card's own chevron does this job on a phone */
 
   /* Column headings label columns that no longer exist. */
   .job.col-head, .lane-head, .hist-head { display: none; }
@@ -1959,12 +2400,14 @@ button.c-catchip[aria-expanded="true"]::after, button.c-item[aria-expanded="true
   .hist-row.is-prod .when { grid-row: 3; }
   .hist-row [data-head]:not(:empty)::before { content: attr(data-head) ': '; }
   .hist-row:not(.hist-head)::after {
-    content: '\25b8';                      /* right, when shut */
+    content: '';                           /* a chevron, drawn: right when shut */
     grid-column: 3; grid-row: 1 / span 3;
     align-self: center; justify-self: center;
-    color: var(--text-dim); font-size: 16px; line-height: 1;
+    width: 7px; height: 7px; margin-right: 4px;
+    border-right: 1.8px solid var(--text3); border-bottom: 1.8px solid var(--text3);
+    transform: rotate(-45deg); transition: transform var(--dur-fast) var(--ease-out);
   }
-  .hist-row.is-open:not(.hist-head)::after { content: '\25be'; color: var(--white); }
+  .hist-row.is-open:not(.hist-head)::after { transform: rotate(45deg); border-color: var(--text); }
   .hist-row .touched, .hist-row .acts { display: none; grid-row: 4; padding-top: 11px; margin-top: 9px; }
   .hist-row.is-open .touched { display: block; grid-column: 1; }
   .hist-row.is-open .touched b { white-space: normal; }
@@ -2042,48 +2485,63 @@ body.role-engineer .not-engineer { display: none !important; }
    =================================================================== */
 /* Wide on a desktop: six columns, and descriptions run to a hundred characters. */
 .parts-page main { max-width: 1560px; }
-.stale-note { color: var(--red-bright); font-size: 12.5px; margin-left: 10px; }
+/* An old export says so in amber: something to do, not something wrong. */
+.stale-note { color: var(--amber-text); font-size: var(--fs-sm); margin-left: 10px; }
+/* An empty page has nothing to search: the line saying so, and the tabs. */
+#partsEmpty:not([hidden]) ~ #ptSearch { display: none !important; }
 
-/* The search box stays put while the list scrolls under it. */
+/* THE SEARCH BOX stays put while the list scrolls under it: 48px, the size a
+   finger standing in the workshop needs, a magnifier drawn at its start. In
+   test mode it stops under the strip that says so (--test-h), not beneath it. */
 .search-bar {
-  position: sticky; top: 0; z-index: 5;
-  background: var(--black-night); padding: 8px 0 6px;
+  position: sticky; top: var(--test-h, 0px); z-index: 5;
+  background: var(--ground); padding: 8px 0 6px;
+}
+.search-bar::before {
+  content: ""; position: absolute; left: 14px; top: calc(8px + var(--touch-floor) / 2 - 9px); width: 18px; height: 18px;
+  background: var(--text3); pointer-events: none;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='6.5'/%3E%3Cpath d='M16 16l4.5 4.5'/%3E%3C/svg%3E") center / contain no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.8' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='6.5'/%3E%3Cpath d='M16 16l4.5 4.5'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 .search-bar input {
-  width: 100%; box-sizing: border-box; padding: 12px 14px; font-size: 16px;
-  background: var(--band); color: var(--white);
-  border: 1.5px solid var(--line); border-radius: 10px; outline: none;
+  width: 100%; box-sizing: border-box; min-height: var(--touch-floor); padding: 0 14px 0 42px; font-size: 16px;
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--radius);
 }
-.search-bar input:focus { border-color: var(--red-bright); }
 
-/* Pills, one strip, scrolls sideways on a phone rather than wrapping. */
+/* Pills, one strip, scrolls sideways on a phone rather than wrapping. A pill
+   is outlined; the one chosen is grey. Drawn 30px, hit across 36px at a desk,
+   48px on a touch screen (the parts page is used standing up). */
 .pills {
   display: flex; gap: 6px; align-items: center; padding: 6px 0;
   overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
 }
 .pills::-webkit-scrollbar { display: none; }
 .pill {
-  flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px;
-  background: none; border: 1.5px solid var(--line); border-radius: 999px;
-  color: var(--text-dim); font: inherit; font-size: 12.5px; font-weight: 700;
-  padding: 6px 12px; cursor: pointer; white-space: nowrap; min-height: 34px;
+  position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px;
+  background: none; border: 1px solid var(--border2); border-radius: 999px;
+  color: var(--text2); font: inherit; font-size: var(--fs-sm); font-weight: 600;
+  padding: 0 12px; cursor: pointer; white-space: nowrap; min-height: var(--ctl-sm);
 }
-.pill:hover { border-color: var(--red-bright); color: var(--white); }
-.pill.on { background: var(--red-deep); border-color: var(--red-bright); color: var(--white); }
-.pill .pill-n { font-weight: 400; opacity: .75; font-size: 11.5px; }
+.pill::after { content: ""; position: absolute; inset: calc((var(--ctl-sm) - var(--hit)) / 2) 0; }
+@media (hover: hover) { .pill:not(:disabled):hover { background: var(--bg); color: var(--text); } }
+.pill.on, .pill[aria-pressed="true"] { background: var(--sel-bg); border-color: var(--border2); color: var(--sel-text); }
+.pill .pill-n { font-weight: 400; color: var(--text3); font-size: 12px; }
+.pill.on .pill-n, .pill[aria-pressed="true"] .pill-n { color: var(--text2); }
 .results-bar { display: flex; align-items: center; gap: 10px; padding: 6px 2px 4px; }
 .results-bar .spacer { margin-left: auto; }
-.results-meta { color: var(--text-dim); font-size: 12.5px; }
+.results-meta { color: var(--text3); font-size: var(--fs-sm); }
 
 /* A result: code, description, type, source, unit, bin. Tap to open.
    The code column is --code-w, set by the page to fit the longest code on
    screen — model codes run to twenty characters and a fixed width either
-   overlapped them or wasted the row for everything else. */
+   overlapped them or wasted the row for everything else. The results are a
+   card of rows, as the board's categories are. */
 #ptSearch, #ptMaterials { --code-w: 120px; }
 /* The form pills sit under the material pills, a size down. */
 .pills-sub { padding-top: 0; }
-.pills-sub .pill { font-size: 12px; min-height: 30px; padding: 4px 10px; }
-.part-missing { color: var(--red-bright); font-size: 12.5px; margin-top: 6px; }
+.pills-sub .pill { font-size: 12px; min-height: 28px; padding: 0 10px; }
+.part-missing { color: var(--red-text); font-size: var(--fs-sm); margin-top: 6px; }
 .parts-page .drop-zone { margin-top: 28px; }
 /* Every column but the description is fixed: each row is its own grid, and
    an auto-sized bin column moved Type, Source and Unit about from row to row. */
@@ -2092,69 +2550,79 @@ body.role-engineer .not-engineer { display: none !important; }
   gap: 4px 12px; align-items: baseline;
 }
 .results-head {
-  padding: 6px 8px 4px; border-top: 1px solid var(--line);
-  font-size: 10.5px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; color: var(--text-dim);
+  padding: 6px 14px 4px;
+  font-size: var(--fs-micro); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text3);
 }
 .results-head span:last-child { justify-self: end; }
-.part {
-  border-top: 1px solid var(--line); padding: 10px 8px; cursor: pointer;
+#results:not(:empty), #mresults:not(:empty) {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: clip;
 }
-.part:hover { background: rgba(255,255,255,.03); }
+.part {
+  border-top: 1px solid var(--border); padding: 12px 14px; cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+:is(#results, #mresults) > :first-child { border-top: 0; }
+@media (hover: hover) { .part:hover { background: var(--row-hover); } }
+.part:active { background: var(--row-hover); }
+.part.is-open, .part.is-open:hover { background: var(--bg); }
 .part-code {
-  font-family: ui-monospace, Consolas, monospace; font-size: 14px; color: var(--white); font-weight: 700;
+  font-family: var(--mono); font-size: 14px; color: var(--text); font-weight: 700;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.part-desc { color: var(--white); font-size: 14px; overflow-wrap: anywhere; }
-.part-meta { color: var(--text-dim); font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.part-desc { color: var(--text); font-size: 14.5px; overflow-wrap: anywhere; }
+.part-meta { color: var(--text3); font-size: var(--fs-sm); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .part-meta-line { display: none; }
 .part-bin { justify-self: end; }
 /* The end of what has been built so far; the rest arrives as this scrolls into view. */
 .more-sentinel {
-  padding: 16px 8px 22px; text-align: center; color: var(--text-dim); font-size: 12.5px;
-  border-top: 1px solid var(--line); cursor: pointer;
+  padding: 16px 8px 22px; text-align: center; color: var(--text3); font-size: var(--fs-sm);
+  border-top: 1px solid var(--border); cursor: pointer;
 }
 .bin-chip {
-  display: inline-block; font-family: ui-monospace, Consolas, monospace; font-size: 12px;
-  padding: 2px 8px; border-radius: 4px; border: 1px solid var(--line); color: var(--white);
+  display: inline-block; font-family: var(--mono); font-size: 12px;
+  padding: 2px 8px; border-radius: var(--radius-inner); border: 1px solid var(--border2); color: var(--text);
   white-space: nowrap;
 }
-.bin-chip.none { color: var(--text-dim); border-style: dashed; font-family: inherit; font-size: 11.5px; }
+.bin-chip.none { color: var(--text3); border-style: dashed; font-family: inherit; font-size: 12px; }
 /* No bin location: still there, still findable, just quieter. */
-.part.no-bin .part-desc, .part.no-bin .part-code { color: var(--text-dim); }
+.part.no-bin .part-desc, .part.no-bin .part-code { color: var(--text3); }
+/* A correction on a part: information, so grey; one the export put in
+   question wants a decision, so amber. */
 .part-badge {
-  display: inline-block; margin-left: 8px; padding: 1px 6px; border-radius: 3px;
-  font-size: 10px; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap;
-  background: var(--red-deep); color: var(--white); vertical-align: middle;
+  display: inline-flex; align-items: center; height: 18px; margin-left: 8px; padding: 0 6px; border-radius: 999px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; white-space: nowrap;
+  background: var(--bg2); color: var(--text2); vertical-align: 2px;
 }
-.part-badge.review { background: #C8912F; color: #1a1200; }
+.part-badge.review { background: var(--amber-bg); color: var(--amber-text); }
 .part-body { padding: 10px 0 2px calc(var(--code-w) + 12px); }
 .part-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
-.part-acts button { min-height: 36px; }
-.part-note { font-size: 12.5px; color: var(--white); margin-top: 6px; line-height: 1.5; }
-.part-note .dim, .dim { color: var(--text-dim); }
-.mono { font-family: ui-monospace, Consolas, monospace; }
-.strong { color: var(--white); font-weight: 600; }
+.part-note { font-size: var(--fs-sm); color: var(--text); margin-top: 6px; line-height: 1.5; }
+.part-note .dim, .dim { color: var(--text3); }
+.mono { font-family: var(--mono); }
+.strong { color: var(--text); font-weight: 600; }
 
 /* The fix list and the review queue. */
-#ptFix h3, #partsAfter h3 { margin: 18px 0 8px; font-size: 15px; }
-.fix-table { border-top: 1px solid var(--line); }
+#ptFix h3, #partsAfter h3 { margin: 18px 0 8px; font-family: var(--font-head); font-size: var(--fs-md); font-weight: 700; }
+.fix-table { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: clip; }
 .fix-row {
   display: grid; grid-template-columns: 90px 86px 1.2fr 1.2fr 1.4fr 84px 92px;
-  gap: 10px; padding: 8px 6px; border-bottom: 1px solid var(--line); font-size: 13px;
+  gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); font-size: var(--fs-sm);
   align-items: baseline;
 }
+.fix-table > .fix-row:last-child { border-bottom: 0; }
 .fix-rm { justify-self: end; }
 /* Remove, beside the note it removes, and at the far end of the dialog's
    buttons so it is never under the thumb that is reaching for Save. */
 .part-note .mini { margin-left: 10px; }
 #coRemoveSlot { margin-left: auto; align-self: center; }
-.fix-head { font-size: 10.5px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; color: var(--text-dim); }
+.fix-head { font-size: var(--fs-micro); font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--text3); }
+/* A correction the export put in question waits in amber for its answer. */
 .fix-row.review {
-  display: block; padding: 10px 12px; margin-bottom: 10px;
-  border: 1px solid #C8912F; border-radius: 8px;
+  display: block; padding: 12px 14px; margin-bottom: 10px;
+  background: var(--amber-bg); border: 0; border-radius: var(--radius-lg);
 }
-.fix-row.review .fix-key { font-weight: 700; color: var(--white); margin-bottom: 4px; }
-.fix-row.review .fix-why { color: #e9c27a; margin-bottom: 4px; }
+.fix-row.review .fix-key { font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.fix-row.review .fix-why { color: var(--amber-text); margin-bottom: 4px; }
 .fix-row.review .fix-vals { font-size: 12.5px; margin-bottom: 4px; }
 .fix-row.review .fix-acts { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
 /* A correction the export put in question, answered in the import review: the
@@ -2162,28 +2630,40 @@ body.role-engineer .not-engineer { display: none !important; }
    Keep / Accept. At half-screen the ERP's value moves under the box rather
    than being hidden like other detail: it is half of the decision. */
 .flag-row.is-decision { grid-template-columns: 86px minmax(160px, 1.3fr) minmax(140px, 1.3fr) auto; }
-.flag-row.is-decision .fr-main input { width: 100%; box-sizing: border-box; font-size: 13.5px; padding: 5px 9px; border-radius: 7px; }
-.flag-row.is-decision button.mini:disabled { opacity: .4; cursor: default; border-color: var(--line); }
+.flag-row.is-decision .fr-main input { width: 100%; box-sizing: border-box; font-size: 13.5px; min-height: var(--ctl-sm); padding: 0 9px; }
+.flag-row.is-decision button.mini:disabled { opacity: .4; cursor: default; border-color: var(--border); }
 @media (max-width: 900px) {
   .flag-row.is-decision { grid-template-columns: 78px 1fr; }
   .flag-row.is-decision .fr-detail { display: block; grid-column: 2; }
   .flag-row.is-decision .fr-act { grid-column: 2; justify-content: flex-start; }
   .flag-row.is-decision .fr-main input { font-size: 16px; }
 }
-.import-err, .import-warn { padding: 10px 12px; margin: 8px 0; border-left-width: 4px; }
+.import-err, .import-warn { padding: 10px 12px; margin: 8px 0; border-radius: var(--radius); }
 
-/* The correct dialog's rows. */
-.form-row { margin: 12px 0; }
-.form-row label { display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
-.form-row input[type=text] {
-  width: 100%; box-sizing: border-box; padding: 10px 12px; font: inherit; font-size: 15px;
-  background: var(--band); color: var(--white); border: 1.5px solid var(--line); border-radius: 8px;
+/* The correct dialog's rows: the board's dialog fields, label over field. */
+.form-row { margin: 0 0 14px; }
+.form-row label {
+  display: block; font-size: var(--fs-micro); font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text3); margin-bottom: 6px;
 }
+.form-row label .hint { font-size: var(--fs-sm); font-weight: 400; letter-spacing: 0; text-transform: none; }
+.form-row input[type=text] {
+  width: 100%; box-sizing: border-box; min-height: var(--ctl); padding: 0 12px; font: inherit; font-size: var(--fs-base);
+  background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius);
+}
+/* Which field: one switch, its two pieces joined. */
+#correctOverlay .ctrl-row { gap: 0; }
+#correctOverlay .ctrl-row button.mini { border-radius: 0; }
+#correctOverlay .ctrl-row button.mini:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+#correctOverlay .ctrl-row button.mini:last-child { border-radius: 0 var(--radius) var(--radius) 0; margin-left: -1px; }
 @media screen and (pointer: coarse), screen and (max-width: 760px) {
   .form-row input[type=text] { font-size: 16px; }   /* no iOS zoom; see the base inputs */
 }
-.form-row .readonly { padding: 8px 12px; background: var(--band); border-radius: 8px; color: var(--text-dim); }
-.form-err { color: var(--red-bright); font-size: 12.5px; min-height: 18px; }
+.form-row .readonly {
+  display: flex; align-items: center; min-height: var(--ctl); padding: 0 12px;
+  border: 1px dashed var(--border); border-radius: var(--radius); color: var(--text3);
+}
+.form-err { color: var(--red-text); font-size: var(--fs-sm); min-height: 18px; }
 
 @media screen and (max-width: 760px) {
   /* Code, bin, description — and the rest only once the card is open.
@@ -2214,13 +2694,12 @@ body.role-engineer .not-engineer { display: none !important; }
   mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
 }
 .pill:disabled { opacity: .45; cursor: default; }
-.pill:disabled:hover { border-color: var(--line); color: var(--text-dim); }
 .results-bar { flex-wrap: wrap; }
 /* A card opens from the keyboard too; scrolled to, it clears the search box. */
 .part-head { scroll-margin: 84px 0 16px; }
 button.more-sentinel {
-  display: block; width: 100%; background: none; border: 0; border-top: 1px solid var(--line);
-  font: inherit; font-size: 12.5px; color: var(--text-dim);
+  display: block; width: 100%; background: none; border: 0; border-top: 1px solid var(--border);
+  font: inherit; font-size: var(--fs-sm); color: var(--text3);
 }
 .fx-code, .fx-should { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
 .fx-desc, .fx-live { font-size: 12.5px; }
@@ -2266,7 +2745,7 @@ button.more-sentinel {
 /* A changed row of the review opens on a click; its fields sit beneath it,
    indented to the row's second column. */
 .flag-row.is-changed { cursor: pointer; }
-.flag-row.is-changed.is-open .fr-tag.is-changed { border-color: var(--red-bright); }
+.flag-row.is-changed.is-open .fr-tag.is-changed { border-color: var(--text3); }
 .flag-row-changes { padding: 0 0 8px 98px; }
 @media (max-width: 900px) { .flag-row-changes { padding-left: 90px; } }
 @media screen and (max-width: 760px) {
@@ -2278,15 +2757,17 @@ button.more-sentinel {
    The strip at the top of every page while the board keeps nothing. It stays
    in view however far the board scrolls, and never prints: the sheets are
    measured to the page. */
+body:has(.test-mode) { --test-h: 42px; }
 .test-mode {
-  position: sticky; top: 0; z-index: 80;
+  position: sticky; top: 0; z-index: 80; box-sizing: border-box; min-height: var(--test-h, 42px);
   display: flex; align-items: center; justify-content: center; gap: 14px;
   background: var(--red-deep); color: var(--white);
   font-size: 12.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
-  padding: 6px 16px;
+  padding: 0 16px;
 }
+@media screen and (pointer: coarse), screen and (max-width: 760px) { body:has(.test-mode) { --test-h: 56px; } }
 .test-mode .mini { border-color: rgba(255,255,255,.55); letter-spacing: 0; text-transform: none; }
-.test-mode .mini:hover { border-color: var(--white); }
+@media (hover: hover) { .test-mode .mini:hover { border-color: var(--white); background: transparent; } }
 
 /* ============================================================
    ACCOUNTS, SIGN-IN, PASSWORDS

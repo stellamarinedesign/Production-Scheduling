@@ -12,6 +12,8 @@
 exclude:
   - tests/
   - README.md
+  - DESIGN.md
+  - PRODUCT.md
   - vendor/README.md
   - _config.yml
   - .gitignore
