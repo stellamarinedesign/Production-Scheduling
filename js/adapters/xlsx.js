@@ -8,7 +8,14 @@ import { REQUIRED_COLUMNS, keepColumns } from '../rules.js';
 
 // SheetJS, no build step. Pinned — a silent major-version bump here would
 // change how dates and blank cells arrive.
-const SHEETJS_URL = 'https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs';
+//
+// KEPT IN THIS REPOSITORY (vendor/), copied unchanged from cdn.sheetjs.com
+// with its licence. Every Stella app and the hub share one web address, so a
+// script loaded from anywhere else runs where it could read every app's saved
+// sign-in on the device (the Hubinator session's ask, Pete's yes, 27 Nov
+// 2026). Its folder names its version and carries no ?v=, so a board release
+// does not make a browser fetch it again.
+const SHEETJS_URL = new URL('../../vendor/xlsx-0.20.3/xlsx.mjs', import.meta.url).href;
 
 export const SHEET_PREFERENCE = ['ALL RECORDS', 'Data'];
 
