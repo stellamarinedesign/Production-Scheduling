@@ -23,6 +23,7 @@ import { Store } from './store.js';
 import { busy } from './busy.js';
 import { refuse, accept } from './field.js';
 import { failure } from './words.js';
+import { sayWithNotify } from './admin-contact.js';
 
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
@@ -214,7 +215,10 @@ export function notListed(host, email) {
   host.textContent = '';
   // Nothing about roles or lists: only the admin knows they exist (Pete, 26 Nov 2026).
   host.append(el('strong', null, 'No current account assigned'));
-  host.append(el('div', null, `Signed in as ${email}. Notify the admin.`));
+  const line = el('div');
+  host.append(line);
+  // An email to the admin, once its address has been read (admin-contact.js).
+  sayWithNotify(line, `Signed in as ${email}. Notify the admin.`, { who: email });
   host.hidden = false;
 }
 

@@ -566,6 +566,17 @@ export const Store = {
       onError);
   },
 
+  /**
+   * The admin's address for "Notify the admin" (admin-contact.js), or null.
+   * Readable by any signed-in account; local mode has none.
+   */
+  async loadContact() {
+    if (this.mode !== 'firestore' || !this._db) return null;
+    const { doc } = this._fs;
+    const snap = await this._read(doc(this._db, 'contact', 'admin'), 'doc');
+    return snap.exists() ? snap.data() : null;
+  },
+
   async loadAccess() {
     if (this.mode === 'local') return { managers: ['*'], engineers: [], floor: [], masters: [], testers: [] };
     const { doc } = this._fs;
