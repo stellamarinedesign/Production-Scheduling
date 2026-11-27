@@ -212,33 +212,15 @@ main { padding: 16px 22px 60px; max-width: 1720px; margin: 0 auto; }
 }
 
 /* A model code chosen by hand, as against every one the data carries. */
-.c-model.is-set { color: var(--white); }
-/* Kept off the printed sheet. Still here, still editable — dimmed, not gone. */
-.code-row.is-offsheet { opacity: .45; }
-/* Davits carry a description where every other line carries codes, so the
-   product column needs room a code column does not — the alternative was a
-   description stacked into a six-line column. */
-#davitSection .codes-head,
-#davitSection .code-row {
-  grid-template-columns: 100px 80px 80px minmax(260px, 1fr) 140px;
-}
-/* A description is prose, not a code: a bordered chip made it look like one and
-   boxed it in. */
+.code-row > .c-model.is-set { color: var(--text); }
+/* Kept off the printed sheet. Still here, still editable: its facts dimmed,
+   not gone, and its buttons as they were. */
+.code-row.is-offsheet > :not(.c-act):not(.cx-fault) { opacity: .45; }
+/* A description is prose, not a code: a chip made it look like one and boxed
+   it in. */
 #davitSection .c-item {
-  border: none; padding: 0; background: none; color: var(--white);
-  font-family: inherit; font-size: 13px; white-space: normal;
-}
-@media (max-width: 1100px) {
-  #davitSection .codes-head, #davitSection .code-row {
-    grid-template-columns: 88px 70px 70px minmax(200px, 1fr) 128px;
-  }
-}
-
-.codes-cat-static {
-  display: flex; align-items: baseline; gap: 10px;
-  border-bottom: 2px solid var(--red-deep); color: var(--white);
-  font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
-  padding: 0 0 6px; margin: 26px 0 4px;
+  min-height: 0; border: none; border-radius: 0; padding: 0; background: none; color: var(--text);
+  font-family: inherit; font-size: 13px; text-align: left; white-space: normal;
 }
 .code-row.is-offsheet .c-display { text-decoration: line-through; }
 
@@ -506,7 +488,7 @@ header nav a, header nav .navlink {
   transform: rotate(45deg); transition: transform var(--dur-fast) var(--ease-out);
 }
 :is(.is-collapsed > .cat-head, .is-collapsed > .hist-cat-head, .detail-group.is-shut, .flag-head[aria-expanded="false"],
-    .g-banner.is-collapsed) :is(.cat-caret, .dg-caret, .flag-caret, .g-caret)::before {
+    .g-banner.is-collapsed, .codes-cat.is-collapsed) :is(.cat-caret, .dg-caret, .flag-caret, .g-caret)::before {
   transform: rotate(-45deg); margin: 0 0 0 -3px;
 }
 /* The one fold that moves: the category whose heading was just pressed grows
@@ -621,8 +603,10 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
   display: inline-block; font-size: 10.5px; letter-spacing: .06em; font-weight: 700;
   border-radius: 5px; padding: 1px 6px; white-space: nowrap;
 }
-.chip.ok { border: 1px solid #3e6b3e; color: #8fce8f; }
-.chip.no { border: 1px solid #8a6d3b; color: #dcb96d; }
+/* Only what needs deciding is marked (L17): a confirmed code is the ordinary
+   case and carries no chip; one not yet confirmed is amber. */
+.chip.ok { display: none; }
+.chip.no { border: 0; border-radius: 999px; background: var(--amber-bg); color: var(--amber-text); padding: 0 7px; line-height: 18px; }
 .chip.alias { border: 1px solid var(--red-deep); color: var(--red-bright); }
 
 /* ---------- overlays ---------- */
@@ -1859,85 +1843,194 @@ button.linkish:disabled { opacity: .5; cursor: default; }
 .g-bar.is-overdue { background: var(--red-bg); border-color: var(--red-text); border-style: dashed; }
 .g-bar.is-stock { background: transparent; border-color: var(--border2); border-style: dashed; }
 
-/* ---------- vessel codes: one line per boat ---------- */
+/* ---------- vessel codes: one line per boat (UX stage two) ----------
+   The board's look: its categories down the sidebar, each a grey card with its
+   name in Friz Quadrata over a red line while it is open, its lines on
+   hairlines. A line is its facts, then its buttons two by two at the right,
+   the grid a phone has, so a line never grows a row of buttons and Set model
+   never sits on the products (Pete, 27 Nov 2026). Below about 980px of column
+   the facts stack on the left, Model and Hull labelled with their column's
+   heading; on a phone a line is a card and its buttons wait behind a tap
+   (codes-side.js). */
+main:has(> .codes-bd) { max-width: none; }
+main:has(> .codes-bd) > .provenance { margin-bottom: 0; }
+.codes-bd:not(:has(#codesSide a)) { grid-template-columns: minmax(0, 1fr); }
+.codes-bd:not(:has(#codesSide a)) > .bd-side { display: none; }
+.codes-main { container: codes / inline-size; --act-w: 236px; }
+/* The floor's page has no buttons, so no column for them. */
+.codes-main:not(:has(.c-act > button)) { --act-w: 0px; }
+@media screen { .codes-main > #codesPrintRoot { overflow-x: auto; } }
+/* The count under the toolbar, a line of its own, so the toolbar is its
+   buttons and Print code sheet keeps its place at the end. */
+#codesBar > .hint { order: 10; flex: 1 0 100%; }
+.codes-strip { display: none; }
+/* Each card carries its own column headings; this one is what they copy. */
+#codesColHead { display: none; }
+
+a.side-item { text-decoration: none; }
+#codesSide .side-item[aria-current="true"] {
+  background: var(--sel-bg); color: var(--sel-text); font-weight: 600; box-shadow: inset 3px 0 0 var(--sel-line);
+}
+#codesSide .side-item[aria-current="true"] .n { background: var(--border); color: var(--text); }
+
+.codes-group, #davitSection {
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  margin-bottom: 16px; overflow: clip; scroll-margin-top: 12px;
+}
+.codes-cat, .codes-cat-static {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px;
+  background: none; border: 0; box-shadow: inset 0 -2px 0 var(--red);
+  color: var(--text); font-family: inherit; text-align: left;
+  padding: 0 14px 0 12px; margin: 0;
+}
+.codes-cat { cursor: pointer; }
+.codes-cat.is-collapsed { box-shadow: none; }
+@media (hover: hover) { .codes-cat:hover { background: color-mix(in srgb, var(--bg2) 40%, transparent); } }
+.codes-cat .name, .codes-cat-static {
+  font-family: var(--font-head); font-size: var(--fs-md); font-weight: 700; line-height: 1.3;
+  letter-spacing: 0; text-transform: none;
+}
+.codes-cat-static { padding-left: 14px; }
+.codes-cat .n { font-size: var(--fs-sm); color: var(--text3); font-variant-numeric: tabular-nums; }
+
+/* Display code | ERP codes | Model | Hull | Products | the buttons, two by two.
+   No order column: the customer's reference differs per order, so it changed
+   on every line and told nobody anything. */
 .codes-head, .code-row {
-  display: grid;
-  /* Three buttons in the actions cell now — Model, Rename, Split. */
-  /* Stella | ERP codes | Model | Hull | Products | actions
-     No order column: the customer's reference differs per order, so it changed
-     on every line and told nobody anything. */
-  /* Stella | ERP codes | Model | Hull | Products | actions (three buttons) */
-  grid-template-columns: 160px 170px 115px 105px minmax(170px, 1fr) 248px;
-  gap: 14px; align-items: baseline; padding: 9px 10px;
+  display: grid; grid-template-columns: 130px 150px 100px 84px minmax(160px, 1fr) var(--act-w);
+  column-gap: 14px; align-items: center; padding: 6px 12px 6px 14px;
 }
-.codes-head {
-  font-size: 10.5px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase;
-  color: var(--text-dim); border-bottom: 2px solid var(--line);
+/* Davits carry a description where every other line carries codes, so their
+   product column takes the room the ERP codes leave. */
+#davitSection :is(.codes-head, .code-row) {
+  grid-template-columns: 130px 100px 84px minmax(220px, 1fr) var(--act-w);
 }
-.code-row { border-bottom: 1px solid var(--line); font-size: 13px; }
-.code-row:hover { background: rgba(255,255,255,.03); }
+.codes-head { min-height: 30px; padding-top: 0; padding-bottom: 0; }
+.codes-head > div {
+  white-space: nowrap; font-size: var(--fs-micro); font-weight: 700; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--text3);
+}
+.code-row {
+  min-height: var(--row-h, 44px); border-top: 1px solid var(--border); font-size: 13px;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+@media (hover: hover) { .code-row:hover { background: var(--row-hover); } }
 
 /* The display is the answer, so it carries the weight. */
-.c-display { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-.c-display .c-code {
-  font-size: 16px; font-weight: 700; color: var(--white); letter-spacing: .02em;
+.c-display { display: flex; align-items: baseline; gap: 4px 8px; flex-wrap: wrap; min-width: 0; }
+.c-display .c-code, #davitSection .c-display {
+  font-size: 16px; font-weight: 700; color: var(--text); letter-spacing: .02em;
 }
-.c-codes { display: flex; gap: 5px; flex-wrap: wrap; }
+.c-codes, .c-items { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
 .c-tag {
-  font-size: 11px; font-variant-numeric: tabular-nums; color: var(--text-dim);
-  border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px;
+  font-family: var(--mono); font-size: 12px; line-height: 18px; font-variant-numeric: tabular-nums;
+  color: var(--text3); border: 1px solid var(--border); border-radius: var(--radius-inner); padding: 0 5px;
 }
 /* An ERP code identical to the display needs no explaining. */
-.c-tag.is-same { border-style: dashed; opacity: .55; }
+.c-tag.is-same { border-style: dashed; }
+/* The sheet's columns carry these names too, so the page's lines are named by
+   their row and the sheet's columns keep what they had. */
 .c-model, .c-hull { color: var(--text-dim); font-size: 12.5px; }
-.c-items { display: flex; gap: 5px; flex-wrap: wrap; }
-.c-item {
-  font-size: 11px; color: var(--text-dim);
-  border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px;
+.code-row > :is(.c-model, .c-hull) { min-width: 0; color: var(--text3); font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.c-item, .c-catchip {
+  display: inline-flex; align-items: center; min-height: 22px; padding: 0 8px;
+  border: 0; border-radius: 999px; background: var(--bg2); color: var(--text2); font-size: 12.5px;
 }
-.c-catchip {
-  font-size: 11px; font-weight: 700; letter-spacing: .04em;
-  color: var(--red-bright); border: 1px solid var(--red-deep);
-  border-radius: 5px; padding: 1px 7px; cursor: help;
-}
-.c-act { display: flex; gap: 6px; justify-content: flex-end; }
+.c-catchip { font-weight: 600; }
+/* Two by two: the same grid at every width, so a line never grows a row of
+   buttons. A line not yet confirmed is asked that first, across the top. */
+.c-act { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; align-self: center; }
+.c-act .mini { width: 100%; padding: 0 8px; white-space: nowrap; }
+.c-act [data-act="confirm"] { grid-column: 1 / -1; }
 .c-act .mini:disabled { opacity: .35; cursor: default; }
 
-.codes-cat {
-  display: flex; align-items: baseline; gap: 10px; width: 100%;
-  background: none; border: none; border-bottom: 2px solid var(--red-deep);
-  color: var(--white); font-family: inherit; text-align: left;
-  padding: 18px 10px 6px; margin-bottom: 2px; cursor: pointer;
-}
-.codes-cat:hover { border-bottom-color: var(--red-bright); }
-.codes-cat .cat-caret { color: var(--text-dim); font-size: 11px; }
-.codes-cat .name {
-  font-size: 13px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
-}
-.codes-cat .n { font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
-.codes-cat.is-collapsed { border-bottom-color: var(--line); }
-
-@media (max-width: 1100px) {
+/* Half-screen: the facts stack on the left, the buttons stay on the right. */
+@container codes (max-width: 980px) {
   .codes-head { display: none; }
-  .code-row { grid-template-columns: 1fr 1fr; gap: 6px 14px; }
+  .code-row, #davitSection .code-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) var(--act-w);
+    grid-template-areas: "disp disp act" "codes codes act" "model hull act" "items items act";
+    row-gap: 6px; padding-top: 10px; padding-bottom: 10px;
+  }
+  #davitSection .code-row { grid-template-areas: "disp disp act" "model hull act" "items items act"; }
+  .code-row > .c-display { grid-area: disp; }
+  .code-row > .c-codes { grid-area: codes; }
+  .code-row > .c-model { grid-area: model; }
+  .code-row > .c-hull { grid-area: hull; }
+  .code-row > .c-items { grid-area: items; }
+  .code-row > .c-act { grid-area: act; }
+  .code-row > :is(.c-model, .c-hull)::before {
+    margin-right: 6px; font-size: var(--fs-micro); font-weight: 700; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--text3);
+  }
+  .code-row > .c-model::before { content: "Model"; }
+  .code-row > .c-hull::before { content: "Hull"; }
 }
 
-/* ---------- vessel codes: what a row can do, and what it has to say ----------
-   The buttons name what they act on, so their column is wider where there is
-   room for it, and folds onto another line where there is not. */
-.c-act { flex-wrap: wrap; }
-@media (min-width: 1280px) {
-  .codes-head, .code-row { grid-template-columns: 160px 170px 115px 105px minmax(170px, 1fr) 330px; }
-}
-@media (min-width: 1101px) {
-  #davitSection .codes-head, #davitSection .code-row {
-    grid-template-columns: 112px 80px 80px minmax(260px, 1fr) 190px;
+/* A phone: the categories as a strip of pills over the codes, and each line a
+   card of its facts. Its buttons wait behind a tap on it; a keyboard that
+   reaches them opens it too. */
+@media screen and (max-width: 760px) {
+  .codes-bd > .bd-side { display: none; }
+  .codes-strip:not(:empty) {
+    position: sticky; top: var(--test-h, 0px); z-index: 5; display: flex; gap: 6px;
+    margin: -12px -12px 8px; padding: 8px 12px; overflow-x: auto; scrollbar-width: none;
+    background: var(--ground);
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+            mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+  .codes-strip::-webkit-scrollbar { display: none; }
+  .strip-item {
+    position: relative; flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 36px;
+    padding: 0 12px; border: 1px solid var(--border2); border-radius: 999px;
+    color: var(--text2); font-size: var(--fs-sm); text-decoration: none; white-space: nowrap;
+  }
+  .strip-item::after { content: ""; position: absolute; inset: -4px 0; }
+  .strip-item .n { color: var(--text3); font-variant-numeric: tabular-nums; }
+  .strip-item[aria-current="true"] { background: var(--sel-bg); border-color: var(--sel-bg); color: var(--sel-text); }
+  .strip-item[aria-current="true"] .n { color: inherit; }
+  .codes-group, #davitSection { scroll-margin-top: calc(var(--test-h, 0px) + 60px); }
+
+  /* The toolbar wraps on a phone rather than scrolling as the board's does:
+     the two views side by side, the buttons an even row, Print code sheet the
+     width of the page under them. */
+  #codesBar {
+    flex-wrap: wrap; overflow: visible; margin: 0 0 12px; padding: 0;
+    -webkit-mask-image: none; mask-image: none;
+  }
+  #codesBar > .tab { flex: 1 1 40%; justify-content: center; }
+  #codesBar > .hint:empty { display: none; }
+  #codesBar .vb-group > .mini { flex: 1 1 28%; min-width: 0; padding: 0 6px; }
+  #codesBar .vb-group > .primary { flex: 1 0 100%; min-height: var(--touch-floor, 48px); }
+
+  .code-row, #davitSection .code-row {
+    position: relative; grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "disp disp" "codes codes" "model hull" "items items";
+    row-gap: 8px; padding: 12px 14px;
+  }
+  #davitSection .code-row { grid-template-areas: "disp disp" "model hull" "items items"; }
+  .code-row > .c-hull { text-align: right; }
+  .code-row > .c-act { grid-area: auto / 1 / auto / -1; gap: 8px; padding-top: 4px; }
+  .code-row:has(> .c-act > button) { cursor: pointer; padding-right: 40px; }
+  .code-row:has(> .c-act > button)::after {
+    content: ""; position: absolute; top: 19px; right: 17px; width: 7px; height: 7px;
+    border-right: 1.8px solid var(--text3); border-bottom: 1.8px solid var(--text3);
+    transform: rotate(-45deg); transition: transform var(--dur-fast) var(--ease-out);
+  }
+  .code-row.is-open:has(> .c-act > button)::after { transform: rotate(45deg); }
+  .code-row.is-open, .code-row.is-open:hover { background: var(--bg); }
+  .code-row:not(.is-open):not(:focus-within) > .c-act {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
+    clip-path: inset(50%); white-space: nowrap;
   }
 }
 
+/* ---------- vessel codes: what a row can do, and what it has to say ----------
+   The buttons name what they act on, and sit two by two (above). */
+
 /* A chip with item codes behind it is a button; the caret says which way it is. */
 button.c-catchip, button.c-item {
-  background: none; font-family: inherit; text-align: left; cursor: pointer; position: relative;
+  font-family: inherit; text-align: left; cursor: pointer; position: relative;
 }
 button.c-catchip::after, button.c-item::after {
   content: '\25b8'; margin-left: 5px; color: var(--text-dim); font-size: 9px;
@@ -1949,7 +2042,8 @@ button.c-catchip[aria-expanded="true"]::after, button.c-item[aria-expanded="true
 .cx-list { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px; padding-top: 2px; }
 .cx-of { font-size: 11px; color: var(--text-dim); margin-right: 4px; }
 #davitSection .cx-list .c-item {
-  border: 1px solid var(--line); padding: 1px 6px; color: var(--text-dim); font-size: 11px;
+  min-height: 22px; border-radius: 999px; padding: 0 8px; background: var(--bg2);
+  color: var(--text2); font-size: 12px; white-space: nowrap;
 }
 
 /* What was not saved, on its line until it is dealt with. A line off the sheet
@@ -1959,8 +2053,6 @@ button.c-catchip[aria-expanded="true"]::after, button.c-item[aria-expanded="true
   color: var(--red-bright); font-size: 12.5px; line-height: 1.5; padding-top: 4px;
 }
 .cx-fault > span { flex: 0 1 auto; }
-.code-row.is-offsheet:has(.cx-fault) { opacity: 1; }
-.code-row.is-offsheet:has(.cx-fault) > :not(.cx-fault) { opacity: .45; }
 
 /* A line arrived at from a link: a colour that fades from it, once. */
 :root { --dur-mark: 900ms; }
@@ -2025,6 +2117,16 @@ button.c-catchip[aria-expanded="true"]::after, button.c-item[aria-expanded="true
     transparent 176px 188px, #000 188px 300px, transparent 300px 312px, #000 312px 376px, transparent 376px);
           mask-image: linear-gradient(90deg, #000 0 72px, transparent 72px 84px, #000 84px 176px,
     transparent 176px 188px, #000 188px 300px, transparent 300px 312px, #000 312px 376px, transparent 376px);
+}
+.sk-tabs-codes {
+  -webkit-mask-image: linear-gradient(90deg, #000 0 150px, transparent 150px 162px, #000 162px 290px,
+    transparent 290px calc(100% - 380px), #000 calc(100% - 380px) calc(100% - 256px),
+    transparent calc(100% - 256px) calc(100% - 246px), #000 calc(100% - 246px) calc(100% - 150px),
+    transparent calc(100% - 150px) calc(100% - 140px), #000 calc(100% - 140px));
+          mask-image: linear-gradient(90deg, #000 0 150px, transparent 150px 162px, #000 162px 290px,
+    transparent 290px calc(100% - 380px), #000 calc(100% - 380px) calc(100% - 256px),
+    transparent calc(100% - 256px) calc(100% - 246px), #000 calc(100% - 246px) calc(100% - 150px),
+    transparent calc(100% - 150px) calc(100% - 140px), #000 calc(100% - 140px));
 }
 .sk-head { height: 14px; width: 34%; margin-top: 30px; }
 .sk-row {

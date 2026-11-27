@@ -114,6 +114,7 @@
 <!-- watchdog:end -->
 <meta name="theme-color" content="#0E0A0A">
 <link rel="icon" type="image/png" href="assets/logo.png">
+<link rel="apple-touch-icon" href="assets/logo.png">
 <title>Vessel codes — Stella Marine</title>
 <link rel="manifest" href="manifest.json">
 <link rel="stylesheet" href="css/style.css?v=2026-11-27.9">
@@ -143,6 +144,7 @@
     "./js/code-edits.js": "./js/code-edits.js?v=2026-11-27.9",
     "./js/codes-page.js": "./js/codes-page.js?v=2026-11-27.9",
     "./js/codes-print.js": "./js/codes-print.js?v=2026-11-27.9",
+    "./js/codes-side.js": "./js/codes-side.js?v=2026-11-27.9",
     "./js/collapse.js": "./js/collapse.js?v=2026-11-27.9",
     "./js/davits.js": "./js/davits.js?v=2026-11-27.9",
     "./js/dialog.js": "./js/dialog.js?v=2026-11-27.9",
@@ -202,6 +204,7 @@
 <link rel="modulepreload" href="js/transform.js?v=2026-11-27.9">
 <link rel="modulepreload" href="js/help.js?v=2026-11-27.9">
 <link rel="modulepreload" href="js/settings.js?v=2026-11-27.9">
+<link rel="modulepreload" href="js/codes-side.js?v=2026-11-27.9">
 <link rel="modulepreload" href="js/boot.js?v=2026-11-27.9">
 <link rel="modulepreload" href="js/dialog.js?v=2026-11-27.9">
 <link rel="modulepreload" href="js/toast.js?v=2026-11-27.9">
@@ -247,21 +250,41 @@
   </div>
 
   <div class="state" id="codesDenied" hidden></div>
-
   <div class="state" id="codesEmpty" hidden></div>
-
+  <!-- THE CATEGORIES DOWN A SIDEBAR, the board's grey panel: a way down the
+       page, every category still on it. On a phone, a strip of them over the
+       codes (codes-side.js). -->
+  <div class="bd codes-bd">
+  <nav class="bd-side" aria-label="Categories"><div class="side-sec" id="codesSide"></div></nav>
+  <div class="bd-main codes-main">
+  <nav class="codes-strip" id="codesStrip" aria-label="Categories"></nav>
+  <!-- THE SIZE OF WHAT IS COMING: the toolbar and a page of codes, standing
+       still, until the codes are drawn and the buttons work (M29). -->
+  <div id="codesSkeleton" class="skeleton" aria-hidden="true">
+    <div class="sk-line sk-tabs sk-tabs-codes"></div>
+    <div class="sk-line sk-head"></div>
+    <div class="sk-line sk-row" style="--w: 30%"></div>
+    <div class="sk-line sk-row" style="--w: 24%"></div>
+    <div class="sk-line sk-row" style="--w: 36%"></div>
+    <div class="sk-line sk-row" style="--w: 28%"></div>
+    <div class="sk-line sk-head"></div>
+    <div class="sk-line sk-row" style="--w: 26%"></div>
+    <div class="sk-line sk-row" style="--w: 33%"></div>
+  </div>
   <div id="warnings"></div>
-
-  <div class="view-bar">
+  <div class="view-bar" id="codesBar" hidden>
     <button class="tab" id="modeBoats" aria-current="page">One line per boat</button>
     <button class="tab" id="modeProducts" aria-current="false">Split by product</button>
-    <span class="spacer"></span>
     <span class="hint" id="modeHint"></span>
-    <button class="mini" id="saveCodes">Download codes</button>
-    <button class="mini" id="loadCodes" hidden>Load codes…</button>
-    <input type="file" id="codesFile" accept=".json,application/json" aria-label="File of vessel codes" hidden>
-    <button class="mini" id="previewSheet" aria-pressed="false">Code sheet</button>
-    <button class="primary" id="printSheet">Print code sheet</button>
+    <!-- The buttons wrap as one group, as the board's do: a narrow column gets
+         two tidy lines, never a ragged one. -->
+    <span class="vb-group vb-end">
+      <button class="mini" id="saveCodes">Download codes</button>
+      <button class="mini" id="loadCodes" hidden>Load codes…</button>
+      <input type="file" id="codesFile" accept=".json,application/json" aria-label="File of vessel codes" hidden>
+      <button class="mini" id="previewSheet" aria-pressed="false">Code sheet</button>
+      <button class="primary" id="printSheet">Print code sheet</button>
+    </span>
   </div>
 
   <!-- The map used to ship as data/vessel-codes.seed.json, which meant the
@@ -273,7 +296,7 @@
   <div id="sheetStatus" class="fit-status" hidden></div>
   <div id="codesPrintRoot" hidden><div id="codesSheet"></div></div>
 
-  <div class="codes-head">
+  <div class="codes-head" id="codesColHead">
     <div>Display code</div><div>ERP codes</div><div>Model</div><div>Hull</div>
     <div>Products</div><div></div>
   </div>
@@ -289,8 +312,8 @@
     </div>
     <div id="davitRows"></div>
   </div>
-
-
+  </div>
+  </div>
 </main>
 
 <!-- ============ HELP ============

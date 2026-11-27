@@ -26,6 +26,7 @@ import { davitsByBoat } from './davits.js';
 import { today } from './transform.js';
 import { wireHelp } from './help.js';
 import { wireSettings } from './settings.js';
+import { renderCodesSide, wireCodeCards } from './codes-side.js';
 import { startup, keepWatch, forgetDevice } from './boot.js';
 import { watchDialogs, keepFocus } from './dialog.js';
 import { toast, toastFailed, unsay } from './toast.js';
@@ -164,6 +165,7 @@ async function forget() {
     for (const n of document.querySelectorAll('main .view-bar, main #rows, main #warnings, main .provenance')) {
       n.hidden = true;
     }
+    $('codesSkeleton')?.remove();
     stopCodes();
     focusSignIn();
     watch.done();
@@ -181,6 +183,7 @@ async function forget() {
     await reads;
   } catch (e) {
     console.error('[codes]', e);
+    $('codesSkeleton')?.remove();
     watch.fail();
     return;
   }
@@ -209,6 +212,11 @@ async function forget() {
   });
   render();
   rendered = true;
+  // Wired, and the codes drawn: the toolbar is shown now, not before it works,
+  // and the skeleton that held the page's place goes (M29).
+  wireCodeCards('rows', 'davitRows');
+  $('codesBar').hidden = false;
+  $('codesSkeleton')?.remove();
   watch.done();
   keepWatch({
     what: 'Vessel codes',
@@ -367,20 +375,41 @@ function render() {
   const counts = new Map();
   for (const r of rows) counts.set(groupOf(r), (counts.get(groupOf(r)) ?? 0) + 1);
 
+  // Each category a section of its own: a card on the page (UX stage two),
+  // and a place the sidebar takes you to (codes-side.js).
   let current = null;
+  let group = null;
+  const groups = [];
   for (const r of rows) {
     const cat = groupOf(r);
     if (cat !== current) {
       current = cat;
-      host.append(categoryHead(cat, counts.get(cat)));
+      group = el('section', `codes-group${isShut(cat) ? ' is-collapsed' : ''}`);
+      group.id = `codes-cat-${groups.length}`;
+      groups.push({ id: group.id, name: cat, n: counts.get(cat) });
+      group.append(categoryHead(cat, counts.get(cat)));
+      if (!isShut(cat)) group.append(columnHead());
+      host.append(group);
     }
     if (isShut(cat)) continue;
     const row = boatRow(r);
     drawn.push({ r, row });
-    host.append(row);
+    group.append(row);
   }
+  // Davits by boat, in the words of its own heading.
+  if (!$('davitSection').hidden) {
+    groups.push({ id: 'davitSection', name: $('davitSection').querySelector('.codes-cat-static').textContent, n: $('davitRows').children.length });
+  }
+  renderCodesSide(groups);
 
   renderSheet(rows);
+}
+
+/** A card's column headings: the page's own, copied, so the words live in one place. */
+function columnHead() {
+  const head = $('codesColHead').cloneNode(true);
+  head.removeAttribute('id');
+  return head;
 }
 
 /** Nothing stored, which is why there is no table, and where codes come from. */
