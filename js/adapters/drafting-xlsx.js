@@ -11,7 +11,11 @@
 // knows how to turn rows into cells.
 
 // Pinned. A silent major-version bump here would change the file format.
-const EXCELJS_URL = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+// Kept in this repository (vendor/), copied unchanged from npm's own packages
+// with their licences: a script loaded from another site would run where it
+// could read every Stella app's saved sign-in on the device (Pete, 27 Nov
+// 2026). Each folder names its version and carries no ?v=.
+const EXCELJS_URL = new URL('../../vendor/exceljs-4.4.0/exceljs.min.js', import.meta.url).href;
 
 const HEADER_FILL = 'FF000080';           // the old sheet's navy
 const HEADER_TEXT = 'FFFFFFFF';
