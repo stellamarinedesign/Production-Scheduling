@@ -11,7 +11,7 @@ import { stellaCode, labelFor, existingBoats, acceptNewCode, applyTemplate,
   setBuilders, buildersConfigured } from './vessel-codes.js';
 import { Auth, ROLE, setManagers, setEngineers, setMasters, setTesters, tidyEmail } from './auth.js';
 import { standing } from './access.js';
-import { signInForm, focusSignIn, readAccess, notListed, offerManager, watchRole } from './sign-in.js';
+import { signInForm, focusSignIn, readAccess, notListed, offerManager, watchRole, hubDownCard } from './sign-in.js';
 import { savedCopyAllowed, hubNote } from './hub-bridge.js';
 import { prefs, showTestMode, isNotAvailable, NOT_AVAILABLE, isTestMode, carryFlag } from './test-mode.js';
 import { VERSION } from './version.js';
@@ -179,7 +179,15 @@ let savedFor = null;
   const mode = await Auth.init(async (st) => {
     const saved = await early;
     // The hub's full-screen card is up: it is the answer, with nothing behind it.
-    if (st.role === ROLE.NONE && Auth.hubCard) { await forget(); watch.done(); $('appShell').hidden = true; return; }
+    // One it could not draw is drawn here, in its words (sign-in.js).
+    if (st.role === ROLE.NONE && (Auth.hubCard || Auth.hubDown)) {
+      await forget();
+      watch.done();
+      $('appShell').hidden = true;
+      $('authView').classList.remove('show');
+      if (Auth.hubDown) hubDownCard();
+      return;
+    }
     const other = saved && st.role !== ROLE.NONE && tidyEmail(st.email) !== saved.email;
     if (st.role === ROLE.NONE || other) {
       // Signed out, or somebody else: nothing saved stays for them, and a page

@@ -21,10 +21,12 @@
 // SINCE THE BOARD JOINED THE HUB, a new sign-in goes through Hubinator, one
 // login for every Stella app, which signs the board in to its own Firebase
 // project as the hub's person (hub-bridge.js), and roles are given there.
-// A device signed in before it met the hub carries on exactly as it was. The
-// board's own form, password dialog and account-making stay only as the
-// fallback while the hub is new - the form shows when the hub cannot be
-// reached - and go in the clean-up release.
+// A device signed in before it met the hub carries on exactly as it was, with
+// the board's own password dialog. The board's own sign-in form is not drawn
+// on the live site any more: with nobody signed in and the hub out of reach,
+// a card says so (hub-bridge.js, noUserAction; Pete, 27 Nov 2026). The form,
+// still drawn off the live site, the dialog and account-making go in the
+// clean-up release.
 import { isTestMode, enterTestMode, notAvailable, NOT_AVAILABLE } from './test-mode.js';
 import { failure, knowSignedIn } from './words.js';
 import { askForHub, joinHub, showSwitcher, noUserAction } from './hub-bridge.js';
@@ -95,6 +97,7 @@ export const Auth = {
   unlisted: false,      // the server has said this account is on no list (sign-in.js)
   hub: null,            // the hub (hub-bridge.js), when it loaded
   hubState: null,       // what it answered: in | legacy | none | broken | unreachable
+  hubDrawn: false,      // one of its own screens was up as it answered: its card
 
   /**
    * @param {(state: {role, email, mode}) => void} onChange
@@ -150,6 +153,7 @@ export const Auth = {
     const joined = await joinHub({ fb, projectId: firebaseConfig.projectId, hub, reload: again });
     this.hub = joined?.Hub ?? null;
     this.hubState = joined?.state ?? null;
+    this.hubDrawn = joined?.drawn ?? false;
     let seen = false;
     fb.fa.onAuthStateChanged(fb.auth, (user) => {
       // A SESSION THAT WENT WHILE THE PAGE WAS OPEN, with the hub in charge
@@ -227,8 +231,13 @@ export const Auth = {
   /** Signed in as the hub's person: Password and Sign out under the cog are the hub's. */
   get viaHub() { return this.mode === 'firebase' && this.hubState === 'in' && Boolean(this.hub); },
 
-  /** The hub's full-screen card is up (no access here, or a key it could not mend): it is the answer. */
-  get hubCard() { return this.mode === 'firebase' && noUserAction({ hubState: this.hubState }) === 'card'; },
+  /** The hub's full-screen card is up (no access here, a key it could not mend, or no connection): it is the answer. */
+  get hubCard() { return this.mode === 'firebase' && this._noUser() === 'card'; },
+
+  /** Nobody signed in on the live site, and the hub could draw nothing: the page draws its card (sign-in.js, hubDownCard). */
+  get hubDown() { return this.mode === 'firebase' && this._noUser() === 'down'; },
+
+  _noUser() { return noUserAction({ hubState: this.hubState, loaded: Boolean(this.hub), drawn: this.hubDrawn }); },
 
   /**
    * Sign out of the hub as well, when signed in through it - it leaves a mark,

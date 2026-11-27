@@ -10,7 +10,7 @@
 import { Store } from './store.js';
 import { Auth, ROLE, setManagers, setEngineers, setMasters, setTesters, tidyEmail } from './auth.js';
 import { standing } from './access.js';
-import { signInForm, focusSignIn, readAccess, notListed, watchRole } from './sign-in.js';
+import { signInForm, focusSignIn, readAccess, notListed, watchRole, hubDownCard } from './sign-in.js';
 import { VERSION } from './version.js';
 import { wireHelp } from './help.js';
 import { readStockExport } from './adapters/stock.js';
@@ -134,9 +134,11 @@ let savedFor = null;
   });
   const saved = await early;
   // The hub's full-screen card is up: it is the answer, with nothing drawn behind it.
-  if (first.role === ROLE.NONE && Auth.hubCard) {
+  // One it could not draw is drawn here, in its words (sign-in.js).
+  if (first.role === ROLE.NONE && (Auth.hubCard || Auth.hubDown)) {
     await forget();
     for (const n of document.querySelectorAll('body > header, body > main')) n.hidden = true;
+    if (Auth.hubDown) hubDownCard();
     watch.done();
     return;
   }

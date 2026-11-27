@@ -18,7 +18,7 @@ import { resolveDisplays, boatRows, modelOptions, itemFacts, factsFromStore,
          factsAreStale, setBuilders, upgradeCodeMap } from './vessel-codes.js';
 import { classify } from './rules.js';
 import { Auth, ROLE, setManagers, setEngineers, setMasters, setTesters } from './auth.js';
-import { signInForm, focusSignIn, readAccess, watchRole } from './sign-in.js';
+import { signInForm, focusSignIn, readAccess, watchRole, hubDownCard } from './sign-in.js';
 import { showTestMode, carryFlag, prefs } from './test-mode.js';
 import { VERSION } from './version.js';
 import { fitCodesSheet, TYPE_STEPS } from './codes-print.js';
@@ -109,9 +109,11 @@ async function forget() {
       .then((mode) => { if (mode === 'failed') watch.retry(); });
   });
   // The hub's full-screen card is up: it is the answer, with nothing drawn behind it.
-  if (first.role === ROLE.NONE && Auth.hubCard) {
+  // One it could not draw is drawn here, in its words (sign-in.js).
+  if (first.role === ROLE.NONE && (Auth.hubCard || Auth.hubDown)) {
     await forget();
     for (const n of document.querySelectorAll('body > header, body > main')) n.hidden = true;
+    if (Auth.hubDown) hubDownCard();
     watch.done();
     return;
   }

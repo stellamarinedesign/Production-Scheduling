@@ -698,7 +698,7 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
   .offstage,
   #boardWrap > section,
   #importPage,
-  header, #authView, #toast, .overlay, .test-mode, .shub,
+  header, #authView, #hubDown, #toast, .overlay, .test-mode, .shub,
   .provenance, #dropZone, .controls, #warnings, .tabs, .view-bar,
   .fit-status, #floorEmpty, #emptyState { display: none !important; }
 
@@ -1039,11 +1039,15 @@ table.codes .items { color: var(--text-dim); font-size: 12px; line-height: 1.7; 
 .fit-status.trimmed b { color: var(--red-bright); }
 
 /* ---------- sign in ---------- */
-#authView { display: none; max-width: 380px; margin: 0 auto; padding: 60px 24px 0; }
+#authView { display: none; }
 #authView.show { display: block; }
-#authView .auth-logo { height: 74px; display: block; margin: 0 auto 26px; }
-#authView h2 { font-size: 19px; margin-bottom: 6px; letter-spacing: .06em; }
-#authView > p { color: var(--text-dim); font-size: 14.5px; margin-bottom: 24px; line-height: 1.55; }
+/* The hub cannot be reached, and nobody is signed in (sign-in.js, hubDownCard): the sign-in's place and look. */
+#authView, #hubDown { max-width: 380px; margin: 0 auto; padding: 60px 24px 0; }
+#authView .auth-logo, #hubDown .auth-logo { height: 74px; display: block; margin: 0 auto 26px; }
+#authView h2, #hubDown h2 { font-size: 19px; margin-bottom: 6px; letter-spacing: .06em; }
+#authView > p, #hubDown > p { color: var(--text-dim); font-size: 14.5px; margin-bottom: 24px; line-height: 1.55; }
+#hubDown > p { text-wrap: pretty; }
+#hubDown > button { width: 100%; }
 #authView .field { margin-bottom: 16px; }
 #authView .field label {
   display: block; font-size: 11px; font-weight: 700; letter-spacing: .14em;
